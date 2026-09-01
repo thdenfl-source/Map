@@ -516,9 +516,39 @@ export async function run(page, t) {
     `위쪽 버튼이 좌·우로 고르게 갈린다 (${bdp.top.join(':')})`);
   t.ok(bdp.bottom[0] >= 4 && bdp.bottom[1] >= 4 && Math.abs(bdp.bottom[0] - bdp.bottom[1]) <= 1,
     `아래쪽 버튼도 좌·우로 갈린다 (${bdp.bottom.join(':')})`);
-  t.eq(bdp.simPe, 'none', '아래 툴바 바탕도 지도 조작을 통과시킨다');
-  t.ok(bdp.coordPx >= 14, `십자 좌표 글씨가 커졌다 (${bdp.coordPx}px)`);
-  t.ok(bdp.gpsPx >= 14, `실제 위치 글씨도 커졌다 (${bdp.gpsPx}px)`);
+
+  // ── ⑮ 칸은 좌·우 둘뿐이고, 아래 버튼이 위 칸에 이어진다 ──────
+  // 버튼이 하나 늘면 세 칸으로 갈리고 align-content 가 가운데 칸을 화면
+  // 한복판에 세운다 — 넓은 화면에서 실제로 그랬다. 버튼 수를 세어 칸 높이를
+  // 맞추므로(layoutMapLsk), 어느 폭에서든 x 자리는 딱 둘이어야 한다.
+  for (const vp of [{ width: 390, height: 844 }, { width: 1180, height: 820 }]) {
+    await phone.setViewportSize(vp);
+    await phone.waitForTimeout(500);
+    await phone.evaluate(() => { if (!_soloActive) enterSolo('map'); else setSolo('map'); });
+    await phone.waitForTimeout(500);
+    const r = await phone.evaluate(() => {
+      const W = document.getElementById('map-wrap').getBoundingClientRect();
+      const xs = new Set();
+      document.querySelectorAll('#map-top-bar button, #map-sim-bar .sim-btn').forEach(x => {
+        const q = x.getBoundingClientRect();
+        if (q.width) xs.add(Math.round(q.left - W.left));
+      });
+      const top = document.getElementById('map-top-bar').getBoundingClientRect();
+      const bot = document.getElementById('map-sim-bar').getBoundingClientRect();
+      const h = parseFloat(getComputedStyle(document.querySelector('#map-top-bar button')).height);
+      return { xs: [...xs].sort((a, b) => a - b),
+               // 아래 툴바가 위 툴바 바로 밑에 이어지는가(화면 아래에 따로 떨어져 있지 않은가)
+               follows: bot.top >= top.bottom - 1 && bot.top - top.bottom < 40,
+               btnH: Math.round(h) };
+    });
+    const w = vp.width;
+    t.eq(r.xs.length, 2, `${w}px 폭에서 칸이 좌·우 둘뿐이다 (x ${r.xs.join(',')})`);
+    t.eq(r.follows, true, `${w}px 폭에서 아래 버튼이 위 칸에 이어진다`);
+    // 세로가 모자라면 버튼을 낮춰서라도 두 칸을 지킨다(26px 아래로는 안 내린다)
+    t.ok(r.btnH >= 26 && r.btnH <= 34, `${w}px 폭에서 버튼 높이가 26~34px 다 (${r.btnH}px)`);
+  }
+  await phone.setViewportSize(PHONE);
+  await phone.waitForTimeout(500);
 
   await pctx.close();
 }

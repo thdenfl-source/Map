@@ -977,6 +977,8 @@ function updateSoloBtn() {
   });
   // 폰 하단 탭도 같은 자리에서 갱신한다 — setSolo/exitSolo 가 모두 여기를 지난다
   try { if (typeof updateNavBar === 'function') updateNavBar(); } catch(e) { _swallow(e); }
+  // 지도가 새로 자리를 잡으면 라인 셀렉터 칸도 다시 잰다(접혀 있을 때는 못 잰다)
+  try { if (typeof layoutMapLsk === 'function') setTimeout(layoutMapLsk, 80); } catch(e) { _swallow(e); }
 }
 
 // MAP 상단 툴바의 FULL/HALF 토글 — 상황에 맞게 전체화면 진입/분할 복귀

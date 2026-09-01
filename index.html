@@ -537,9 +537,10 @@ html, body {
    #map 높이가 80%라 하단 가장자리가 이미 terrain-cut(하단 20%) 위에 있으므로
    bottom:0 기준 + margin 만 준다(20%를 또 더하면 축척이 좌표 위로 밀려 올라감). */
 /* 좌하단 세로 순서: 축척 → 좌표(20%+44px) */
-/* 좌·우 라인 셀렉터가 양옆 66px 을 쓴다. 축척·확대축소를 그 안쪽으로 물린다 */
+/* 버튼 칸이 위쪽에 모였으므로 축척·확대축소는 아래 가장자리를 그대로 쓴다.
+   좌표 두 줄(맨 아래 44px)만 비켜 준다. */
 #map-wrap .leaflet-bottom.leaflet-left  { margin-bottom: 62px; margin-left: 66px; bottom: 0; }
-#map-wrap .leaflet-bottom.leaflet-right { margin-bottom: 44px; margin-right: 66px; bottom: 0; }
+#map-wrap .leaflet-bottom.leaflet-right { margin-bottom: 62px; margin-right: 66px; bottom: 0; }
 /* ── Solo (single-screen) mode ── */
 #solo-bar {
   position: fixed;
@@ -731,12 +732,15 @@ body.solo-mode .solo-panel-visible {
 
    가로 한 줄 → 세로 두 칸으로 만드는 방법:
      · flex-flow: column wrap  으로 위에서 아래로 채우다 넘치면 다음 칸으로
-     · 컨테이너 높이(--lsk-h)를 여섯 개 높이로 묶어 그 지점에서 넘기고
+     · 컨테이너 높이(--lsk-h)에서 넘기고
      · align-content: space-between 으로 첫 칸은 왼쪽 끝, 둘째 칸은 오른쪽 끝
+   --lsk-h 는 layoutMapLsk() 가 버튼 수를 세어 넣는다(10-tools.js). CSS 에
+   못 박아 두면 버튼이 하나 늘거나 줄 때 세 칸으로 갈리고, 그러면
+   align-content 가 가운데 칸을 화면 한복판에 세운다 — 실제로 그랬다.
    컨테이너는 지도 위를 덮으므로 pointer-events 를 끄고 버튼만 되살린다 —
    안 그러면 툴바가 지도 끌기·확대를 통째로 먹는다. */
 #map-top-bar {
-  --lsk-h: 224px;   /* 34px 버튼 여섯 개 + 사이 간격 — 열이 반씩 갈린다 */
+  --lsk-h: 224px;   /* 첫 프레임용 기본값 — 곧 layoutMapLsk() 가 다시 넣는다 */
   position: absolute; top: 8px; left: 6px; right: 6px; z-index: 1000;
   height: var(--lsk-h);
   display: flex; flex-flow: column wrap; align-content: space-between;
@@ -744,7 +748,7 @@ body.solo-mode .solo-panel-visible {
   pointer-events: none;
 }
 #map-top-bar button {
-  flex: 0 0 auto; width: 54px; height: 34px; pointer-events: auto;
+  flex: 0 0 auto; width: 54px; height: var(--lsk-btn-h, 34px); pointer-events: auto;
   background: rgba(20,20,20,0.88); border: 1px solid #444; color: #fff;
   font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: bold;
   padding: 7px 2px; border-radius: 5px; cursor: pointer;
@@ -763,9 +767,11 @@ body.solo-mode .solo-panel-visible {
   background: rgba(0,40,0,0.92); border-color: #00dd44; color: #00ff88;
   box-shadow: 0 0 8px rgba(0,220,80,0.4);
 }
-/* MAP 상단 FULL/HALF 토글 버튼 — 눈에 띄는 노랑, 폭은 콤팩트 */
+/* MAP 상단 FULL/HALF 토글 버튼 — 눈에 띄는 노랑.
+   폭은 다른 라인 셀렉터 버튼과 같아야 한다. 혼자 넓으면 그 칸만 4px 밀려
+   줄이 어긋나 보인다. */
 #map-full-btn {
-  flex: 0 0 auto; min-width: 58px;
+  flex: 0 0 auto;
   border-color: #b8860b; color: #facc15;
 }
 #map-full-btn:active { background: rgba(40,32,0,0.92); }
@@ -1030,13 +1036,12 @@ body.solo-mode .solo-panel-visible {
   box-shadow: 0 0 8px rgba(68,204,136,0.4);
 }
 
-/* 지도 아래쪽 버튼도 좌·우 라인 셀렉터로 세운다(상단 툴바와 같은 방식).
-   종전에는 가로 한 줄이라 지도 아래를 통째로 가렸고, 폰에서는 버튼 하나가
-   30px 남짓이었다. 아래에서 위로 쌓아 두 칸으로 나눈다.
-   바탕은 지도 조작을 통과시키고 버튼만 받는다. */
+/* 지도 아래쪽 버튼도 같은 라인 셀렉터다. 다만 화면 아래에 따로 두지 않고
+   위 툴바 바로 밑에 잇는다 — 그래야 왼쪽은 왼쪽대로, 오른쪽은 오른쪽대로
+   한 줄기로 내려온다. 자리(top)는 layoutMapLsk() 가 잡는다. */
 #map-sim-bar {
-  --lsk-h: 262px;   /* REC·FDR 까지 열세 개 — 한 칸에 일곱 개 */
-  position: absolute; bottom: calc(20% + 52px); left: 6px; right: 6px; z-index: 1000;
+  --lsk-h: 262px;   /* 첫 프레임용 기본값 */
+  position: absolute; top: 246px; left: 6px; right: 6px; z-index: 1000;
   height: var(--lsk-h);
   display: flex; flex-flow: column wrap; align-content: space-between;
   gap: 4px;
@@ -1046,7 +1051,7 @@ body.solo-mode .solo-panel-visible {
 #map-sim-bar #layer-btn.sat {
   background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
 }
-#map-sim-bar .sim-btn { flex: 0 0 auto; width: 54px; height: 34px; pointer-events: auto; }
+#map-sim-bar .sim-btn { flex: 0 0 auto; width: 54px; height: var(--lsk-btn-h, 34px); pointer-events: auto; }
 /* ── TERRAIN CUT (전방 20NM 지형 단면, 맵 높이의 1/5) ── */
 #terrain-cut {
   position: absolute; left: 0; right: 0; bottom: 0; height: 20%;
@@ -1058,7 +1063,6 @@ body.solo-mode .solo-panel-visible {
 #map-wrap.tcut-off #terrain-cut { display: none; }
 #map-wrap.tcut-off #map, #map-wrap.tcut-off #map3d { height: 100%; }
 #map-wrap.tcut-off #map-crosshair { top: 50%; }
-#map-wrap.tcut-off #map-sim-bar { bottom: 52px; }
 #map-wrap.tcut-off #center-coord { bottom: 6px; }
 #map-wrap.tcut-off #fdr-panel { bottom: 165px; }
 #map-tcut-btn.active { color: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 6px rgba(0,229,255,0.35); }
