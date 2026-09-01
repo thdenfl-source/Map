@@ -31,84 +31,47 @@ if (simPanelOn) { try { localStorage.setItem('simPanel', '1'); } catch (e) { _sw
 document.body.classList.toggle('navaid', !simPanelOn);
 
 // ══════════════════════════════════════════════════════
-// 화면 배치 — 스마트폰은 한 창, 태블릿은 분할
+// 화면 배치 — 늘 한 창
 // ══════════════════════════════════════════════════════
-// 한 화면으로 볼 것인가, 나눠 볼 것인가.
-//   · 짧은 변이 600px 아래 — 폰이다. 가로로 눕혀도 창 셋을 세울 폭이 안 나온다.
-//   · 세로로 든 화면 — 태블릿이라도 한 화면이 낫다. 아이패드를 세로로 들면
-//     폭이 768~834px 인데 여기에 창을 둘·셋 세우면 계기가 손바닥만 해진다.
-//     가로로 눕히면 그때 분할로 돌아간다.
-const PHONE_SHORT_MAX = 600;
+// 이 앱은 폰·패드를 세로로 들고 쓰는 물건이다. 그 폭에 창을 둘·셋 세우면
+// 계기가 손바닥만 해져 읽을 수가 없다. 분할은 두지 않는다 — PC 에서 열어도
+// 마찬가지다. 창은 상단 탭으로 갈아 끼운다.
 const PHONE_SCREENS = ['map', 'pfd', 'plan', 'cdu'];
 
-function isPhoneLayout() {
-  const w = window.innerWidth, h = window.innerHeight;
-  return Math.min(w, h) < PHONE_SHORT_MAX || h > w;
-}
-
-// 폰에서 마지막으로 보던 창 — 다시 켜면 그 자리에서 시작한다
+// 마지막으로 보던 창 — 다시 켜면 그 자리에서 시작한다
 function phoneStartScreen() {
   let v = null;
   try { v = localStorage.getItem('phoneScreen'); } catch (e) { _swallow(e); }
   return PHONE_SCREENS.includes(v) ? v : 'map';
 }
 
-// 폰 하단 탭 — 창을 옮긴다. 분할이 아니라 통째로 갈아 끼우는 방식이다.
+// 상단 탭 — 창을 통째로 갈아 끼운다
 function navGo(screen) {
   if (!PHONE_SCREENS.includes(screen)) screen = 'map';
   try { localStorage.setItem('phoneScreen', screen); } catch (e) { _swallow(e); }
-  if (_soloActive) setSolo(screen);
-  else enterSolo(screen);
+  setSolo(screen);
   updateNavBar();
   try { fitAppViewport(); } catch (e) { _swallow(e); }
-}
-
-// 폰에서도 분할을 보고 싶을 때가 있다(가로로 눕힌 큰 폰 등). 한 번 더 누르면 돌아온다.
-function navToggleSplit() {
-  if (_soloActive) {
-    // exitSolo 는 단독에 들어가기 전 배치를 되살린다. 2분할로 접는 것은 그 뒤라야 한다.
-    exitSolo();
-    // 폰에서는 2분할까지만 편다 — 390px 폭에 창 셋을 넣으면 하나가 130px 이라 못 쓴다.
-    if (isPhoneLayout() && tripleMode) toggleTriple(false);
-    _phoneSplitByUser = true;    // 스스로 편 분할이다. 회전했다고 되접지 않는다.
-  } else {
-    _phoneSplitByUser = false;
-    navGo(phoneStartScreen());
-  }
-  updateNavBar();
 }
 
 function updateNavBar() {
   const bar = document.getElementById('phone-bar');
   if (!bar) return;
   bar.querySelectorAll('[data-nav]').forEach(b =>
-    b.classList.toggle('active', _soloActive && _soloCurrent === b.dataset.nav));
-  const sp = document.getElementById('phone-split-btn');
-  if (sp) {
-    sp.textContent = _soloActive ? '⿲' : '⛶';
-    sp.title = _soloActive ? '분할 화면으로' : '한 화면으로';
-  }
+    b.classList.toggle('active', _soloCurrent === b.dataset.nav));
 }
 
-// 화면 크기가 바뀔 때마다 폰/태블릿 판정을 다시 한다(회전·창 크기 조절·DeX 연결).
-// 폰으로 바뀌면 한 창으로 접고, 태블릿으로 넓어지면 우리가 접었던 것만 되돌린다.
-// 사용자가 스스로 들어간 단독 화면까지 풀어 버리면 안 되기 때문이다.
-let _phoneSoloByUs   = false;   // 한 화면으로 접은 것이 우리인가(사용자인가)
-let _phoneSplitByUser = false;  // 폰인데도 분할을 보겠다고 사용자가 정했는가
-// 폰 계기 글씨 배율 — 팔 길이에서 읽는 태블릿과 달리 폰은 화면이 작아
-// 같은 글씨가 훨씬 작게 보인다. 테이프 폭이 최소값에 걸려 글씨도 하한에
-// 붙는 탓에 그냥 두면 읽히지 않는다.
+// 계기 글씨 배율 — 좁은 화면에서는 테이프 폭이 최소값에 걸려 글씨도 하한에
+// 붙는다. 그냥 두면 읽히지 않아 배율을 걸어 준다. 넓게 열면 되돌린다.
 const PHONE_FONT_SCALE = 1.25;
+const NARROW_MAX = 900;         // 이보다 좁으면 글씨를 키운다
 function applyDeviceLayout() {
-  const phone = isPhoneLayout();
-  document.body.classList.toggle('phone-mode', phone);
-  try { setPfdFontScale(phone ? PHONE_FONT_SCALE : 1); } catch (e) { _swallow(e); }
-  if (phone) {
-    if (!_soloActive && !_phoneSplitByUser) { enterSolo(phoneStartScreen()); _phoneSoloByUs = true; }
-  } else if (_phoneSoloByUs && _soloActive) {
-    exitSolo();
-    _phoneSoloByUs = false;
-  }
+  // 화면은 늘 한 창이다. phone-mode 는 '좁은 화면 배치' 라는 뜻으로 남는다 —
+  // 이 앱은 항상 그 배치를 쓰므로 늘 켜 둔다.
+  document.body.classList.add('phone-mode');
+  const narrow = Math.min(window.innerWidth, window.innerHeight) < NARROW_MAX;
+  try { setPfdFontScale(narrow ? PHONE_FONT_SCALE : 1); } catch (e) { _swallow(e); }
+  if (!_soloCurrent) setSolo(phoneStartScreen());
   updateNavBar();
 }
 
@@ -292,6 +255,7 @@ function _armCompassOnGesture() {
 // 07-sim.js 끝의 applyPanels() 로 태블릿 배치가 먼저 그려진다. 폰 배치는
 // 그 뒤에 덮어야 하므로 여기서 다시 잡는다.
 (function initNavAid() {
+  try { setSolo(phoneStartScreen()); } catch (e) { _swallow(e); }
   try { applyDeviceLayout(); } catch (e) { _swallow(e); }
   // 처음 켤 때가 가장 잘 어긋난다 — 글꼴이 늦게 오거나 주소창이 뒤늦게 접힌다.
   // 한 번으로는 모자라 몇 박자에 걸쳐 다시 잰다.
@@ -302,4 +266,4 @@ function _armCompassOnGesture() {
   setTimeout(() => { try { navAutoGps(); } catch (e) { _swallow(e); } }, 800);
 })();
 
-appRegister({ navGo, navToggleSplit });
+appRegister({ navGo });

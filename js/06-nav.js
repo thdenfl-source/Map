@@ -594,12 +594,8 @@ function fpRenderList(area, title, footer) {
     html+=`</div>`;
     area.innerHTML = html;
   }
-  const fullBtn = _soloActive
-    ? `<div class="fp-nav-btn" data-act="exitSolo"><span>✥</span>Half</div>`
-    : `<div class="fp-nav-btn" data-act="planFullScreen"><span>✥</span>Full</div>`;
   footer.innerHTML = `
     <div class="fp-nav-btn" data-act="fpGoCduHome"><span>🏠</span>Home</div>
-    ${fullBtn}
     <div class="fp-nav-btn" data-act="fpGo" data-arg='["ADD"]'><span>＋</span>Add WPT</div>
     <div class="fp-nav-btn" data-act="clearFP"><span>✕</span>Clr</div>
     <div class="fp-nav-btn" data-act="resetSim"><span>⟳</span>Rst</div>
@@ -989,7 +985,6 @@ function fpRenderIfr(area, title, footer) {
   }
   footer.innerHTML = `
     <div class="fp-nav-btn" data-act="fpGoCduHome"><span>🏠</span>Home</div>
-    ${fpFullBtn()}
     <div class="fp-nav-btn" data-act="fpGo" data-arg='["LIST"]'><span>📋</span>FP</div>
     <div class="fp-nav-btn" data-act="fpGo" data-arg='["ADD"]'><span>↩</span>Back</div>`;
 }
@@ -1058,7 +1053,6 @@ function fpRenderSidNew(area, title, footer) {
     `</div>`;
   footer.innerHTML =
     `<div class="fp-nav-btn" data-act="fpGoCduHome"><span>🏠</span>Home</div>` +
-    fpFullBtn() +
     `<div class="fp-nav-btn" data-act="fpGo" data-arg='["LIST"]'><span>📋</span>FP</div>` +
     `<div class="fp-nav-btn" data-act="fpGo" data-arg='["IFR"]'><span>↩</span>Back</div>`;
 }

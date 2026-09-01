@@ -1,129 +1,92 @@
-// 처음 켤 때의 화면 구성 — 좌 PFD · 중 MAP · 우 CDU (3분할)
+// 처음 켤 때의 화면 구성 — 한 창(MAP) + 상단 탭
 //
-// 기본값은 코드 여러 곳에 흩어져 있다. leftSel/midSel/rightSel 초기값,
-// tripleMode 초기값, 그리고 CDU 초기화의 setPage(...) 까지 손발이 맞아야
-// 화면에 그대로 나온다 — 실제로 어느 패널에 어느 창이 들어갔는지로 확인한다.
+// 이 앱은 폰·패드를 세로로 들고 쓰는 물건이다. 그 폭에 창을 둘·셋 세우면
+// 계기가 손바닥만 해져 읽을 수가 없다. 그래서 분할(2·3분할)을 두지 않는다 —
+// PC 에서 열어도 마찬가지다.
+//
+// 기본값은 코드 여러 곳에 흩어져 있다(마지막으로 보던 창, setSolo 의 초기값,
+// CDU 초기화). 손발이 맞아야 화면에 그대로 나오므로, 실제로 어느 창이
+// 떠 있는지로 확인한다.
 export const name = '시작 화면 구성';
 
 export async function run(page, t) {
-  // 다른 검사들이 배치를 바꿔 놓았을 수 있고 저장값도 남아 있으므로,
-  // 아무것도 저장되지 않은 새 브라우저 문맥에서 처음부터 연다.
   const browser = page.context().browser();
   const url = page.url();
-  const ctx1 = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-  const fresh = await ctx1.newPage();
-  await fresh.goto(url);
-  await fresh.waitForTimeout(900);
 
-  const v = await fresh.evaluate(() => {
-    const host = id => {
-      const e = document.getElementById(id);
-      return e && e.parentElement ? e.parentElement.id : null;
-    };
-    const shown = id => {
-      const e = document.getElementById(id);
-      return !!e && !e.classList.contains('page-hidden');
-    };
-    const active = tabs => {
-      const b = document.querySelector(`#${tabs} [data-sel].active`);
-      return b ? b.dataset.sel : null;
-    };
-    return { triple: document.getElementById('app').classList.contains('triple'),
-             pfd: host('pfd-wrap'), map: host('map-wrap'), cdu: host('cdu-wrap'),
-             shownAll: shown('pfd-wrap') && shown('map-wrap') && shown('cdu-wrap'),
-             tabs: [active('left-tabs'), active('mid-tabs'), active('page-tabs')],
-             sel: [leftSel, midSel, rightSel], tripleVar: tripleMode,
-             midW: Math.round(document.getElementById('mid-panel').getBoundingClientRect().width) };
+  // 아무것도 저장되지 않은 새 브라우저 문맥에서 처음부터 연다
+  const fresh = async (vp, init) => {
+    const ctx = await browser.newContext({ viewport: vp });
+    const p = await ctx.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
+    if (init) await p.addInitScript(init);
+    await p.goto(url);
+    await p.waitForFunction(() => typeof S === 'object' && typeof navGo === 'function',
+      null, { timeout: 20000 });
+    await p.waitForTimeout(900);
+    return [ctx, p];
+  };
+
+  const look = p => p.evaluate(() => {
+    const host = id => { const e = document.getElementById(id); return e && e.parentElement ? e.parentElement.id : null; };
+    const wide = id => { const e = document.getElementById(id); return !!e && e.getBoundingClientRect().width > 0; };
+    return { cur: _soloCurrent, solo: _soloActive,
+             shown: ['pfd-wrap', 'map-wrap', 'cdu-wrap'].filter(wide),
+             pfdHost: host('pfd-wrap'), mapHost: host('map-wrap'), cduHost: host('cdu-wrap'),
+             activeTab: (document.querySelector('#phone-bar button.active') || {}).dataset?.nav,
+             barShown: document.getElementById('phone-bar').getBoundingClientRect().height > 0,
+             appTop: Math.round(document.getElementById('app').getBoundingClientRect().top),
+             barBottom: Math.round(document.getElementById('phone-bar').getBoundingClientRect().bottom) };
   });
 
-  t.eq(v.triple, true, '처음부터 3분할이다');
-  t.eq(v.pfd, 'left-panel',  `좌측은 PFD (${v.pfd})`);
-  t.eq(v.map, 'mid-panel',   `중앙은 MAP (${v.map})`);
-  t.eq(v.cdu, 'right-panel', `우측은 CDU (${v.cdu})`);
-  t.eq(v.shownAll, true, '세 창이 모두 보인다');
-  t.eq(v.tabs.join('·'), 'pfd·map·cdu', `탭 표시도 그대로다 (${v.tabs.join('·')})`);
-  t.eq(v.sel.join('·'), 'pfd·map·cdu', '상태값도 같다');
-  t.ok(v.midW > 50, `중앙 패널이 실제로 자리를 차지한다 (${v.midW}px)`);
+  // ── 처음 켜면 MAP 한 창 ──
+  const [c1, p1] = await fresh({ width: 390, height: 844 });
+  const v = await look(p1);
+  t.eq(v.cur, 'map', `처음 켜면 MAP 이다 (${v.cur})`);
+  t.eq(v.solo, true, '한 창으로 뜬다');
+  t.eq(v.shown.join(','), 'map-wrap', `보이는 것은 지도 하나뿐이다 (${v.shown.join(',') || '없음'})`);
+  t.eq(v.barShown, true, '상단 탭바가 뜬다');
+  t.eq(v.activeTab, 'map', `MAP 탭이 눌린 상태다 (${v.activeTab})`);
+  t.ok(Math.abs(v.appTop - v.barBottom) <= 1, '본문이 탭바 바로 아래에서 시작한다');
 
-  // ── 2분할을 골라 두면 그 뜻을 따른다 ──
-  const ctx2 = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-  const two = await ctx2.newPage();
-  await two.addInitScript(() => { try { localStorage.setItem('tripleMode', '0'); } catch (e) {} });
-  await two.goto(url);
-  await two.waitForTimeout(900);
-  const w = await two.evaluate(() => ({
-    triple: document.getElementById('app').classList.contains('triple'),
-    sel: [leftSel, rightSel],
-    cduShown: !document.getElementById('cdu-wrap').classList.contains('page-hidden'),
-  }));
-  t.eq(w.triple, false, '2분할을 저장해 뒀으면 2분할로 뜬다');
-  t.eq(w.sel.join('·'), 'pfd·map', `그때는 종전대로 좌 PFD · 우 MAP (${w.sel.join('·')})`);
-  t.eq(w.cduShown, false, '그 배치에서는 CDU 가 접혀 있다');
+  // ── 마지막으로 보던 창을 기억한다 ──
+  const [c2, p2] = await fresh({ width: 390, height: 844 },
+    () => { try { localStorage.setItem('phoneScreen', 'pfd'); } catch (e) {} });
+  const v2 = await look(p2);
+  t.eq(v2.cur, 'pfd', `PFD 를 보던 참이면 PFD 로 뜬다 (${v2.cur})`);
+  t.eq(v2.shown.join(','), 'pfd-wrap', `그때는 계기 하나뿐이다 (${v2.shown.join(',')})`);
+  await c2.close();
 
-  // ── PFD 단독 ──
-  // 좌측 상단 버튼 하나로 PFD 만 화면 가득. 한 번 더 누르면 원래 배치로 돌아온다.
-  // 화면에 실제로 무엇이 남아 있는지(패널 폭)로 확인한다 — 3분할이 기본이 된 뒤로는
-  // 가운데 창을 접지 않으면 '단독' 인데도 지도가 옆에 남는다.
-  const solo = await fresh.evaluate(() => {
-    const W = id => Math.round(document.getElementById(id).getBoundingClientRect().width);
-    const btn = document.getElementById('pfd-solo-btn');
-    const before = { l: W('left-panel'), m: W('mid-panel'), r: W('right-panel'), txt: btn.textContent };
-    btn.click();
-    const on = { l: W('left-panel'), m: W('mid-panel'), r: W('right-panel'),
-                 txt: btn.textContent, solo: _soloActive, cur: _soloCurrent,
-                 pfd: document.getElementById('pfd-wrap').parentElement.id,
-                 body: document.body.classList.contains('solo-mode') };
-    btn.click();                                  // 다시 누르면 복귀
-    const off = { l: W('left-panel'), m: W('mid-panel'), r: W('right-panel'),
-                  txt: btn.textContent, solo: _soloActive,
-                  sel: [leftSel, midSel, rightSel].join('·'),
-                  triple: document.getElementById('app').classList.contains('triple') };
-    return { before, on, off, full: Math.round(window.innerWidth) };
-  });
-  t.ok(solo.before.txt.includes('PFD 단독'), `좌측 상단에 PFD 단독 버튼이 있다 (${solo.before.txt})`);
-  t.eq(solo.on.solo, true, '누르면 단독 화면으로 들어간다');
-  t.eq(solo.on.cur, 'pfd', '보이는 것은 PFD 다');
-  t.eq(solo.on.pfd, 'left-panel', 'PFD 가 그 창에 들어 있다');
-  t.eq(solo.on.m, 0, `가운데 지도 창이 접힌다 (${solo.on.m}px — 접지 않으면 옆에 남는다)`);
-  t.eq(solo.on.r, 0, `우측 CDU 창도 접힌다 (${solo.on.r}px)`);
-  t.ok(solo.on.l > solo.full * 0.95,
-    `PFD 가 화면을 가득 채운다 (${solo.on.l}px / ${solo.full}px)`);
-  t.ok(solo.on.txt.includes('분할') && !solo.on.txt.includes('단독'),
-    `그때 버튼은 되돌아가는 버튼이 된다 (${solo.on.txt})`);
-  t.eq(solo.off.solo, false, '한 번 더 누르면 나온다');
-  t.eq(solo.off.triple, true, '나오면 3분할 배치가 그대로 돌아온다');
-  t.eq(solo.off.sel, 'pfd·map·cdu', `창 배치도 들어가기 전 그대로다 (${solo.off.sel})`);
-  t.ok(solo.off.m > 50 && solo.off.r > 50,
-    `가운데·우측 창이 다시 자리를 잡는다 (${solo.off.m}px · ${solo.off.r}px)`);
+  // ── 넓게 열어도 한 창이다 ──
+  const [c3, p3] = await fresh({ width: 1400, height: 900 });
+  const v3 = await look(p3);
+  t.eq(v3.solo, true, '넓은 화면에서도 한 창이다');
+  t.eq(v3.shown.length, 1, `보이는 창은 하나뿐이다 (${v3.shown.join(',') || '없음'})`);
+  t.eq(v3.barShown, true, '넓은 화면에서도 상단 탭으로 고른다');
+  await c3.close();
 
-  // ── MAP 단독 · CDU 단독 ──
-  // 같은 방식이 다른 창에도 그대로 되는가. 어느 창이 화면을 차지하는지로 본다.
-  for (const [screen, btnId, wrap] of [['map', 'map-solo-btn', 'map-wrap'],
-                                       ['cdu', 'cdu-solo-btn', 'cdu-wrap']]) {
-    const r = await fresh.evaluate(([sc, id, wr]) => {
-      const W = e => Math.round(e.getBoundingClientRect().width);
-      const btn = document.getElementById(id);
-      const label = btn.textContent;
-      btn.click();
-      const host = document.getElementById(wr).parentElement;
-      const others = ['left-panel', 'mid-panel', 'right-panel']
-        .filter(x => x !== host.id).map(x => W(document.getElementById(x)));
-      const on = { solo: _soloActive, cur: _soloCurrent, host: host.id,
-                   w: W(host), others, shown: !document.getElementById(wr).classList.contains('page-hidden') };
-      exitSolo();
-      return { label, on, sel: [leftSel, midSel, rightSel].join('·'),
-               solo: _soloActive, full: Math.round(window.innerWidth) };
-    }, [screen, btnId, wrap]);
-    t.ok(r.label.includes(screen.toUpperCase() + ' 단독'),
-      `${screen.toUpperCase()} 단독 버튼이 그 창 탭 줄에 있다 (${r.label})`);
-    t.eq(r.on.cur, screen, `누르면 ${screen.toUpperCase()} 단독으로 들어간다`);
-    t.eq(r.on.shown, true, '그 창이 화면에 남는다');
-    t.eq(r.on.others.join('·'), '0·0', `나머지 두 창은 접힌다 (${r.on.others.join('·')}px)`);
-    t.ok(r.on.w > r.full * 0.95, `화면을 가득 채운다 (${r.on.w}px / ${r.full}px)`);
-    t.eq(r.solo, false, '나오면 단독이 풀린다');
-    t.eq(r.sel, 'pfd·map·cdu', `배치도 들어가기 전 그대로다 (${r.sel})`);
+  // ── 탭으로 네 창을 오간다 ──
+  for (const [screen, wrap, host] of [['pfd', 'pfd-wrap', 'left-panel'],
+                                      ['map', 'map-wrap', 'left-panel'],
+                                      ['cdu', 'cdu-wrap', 'right-panel'],
+                                      ['plan', 'fp-wrap', 'right-panel']]) {
+    const r = await p1.evaluate(([sc, wr, ho]) => {
+      const btn = document.querySelector(`#phone-bar [data-nav="${sc}"]`);
+      if (btn) btn.click(); else navGo(sc);
+      const e = document.getElementById(wr);
+      const others = ['pfd-wrap', 'map-wrap', 'cdu-wrap', 'fp-wrap']
+        .filter(x => x !== wr)
+        .filter(x => { const o = document.getElementById(x);
+                       return o && o.getBoundingClientRect().width > 0; });
+      return { cur: _soloCurrent, host: e.parentElement.id,
+               w: Math.round(e.getBoundingClientRect().width),
+               full: Math.round(window.innerWidth), others };
+    }, [screen, wrap, host]);
+    t.eq(r.cur, screen, `${screen.toUpperCase()} 탭을 누르면 그 창이 뜬다`);
+    t.eq(r.host, host, `${screen.toUpperCase()} 는 ${host} 에 들어 있다 (${r.host})`);
+    t.ok(r.w > r.full * 0.95, `${screen.toUpperCase()} 가 화면을 가득 채운다 (${r.w}px / ${r.full}px)`);
+    t.eq(r.others.length, 0,
+      `그때 다른 창은 보이지 않는다${r.others.length ? ' (' + r.others.join(',') + ')' : ''}`);
   }
 
-  await ctx1.close();
-  await ctx2.close();
+  await c1.close();
 }

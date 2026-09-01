@@ -79,14 +79,17 @@ export async function run(page, t) {
   t.eq(fired, 1, `자신을 지우는 핸들러도 딱 한 번 실행 (${fired}회)`);
 
   // ── 동적: 대표 버튼을 실제로 눌러 상태가 바뀌는가 ──
+  // 한 번에 한 창만 뜨므로 버튼이 사는 창을 먼저 띄운다(계기 조작부 / 지도 툴바).
   const cases = [
-    ['#obs-btn',      () => obsOn,      'OBS'],
-    ['#susp-btn',     () => suspOn,     'SUSP'],
-    ['#brg1-tog',     () => brg1Visible, 'BRG1'],
-    ['#fix-btn',      () => document.getElementById('fix-panel').classList.contains('open'), 'FIX 패널'],
-    ['#aspc-btn',     () => document.getElementById('aspc-panel').classList.contains('open'), '공역 패널'],
+    ['pfd', '#obs-btn',  () => obsOn,      'OBS'],
+    ['pfd', '#susp-btn', () => suspOn,     'SUSP'],
+    ['pfd', '#brg1-tog', () => brg1Visible, 'BRG1'],
+    ['map', '#fix-btn',  () => document.getElementById('fix-panel').classList.contains('open'), 'FIX 패널'],
+    ['map', '#aspc-btn', () => document.getElementById('aspc-panel').classList.contains('open'), '공역 패널'],
   ];
-  for (const [sel, probe, label] of cases) {
+  for (const [screen, sel, probe, label] of cases) {
+    await page.evaluate(sc => setSolo(sc), screen);
+    await page.waitForTimeout(150);
     const el = await page.$(sel);
     if (!el) { t.ok(false, `${label} 버튼 존재`); continue; }
     const before = await page.evaluate(p => new Function('return (' + p + ')()')(), probe.toString());

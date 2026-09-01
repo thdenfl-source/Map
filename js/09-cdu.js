@@ -22,7 +22,7 @@ function saveSession() {
       fcp: { selSpd, selAlt, selVS, selHdg, hdgSelOn, altHoldOn, gspdOn, rollApOn, bankTarget,
              gspdActLat, gspdActFwd, gspdRefLat, gspdRefFwd, gspdCoasting },
       nav: { obsOn, navSrc, navRadios, vorObsCrs },
-      view: { mapHdgUp, followMode, leftSel, midSel, rightSel, tripleMode },
+      view: { mapHdgUp, followMode, screen: _soloCurrent },
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(snap));
   } catch(e) { _swallow(e); }
@@ -52,8 +52,7 @@ function restoreSession() {
     if (n.navRadios) { try { ['NAV1','NAV2'].forEach(k => { if (n.navRadios[k]) navRadios[k] = Object.assign({}, navRadios[k], n.navRadios[k]); }); } catch(e) { _swallow(e); } }
     const v = snap.view || {};
     mapHdgUp=!!v.mapHdgUp; followMode=!!v.followMode;
-    if (v.leftSel) leftSel=v.leftSel; if (v.midSel) midSel=v.midSel; if (v.rightSel) rightSel=v.rightSel;
-    if (v.tripleMode != null) tripleMode = !!v.tripleMode;
+    if (v.screen) setSolo(v.screen);
     // 재적용
     try { updateFlyBtns(); } catch(e) { _swallow(e); }
     try { updateHoverBtns(); } catch(e) { _swallow(e); }
@@ -169,7 +168,7 @@ function init(){
   // 처음 켤 때의 우측 창 — 3분할이면 CDU(좌 PFD · 중 MAP · 우 CDU), 2분할이면 MAP.
   // 종전에는 늘 setPage(0) 이라 3분할에서도 우측이 MAP 이 되고, 그 바람에
   // 중앙에 있던 MAP 과 자리가 맞바뀌어 CDU 가 가운데로 밀려났다.
-  if (!_restored) setPage(tripleMode ? 2 : 0);   // 복원 시엔 restoreSession의 applyPanels로 배치 유지
+  if (!_restored) setSolo('map');   // 복원했으면 restoreSession 이 그 창을 이미 띄웠다
   window.addEventListener('resize', () => { resizePFD(); try { leafMap.invalidateSize(); } catch(e) { _swallow(e); } scaleCdu(); });
   setTimeout(() => leafMap.invalidateSize(), 100);
   // 저장된 표시 포인트를 지도에 복원.

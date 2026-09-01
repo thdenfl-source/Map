@@ -53,6 +53,9 @@ export async function run(page, t) {
   t.ok(/\bon\b/.test(held.cls), `버튼이 켜진 모양이다 (${held.cls})`);
 
   // ── 이름표는 위에, 버튼에는 ON/OFF 만 ──
+  // 조작부가 실제로 보이는지 보는 자리다 — 계기 창을 띄워 놓고 잰다
+  await page.evaluate(() => setSolo('pfd'));
+  await page.waitForTimeout(250);
   const ui = await page.evaluate(async () => {
     const b = document.getElementById('susp-btn');
     const grp = b.closest('.susp-group');

@@ -44,149 +44,21 @@ html, body {
   display: grid;
   overflow: hidden;
 }
-/* Divider between the two panels — 가운데 그립을 드래그해 분할 비율 조절 */
-#panel-divider {
-  background: #2a2a2a;
-  z-index: 2000;
-  flex-shrink: 0;
-  position: relative;
-}
-#divider-grip, #divider-grip-2 {
-  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-  z-index: 2001; cursor: col-resize; touch-action: none; user-select: none;
-  background: rgba(15,20,28,0.92); border: 1px solid #4a90d9; border-radius: 6px;
-  color: #7ab8f5; font-size: 12px; font-weight: bold; line-height: 1;
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-}
-#divider-grip:active, #divider-grip-2:active { background: #1a3a5a; color: #fff; }
-@media (orientation: landscape) {
-  #divider-grip, #divider-grip-2 { width: 26px; height: 56px; }
-  #divider-grip::before, #divider-grip-2::before { content: '◀▶'; letter-spacing: -2px; }
-}
-@media (orientation: portrait) {
-  #divider-grip, #divider-grip-2 { width: 56px; height: 26px; cursor: row-resize; }
-  #divider-grip::before, #divider-grip-2::before { content: '▲▼'; }
-}
-@media (orientation: landscape) {
-  #app { display: flex; flex-direction: row; }
-  #left-panel  { flex: 1 1 0; min-width: 100px; overflow: hidden; }
-  #right-panel { flex: 1 1 0; min-width: 80px; overflow: hidden; }
-  /* PFD를 표시하는 패널은 FCP 버튼이 전부 보이도록 넓은 쪽(55%)을 차지 */
-  #left-panel.pfd-host, #right-panel.pfd-host { flex: 0 0 55%; }
-  #panel-divider { width: 2px; height: 100%; }
-}
-@media (orientation: portrait) {
-  #app { display: flex; flex-direction: column; }
-  #left-panel  { flex: 1 1 0; min-height: 100px; overflow: hidden; }
-  #right-panel { flex: 1 1 0; min-height: 80px; overflow: hidden; }
-  #left-panel.pfd-host, #right-panel.pfd-host { flex: 0 0 55%; }
-  #panel-divider { height: 2px; width: 100%; }
-}
-/* 사용자가 분할 비율을 지정하면 좌측만 고정폭이 되고 우측은 남은 공간을 채운다.
-   (PFD 호스트의 flex:0 0 55%가 함께 걸리면 합이 100%를 넘어 우측이 잘리므로 무효화) */
-#app.split-custom #right-panel { flex: 1 1 0; }
-
-/* ── 3분할(PFD·MAP·CDU) ─────────────────────────────────────────── */
-#mid-panel { display: none; flex-direction: column; overflow: hidden; }
-#divider-2 { display: none; background: #2a2a2a; z-index: 2000; flex-shrink: 0; position: relative; }
-#divider-grip-2 { display: none; }
-#app.triple #mid-panel { display: flex; }
-#app.triple #divider-2 { display: block; }
-#app.triple #divider-grip-2 { display: flex; }
-/* 3분할 배분 — 좌·중은 --tri-l/--tri-m 로 고정하고 우측이 남은 공간을 채운다.
-   기본값은 PFD 호스트가 1.4배 넓은 배분으로 JS가 계산해 넣고,
-   그립을 드래그하면 그 값만 바뀐다(2분할의 splitRatio 와 같은 방식). */
-#app.triple #left-panel  { flex: 0 0 var(--tri-l, 33.333%) !important; }
-#app.triple #mid-panel   { flex: 0 0 var(--tri-m, 33.333%) !important; }
-#app.triple #right-panel { flex: 1 1 0 !important; }
-@media (orientation: landscape) { #divider-2 { width: 2px; height: 100%; } }
-@media (orientation: portrait)  { #divider-2 { height: 2px; width: 100%; } }
-/* 분할 전환 버튼 */
-.split-tab { margin-left: auto; color: #7ab8f5 !important; }
-#left-panel {
+/* 좌·우 패널 — 분할이 없으므로 늘 한쪽만 뜨고, 뜬 쪽이 화면을 다 쓴다.
+   두 패널로 나뉘어 있는 것은 마크업 구조 때문이다(PFD·MAP 은 좌, CDU·PLAN 은 우). */
+#app { display: flex; flex-direction: column; }
+#left-panel, #right-panel {
+  flex: 1 1 0;
+  min-width: 0; min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-#left-tabs, #mid-tabs {
-  display: flex;
-  background: #080808;
-  border-bottom: 1px solid #1e1e1e;
-  flex-shrink: 0;
 }
 #pfd-wrap {
   position: relative; background: #000; overflow: hidden;
   flex: 1;
 }
 #pfd { display: block; }
-#right-panel {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-#page-tabs {
-  display: flex;
-  background: #080808;
-  border-bottom: 1px solid #1e1e1e;
-  flex-shrink: 0;
-}
-/* 탭 바(좌·중·우 공통): 버튼 동일 크기 + 흰 테두리 */
-/* iOS 상태바(시계·배터리)와 겹치지 않도록 상단 safe-area 여백 추가 */
-#left-tabs, #mid-tabs, #page-tabs { gap: 4px; padding: 4px; padding-top: calc(4px + env(safe-area-inset-top)); }
-#left-tabs { padding-left: calc(4px + env(safe-area-inset-left)); }
-#page-tabs { padding-right: calc(4px + env(safe-area-inset-right)); }
-.page-tab {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.75);
-  border-radius: 0;
-  color: #ccc;
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  font-size: 11px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  cursor: pointer;
-  touch-action: manipulation;
-  white-space: nowrap; overflow: hidden;
-  transition: color 0.15s, background 0.15s;
-}
-/* 탭 버튼 높이 고정 — 라벨에 한글·기호가 섞이면 줄 상자 높이가 달라져
-   패널마다 탭 바 높이가 어긋나고, 3분할에서 상단선이 안 맞는다 */
-.page-tab, #reload-btn {
-  height: 28px; padding: 0 2px; line-height: 1; box-sizing: border-box;
-  display: flex; align-items: center; justify-content: center;
-}
-#reload-btn {
-  flex: 1;
-  min-width: 0;
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.75);
-  border-radius: 0;
-  color: #5aaefd;
-  font-size: 14px;
-  font-weight: bold;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 0.15s, background 0.15s;
-}
-#reload-btn:hover { color: #fff; background: #06141f; }
-#reload-btn:active { transform: rotate(180deg); }
-.page-tab.active {
-  color: #00ff88;
-  background: #081808;
-  box-shadow: inset 0 -2px 0 #00ff88;
-}
-/* 탭 색상(좌/우 공통 5버튼 배치): PFD·MAP·CDU·Full Screen */
-#left-tabs [data-sel="pfd"], #page-tabs [data-sel="pfd"] { color: #5aaefd; }
-#left-tabs [data-sel="pfd"].active, #page-tabs [data-sel="pfd"].active { color: #5aaefd; background: #051525; box-shadow: inset 0 -2px 0 #5aaefd; }
-#left-tabs [data-sel="map"], #page-tabs [data-sel="map"] { color: #00e07a; }
-#left-tabs [data-sel="map"].active, #page-tabs [data-sel="map"].active { color: #00e07a; background: #001a0d; box-shadow: inset 0 -2px 0 #00e07a; }
-#left-tabs [data-sel="cdu"], #page-tabs [data-sel="cdu"] { color: #c084fc; }
-#left-tabs [data-sel="cdu"].active, #page-tabs [data-sel="cdu"].active { color: #c084fc; background: #0d0020; box-shadow: inset 0 -2px 0 #c084fc; }
-.page-tab.fullscreen-tab { color: #facc15; }
-.page-tab.fullscreen-tab:hover { color: #fff; background: #1a1500; }
 .page-content {
   flex: 1;
   overflow: hidden;
@@ -544,105 +416,14 @@ html, body {
    좌표 두 줄(맨 아래 44px)만 비켜 준다. */
 #map-wrap .leaflet-bottom.leaflet-left  { margin-bottom: 62px; margin-left: 66px; bottom: 0; }
 #map-wrap .leaflet-bottom.leaflet-right { margin-bottom: 62px; margin-right: 66px; bottom: 0; }
-/* ── Solo (single-screen) mode ── */
-#solo-bar {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  z-index: 3000;
-  display: flex;
-  background: rgba(0,0,0,0.88);
-  border-bottom: 1px solid #333;
-  height: calc(36px + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
-  align-items: stretch;
-}
-#solo-bar button {
-  flex: 1;
-  background: transparent;
-  border: none;
-  border-right: 1px solid #222;
-  color: #555;
-  font-size: 11px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  cursor: pointer;
-  touch-action: manipulation;
-  transition: color 0.15s, background 0.15s;
-}
-#solo-bar button:last-child { border-right: none; }
-#solo-bar button.solo-active {
-  color: #00ff88;
-  background: #081808;
-  box-shadow: inset 0 -2px 0 #00ff88;
-}
-/* ✕(분할화면 복귀)는 우측 상단 끝에 배치 */
-#solo-bar button.solo-exit {
-  flex: 0 0 40px;
-  color: #ff4444;
-  font-size: 15px;
-  font-weight: bold;
-  border-left: 2px solid #ff4444;
-  border-right: none;
-  background: rgba(80,0,0,0.5);
-}
-#solo-bar button.solo-exit:hover { color: #fff; background: #aa0000; }
-/* solo-bar tab colors (PFD/MAP/PLAN/CDU가 1~4번째, ✕는 마지막) */
-#solo-bar button:nth-child(1)        { color: #5aaefd; }
-#solo-bar button:nth-child(1).solo-active { color: #5aaefd; box-shadow: inset 0 -2px 0 #5aaefd; }
-#solo-bar button:nth-child(2)        { color: #00e07a; }
-#solo-bar button:nth-child(2).solo-active { color: #00e07a; box-shadow: inset 0 -2px 0 #00e07a; }
-#solo-bar button:nth-child(3)        { color: #ffaa33; }
-#solo-bar button:nth-child(3).solo-active { color: #ffaa33; box-shadow: inset 0 -2px 0 #ffaa33; }
-#solo-bar button:nth-child(4)        { color: #c084fc; }
-#solo-bar button:nth-child(4).solo-active { color: #c084fc; box-shadow: inset 0 -2px 0 #c084fc; }
-/* 전체화면(solo)에서는 상단 바를 모두 숨기고 계기가 화면을 꽉 채움
-   (내비게이션은 하단 푸터 Home/Half/Plan 으로) */
+/* ── 한 화면 ──────────────────────────────────────────────────
+   늘 한 창만 뜬다. 쓰는 패널만 펴고 나머지는 접는다. */
 body.solo-mode #app {
   position: fixed;
   top: env(safe-area-inset-top); bottom: 0; left: 0; right: 0;
 }
-/* solo 모드에서 패널 자체 탭바(page-tabs/left-tabs) 숨김 — solo-bar와 중복 */
-body.solo-mode #page-tabs,
-body.solo-mode #left-tabs { display: none !important; }
-/* solo 전용 상단 스위처 바도 숨김(하단 푸터로 대체) */
-body.solo-mode #solo-bar { display: none !important; }
-/* 전체화면에서 MAP/PFD 등 하단 푸터가 없는 화면용 떠 있는 HALF 버튼 */
-#solo-half-btn {
-  display: none;
-  position: fixed;
-  top: calc(env(safe-area-inset-top) + 58px);   /* 상단 툴바(공역 등) 아래로 */
-  right: calc(env(safe-area-inset-right) + 10px);
-  z-index: 3500;
-  background: rgba(10,15,22,0.92);
-  border: 1px solid #4a90d9;
-  border-radius: 7px;
-  color: #7ab8f5;
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  font-size: 12px; font-weight: bold; letter-spacing: 1px;
-  padding: 7px 12px;
-  cursor: pointer; touch-action: manipulation;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-}
-#solo-half-btn:active { background: #1a3a5a; color: #fff; }
-body.solo-mode #solo-half-btn.show { display: block; }
-/* Solo mode: one panel fills everything */
 body.solo-mode #left-panel,
-body.solo-mode #right-panel {
-  display: none;
-}
-body.solo-mode #panel-divider { display: none; }
-/* 3분할이 기본이므로 단독 화면에서는 가운데 창과 두 번째 경계선도 접는다 */
-body.solo-mode #mid-panel,
-body.solo-mode #app.triple #mid-panel,
-body.solo-mode #divider-2,
-body.solo-mode #app.triple #divider-2 { display: none; }
-/* 3분할은 창 폭을 #app.triple #left-panel 처럼 세게 지정한다. 단독 화면에서는
-   남은 한 창이 전부를 차지해야 하므로 여기서 그보다 세게 다시 잡는다. */
-body.solo-mode #app.triple #left-panel,
-body.solo-mode #app.triple #mid-panel,
-body.solo-mode #app.triple #right-panel { flex: 1 1 0 !important; width: 100% !important; }
+body.solo-mode #right-panel { display: none; }
 body.solo-mode .solo-panel-visible {
   display: flex !important;
   flex-direction: column;
@@ -773,11 +554,6 @@ body.solo-mode .solo-panel-visible {
 /* MAP 상단 FULL/HALF 토글 버튼 — 눈에 띄는 노랑.
    폭은 다른 라인 셀렉터 버튼과 같아야 한다. 혼자 넓으면 그 칸만 4px 밀려
    줄이 어긋나 보인다. */
-#map-full-btn {
-  flex: 0 0 auto;
-  border-color: #b8860b; color: #facc15;
-}
-#map-full-btn:active { background: rgba(40,32,0,0.92); }
 /* ── 화면 터치 잠금 ── */
 #lock-btn.locked { background: rgba(60,45,0,0.92); border-color: #ffaa00; color: #ffcc44; }
 #lock-overlay {
@@ -1073,7 +849,7 @@ body.solo-mode .solo-panel-visible {
 #map-hold-btn.active { color: #ffb74d; border-color: #ffb74d; box-shadow: 0 0 6px rgba(255,183,77,0.35); }
 #hold-entry {
   display: none; position: absolute; right: 8px; top: 48px; z-index: 996;
-  width: 226px; max-width: 52%;   /* 분할 화면에서 지도를 덮지 않게 — 창이 아니라 지도 폭 기준 */
+  width: 226px; max-width: 52%;   /* 지도를 덮지 않게 — 창이 아니라 지도 폭 기준 */
   background: rgba(8,12,18,0.94); border: 1px solid #2a3a4a; border-radius: 6px;
   font: 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   box-shadow: 0 4px 16px rgba(0,0,0,0.6);
@@ -1642,12 +1418,10 @@ body.navaid .sim-only { display: none !important; }
 body.navaid .ctrl-sub-row .ctrl-div { display: none; }
 
 /* ══════════════════════════════════════════════════════════════════
-   스마트폰 기본 모드 — 한 화면 + 하단 탭
-   태블릿은 종전 2·3분할 그대로다. 여기 규칙은 body.phone-mode 에서만 산다.
+   한 화면 + 상단 탭 — 폰·패드·PC 모두 같다(body.phone-mode 는 늘 붙는다)
    ══════════════════════════════════════════════════════════════════ */
-/* 폰 탭바 — 2분할·3분할 탭과 같이 화면 맨 위에 둔다.
-   아래에 두었더니 iOS 홈 표시줄·주소창과 자리를 다투었고, 무엇보다 창을
-   고르는 탭이 위에 있어야 다른 화면(분할 탭)과 손이 같은 자리로 간다. */
+/* 탭바는 화면 맨 위에 둔다. 아래에 두었더니 iOS 홈 표시줄·주소창과 자리를
+   다투었다. */
 #phone-bar {
   display: none;
   position: fixed; left: 0; right: 0; top: 0; z-index: 3200;
@@ -1681,17 +1455,10 @@ body.phone-mode.solo-mode #app {
   top: var(--phone-bar-h, 50px);
   bottom: 0;
 }
-/* 폰에서는 상단 solo 스위처와 떠 있는 HALF 버튼을 쓰지 않는다 — 하단 탭이 대신한다.
-   지도 툴바의 FULL/HALF 도 같은 이유로 내린다: 폰은 이미 한 화면이라 할 일이 없고,
-   좁은 툴바에서 자리만 차지한다(분할이 필요하면 하단 탭의 ⿲ 로 간다). */
-body.phone-mode #solo-bar,
-body.phone-mode #map-full-btn,
-body.phone-mode #solo-half-btn { display: none !important; }
 /* 지도 툴바는 폰·태블릿 모두 좌·우 라인 셀렉터다(위 #map-top-bar 규칙).
    폰에서는 글자만 조금 줄인다 — flex 를 건드리면 칸 나눔이 망가진다. */
 body.phone-mode #map-top-bar button,
 body.phone-mode #map-sim-bar .sim-btn { font-size: 10px; }
-body.phone-mode #map-full-btn { min-width: 54px; }
 
 /* ── 지도 하위 창 — 버튼에서 가지 친 모양 ──────────────────────
    창은 누른 버튼 옆(화면 안쪽)에 붙고, 그 사이를 짧은 줄기가 잇는다.
@@ -1888,7 +1655,6 @@ body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 
 </style>
 </head>
 <body>
-<!-- ── 단일화면 선택 바 (기본 숨김) ── -->
 <!-- ── 시작 안내(사용법/키보드) 오버레이 ── -->
 <div id="help-overlay" style="display:none;">
   <div id="help-panel">
@@ -1899,17 +1665,13 @@ body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 
     <div id="help-body">
       <h3>1. 화면 구성</h3>
       <ul>
-        <li><b>스마트폰에서는 한 화면</b>이 기본입니다 — 켜면 <b>MAP</b> 이 뜨고,
-            <b>화면 아래 탭(MAP · PFD · PLAN · CDU)</b> 으로 옮겨 다닙니다.
-            마지막으로 보던 창을 기억했다가 다음에 그 자리에서 엽니다.
-            아래 탭 오른쪽 끝의 <b>⿲</b> 를 누르면 폰에서도 분할로 볼 수 있습니다.</li>
-        <li><b>태블릿·데스크톱에서는 3분할</b>입니다 — <b>좌 PFD · 중 MAP · 우 CDU</b>.
-            상단 <b>⿰ 2분할</b> 버튼으로 두 창만 볼 수도 있고, 그 선택은 저장되어 다음에도 그대로 열립니다.</li>
-        <li>각 창 모두 <b>PFD / MAP / CDU</b> 탭으로 전환. 다른 창에 있는 창을 고르면 두 창이 자리를 맞바꿉니다.</li>
-        <li><b>전체화면</b>: CDU·Flight Plan 하단 <b>Full</b>, MAP 상단 <b>FULL</b> 버튼. 되돌아올 때는 같은 자리의 <b>HALF</b>.</li>
-        <li>경계선의 <b>◀▶ 그립</b>을 드래그하면 분할 비율 조절(자동 저장). <b>3분할에서는 그립이 두 개</b>라
-            좌·중·우 폭을 각각 잡을 수 있고, 각 경계선은 <b>맞닿은 두 창끼리만</b> 크기를 주고받습니다.
-            그립을 <b>더블탭</b>하면 기본 배분으로 되돌아갑니다. <b>⟳</b>은 새로고침.</li>
+        <li><b>언제나 한 화면</b>입니다 — 켜면 <b>MAP</b> 이 뜨고,
+            <b>화면 맨 위 탭(MAP · PFD · PLAN · CDU)</b> 으로 옮겨 다닙니다.
+            마지막으로 보던 창을 기억했다가 다음에 그 자리에서 엽니다.</li>
+        <li>폰·패드를 <b>세로로 들고 쓰는</b> 물건입니다. 그 폭에 창을 둘·셋 세우면
+            계기가 손바닥만 해져 읽을 수가 없어, <b>2·3분할은 두지 않습니다</b> —
+            PC 에서 열어도 마찬가지입니다.</li>
+        <li>탭 오른쪽 끝의 <b>⟳</b> 은 새로고침입니다.</li>
       </ul>
 
       <h3>2. 이 앱은 무엇인가</h3>
@@ -2250,36 +2012,18 @@ body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 
     <span id="lock-unlock-txt">길게 눌러 해제</span>
   </div>
 </div>
-<div id="solo-bar" style="display:none;">
-  <button data-act="setSolo" data-arg='["pfd"]'>PFD</button>
-  <button data-act="setSolo" data-arg='["map"]'>MAP</button>
-  <button data-act="setSolo" data-arg='["plan"]'>PLAN</button>
-  <button data-act="setSolo" data-arg='["cdu"]'>CDU</button>
-  <button class="solo-exit" data-act="exitSolo" title="분할화면으로 돌아가기">✕</button>
-</div>
-<!-- 전체화면(solo)에서 하단 푸터가 없는 화면(MAP/PFD)용 분할복귀 버튼 -->
-<button id="solo-half-btn" data-act="exitSolo" title="분할화면으로 돌아가기">✥ HALF</button>
-<!-- 스마트폰 기본 모드의 하단 탭 — 분할 대신 한 화면씩 갈아 끼운다.
-     엄지가 닿는 아래쪽에 둔다(상단 solo-bar 는 폰에서 손이 닿지 않는다). -->
+<!-- 창 고르는 탭 — 한 화면씩 갈아 끼운다. 화면 맨 위에 둔다. -->
 <div id="phone-bar">
   <button data-nav="map"  data-act="navGo" data-arg='["map"]'>MAP</button>
   <button data-nav="pfd"  data-act="navGo" data-arg='["pfd"]'>PFD</button>
   <button data-nav="plan" data-act="navGo" data-arg='["plan"]'>PLAN</button>
   <button data-nav="cdu"  data-act="navGo" data-arg='["cdu"]'>CDU</button>
-  <button id="phone-split-btn" data-act="navToggleSplit" title="분할 화면으로">⿲</button>
   <button id="phone-reload-btn" data-act="hardReload" title="새로고침(상태 초기화)">⟳</button>
 </div>
 <div id="app">
 
   <!-- ── LEFT PANEL (PFD / MAP) ── -->
   <div id="left-panel">
-    <div id="left-tabs">
-      <button class="page-tab active" data-sel="pfd" data-act="selectPanel" data-arg='["left", "pfd"]'>PFD</button>
-      <button class="page-tab" data-sel="map" data-act="selectPanel" data-arg='["left", "map"]'>MAP</button>
-      <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["left", "cdu"]'>CDU</button>
-      <button class="page-tab split-tab" id="pfd-solo-btn" data-act="pfdSolo" title="PFD 단독 — PFD 만 화면 가득(한 번 더 누르면 원래 배치)">⛶ PFD 단독</button>
-      <button class="page-tab split-tab" id="split-toggle" data-act="toggleTriple" title="2분할 ⇄ 3분할">⿲ 3분할</button>
-    </div>
     <div id="pfd-wrap">
     <canvas id="pfd"></canvas>
     <div class="ctrl-bar">
@@ -2503,29 +2247,8 @@ body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 
     </div><!-- end #pfd-wrap -->
   </div><!-- end #left-panel -->
 
-  <!-- ── RIGHT PANEL (3 pages) ── -->
-  <div id="panel-divider"><div id="divider-grip"></div></div>
-
-  <!-- 3분할일 때만 보이는 중앙 패널 -->
-  <div id="mid-panel">
-    <div id="mid-tabs" class="panel-tabs">
-      <button class="page-tab" data-sel="pfd" data-act="selectPanel" data-arg='["mid", "pfd"]'>PFD</button>
-      <button class="page-tab active" data-sel="map" data-act="selectPanel" data-arg='["mid", "map"]'>MAP</button>
-      <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["mid", "cdu"]'>CDU</button>
-      <button class="page-tab split-tab" id="map-solo-btn" data-act="panelSolo" data-arg='["map"]' title="MAP 단독 — 지도만 화면 가득(한 번 더 누르면 원래 배치)">⛶ MAP 단독</button>
-    </div>
-  </div>
-  <div id="divider-2"><div id="divider-grip-2"></div></div>
-
+  <!-- ── RIGHT PANEL (CDU · Flight Plan) ── -->
   <div id="right-panel">
-
-    <div id="page-tabs">
-      <button class="page-tab" data-sel="pfd" data-act="selectPanel" data-arg='["right", "pfd"]'>PFD</button>
-      <button class="page-tab active" data-sel="map" data-act="selectPanel" data-arg='["right", "map"]'>MAP</button>
-      <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["right", "cdu"]'>CDU</button>
-      <button class="page-tab split-tab" id="cdu-solo-btn" data-act="panelSolo" data-arg='["cdu"]' title="CDU 단독 — CDU 만 화면 가득(한 번 더 누르면 원래 배치)">⛶ CDU 단독</button>
-      <button id="reload-btn" data-act="hardReload" title="새로고침(상태 초기화)">⟳</button>
-    </div>
 
     <!-- Page 1: Map -->
     <div id="map-wrap" class="page-content tcut-off">
@@ -2550,7 +2273,6 @@ body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 
         <button id="brg2-bdp" data-act="toggleBrg2Lbl" title="BRG2 선·방위·거리를 지도에 시현">#2BDP</button>
         <button id="aspc-btn" data-act="toggleAspcPanel">공역</button>
         <button id="map-ruler-btn" data-act="toggleRuler" title="거리·방위 측정">📏</button>
-        <button id="map-full-btn" data-act="toggleMapFull" title="전체화면/분할 전환">FULL</button>
       </div>
       <div id="geo-panel">
         <div id="geo-panel-hdr">주소 · 지명 검색
