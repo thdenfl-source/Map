@@ -503,17 +503,20 @@ export async function run(page, t) {
              navPx: px(nav.querySelector('.pi-id')), brgPx: px(nav.querySelector('.pi-brg')),
              h: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height) };
   });
-  for (const k of ['TAS', 'GS', 'OAT', 'ISA']) {
+  for (const k of ['TAS', 'GS', 'OAT']) {
     t.ok(info.air.includes(k), `조작부 윗줄에 ${k} 가 있다`);
   }
+  // ISA 는 내렸다 — 고도만 넣으면 나오는 표준대기 값이라 읽을 것이 없고,
+  // 옆의 OAT 와 비슷한 숫자가 나란히 서서 어느 쪽이 실제인지 헷갈렸다.
+  t.ok(!/\bISA\b/.test(info.air), `ISA 는 글자판에 없다 (${info.air.trim()})`);
   t.eq(info.srcCount, 3, 'NAV 소스 세 가지(FMS·NAV1·NAV2)가 모두 있다');
   t.ok(/FMS/.test(info.nav) && /NAV1/.test(info.nav) && /NAV2/.test(info.nav),
     '세 소스의 이름이 다 보인다');
   t.ok(info.h > 10 && info.h < 170, `글자판이 지나치게 자라지 않았다 (${info.h}px)`);
   // 글자판의 값은 모두 같은 크기로 읽는다. 한 화면에 있는 값인데 하나만 작으면
-  // 그것만 못 읽고 지나친다 — TAS·GS·OAT·ISA 를 NAV 줄의 방위 숫자에 맞춘다.
+  // 그것만 못 읽고 지나친다 — TAS·GS·OAT 를 NAV 줄의 방위 숫자에 맞춘다.
   t.eq(info.airPx, info.brgPx,
-    `TAS·GS·OAT·ISA 가 방위 숫자와 같은 크기다 (${info.airPx}px vs ${info.brgPx}px)`);
+    `TAS·GS·OAT 가 방위 숫자와 같은 크기다 (${info.airPx}px vs ${info.brgPx}px)`);
   t.ok(info.airPx >= 18, `그 크기가 비행 중에 읽을 만하다 (${info.airPx}px)`);
   // 이름표는 값보다 작다. AHRS 버튼까지 한 줄에 세워야 해서 폭이 빠듯하다 —
   // 읽는 것은 값이므로 이름표를 먼저 줄인다.

@@ -1127,10 +1127,39 @@ function dmeDist(lat, lon, stnElevFt) {
   return Math.sqrt(d * d + dh * dh);
 }
 
-// PFD OAT용 지면 온도(°C) — METAR 조회 시 갱신, 기본은 ISA 해면온도 15°C.
-// 09-cdu.js 에 있던 것을 여기로 옮겼다. 거기서 정의하면 첫 drawPFD 가 그보다
+// ── 외기온도(OAT) ────────────────────────────────────────────────────
+// 값을 두 곳에서 받는다.
+//   ① 기상청(KMA) 격자 예보 — 지금 이 자리의 기온. 09-cdu.js 의 _kmaOatTick()
+//      이 위치가 바뀌거나 10분이 지나면 받아 둔다. 격자 표고도 함께 온다.
+//   ② 가장 가까운 공항의 METAR — 실측이지만 최대 60NM 떨어진 자리의 값이다.
+// 둘 다 없으면 null 이다. 종전에는 표준대기 15°C 가 기본값으로 앉아 있어,
+// 아무 자료가 없을 때도 OAT 자리에 그럴듯한 숫자가 떴다 — 측정하지 않은 것을
+// 측정한 것처럼 보이게 하는 자리다. 이제 그 경우는 '---' 로 비운다.
+//
+// 09-cdu.js 가 아니라 여기서 정의한다. 거기서 정의하면 첫 drawPFD 가 그보다
 // 먼저 돌아 "_oatSurfaceC is not defined" 예외가 한 번 나고 OAT 가 빈 채로 그려졌다.
-window._oatSurfaceC = window._oatSurfaceC ?? 15;
+window._oatSurfaceC  = window._oatSurfaceC ?? 15;   // METAR 지면 온도(°C)
+window._oatSurfaceAt = window._oatSurfaceAt ?? 0;   // 그 METAR 를 받은 시각(0=없음)
+window._oatKma       = window._oatKma ?? null;      // { c, elevFt, lat, lon, at }
+
+// 표준 감률 — 대류권에서 1000ft 오를 때마다 약 1.98°C 내려간다
+const OAT_LAPSE_C_PER_1000FT = 1.98;
+// 이보다 오래된 값은 지금 날씨라고 볼 수 없다
+const OAT_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+
+// 지금 고도의 외기온도 — { c, src } · 자료가 없으면 c 는 null
+function oatNow() {
+  const now = Date.now();
+  const k = window._oatKma;
+  if (k && now - k.at < OAT_MAX_AGE_MS) {
+    // 격자 표고에서 잰 기온이므로 거기서부터 지금 고도까지만 감률을 먹인다
+    return { c: k.c - OAT_LAPSE_C_PER_1000FT * (S.alt - k.elevFt) / 1000, src: 'KMA' };
+  }
+  if (window._oatSurfaceAt && now - window._oatSurfaceAt < OAT_MAX_AGE_MS) {
+    return { c: _oatSurfaceC - OAT_LAPSE_C_PER_1000FT * S.alt / 1000, src: 'METAR' };
+  }
+  return { c: null, src: null };
+}
 
 // ── 유효 코스선(단일 소스) ────────────────────────────────────────────
 // CDI 편차·지도 코스선·NAV 오토파일럿이 서로 다른 기준선을 쓰면

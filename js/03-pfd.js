@@ -662,7 +662,7 @@ function drawHSI(x, y, w, h) {
   }
 
   // ── 나침반 옆 글자판은 조작부로 옮겼다 ──
-  // 종전에는 여기(HSI 좌·우 여백)에 TAS·OAT·GS·ISA 와 NAV 소스 3줄을 그렸다.
+  // 종전에는 여기(HSI 좌·우 여백)에 TAS·OAT·GS 와 NAV 소스 3줄을 그렸다.
   // 그러느라 나침반을 폭의 38% 로 줄여야 했고, 아래쪽 갈색이 넓게 남았다.
   // 지금은 조작부 맨 윗줄(#pfd-info)이 같은 값을 HTML 로 보여 준다 —
   // 캔버스를 다시 그리지 않아도 되고, 글자도 기기 글꼴이라 훨씬 잘 읽힌다.
@@ -1210,7 +1210,7 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
 // ══════════════════════════════════════════════════════
 // 계기 글자판 — 조작부 맨 윗줄(#pfd-info)
 // ══════════════════════════════════════════════════════
-// 종전에는 나침반 좌·우 여백에 캔버스로 그렸다(TAS·OAT·GS·ISA 두 줄과
+// 종전에는 나침반 좌·우 여백에 캔버스로 그렸다(TAS·OAT·GS 두 줄과
 // NAV 소스 세 줄). 그 자리를 비워 나침반을 키우고 아래쪽 갈색을 줄였다.
 // 계산은 그대로 옮겨 왔고, 그리는 곳만 HTML 로 바뀌었다.
 //
@@ -1230,9 +1230,11 @@ function updatePfdInfo() {
   const gsN  = tas * Math.cos(S.hdg * D2R) + wEff * Math.cos(wto);
   const gsE  = tas * Math.sin(S.hdg * D2R) + wEff * Math.sin(wto);
   const gs   = Math.sqrt(gsN * gsN + gsE * gsE);
-  // ISA 는 표준대기, OAT 는 지면 METAR 온도에 감률(-1.98°C/1000ft) 보정
-  const isaC = 15 - 1.98 * S.alt / 1000;
-  const oatC = _oatSurfaceC - 1.98 * S.alt / 1000;
+  // OAT — 기상청 격자 기온(없으면 근처 METAR)에 감률을 먹인 지금 고도의 기온.
+  // ISA 는 내렸다. 고도만 넣으면 나오는 표준대기 값이라 화면에서 읽을 것이
+  // 없고, 옆의 OAT 와 비슷한 숫자가 나란히 서서 어느 쪽이 실제인지 헷갈렸다.
+  // (ISA 편차가 필요한 계산은 CDU 의 DENSALT·TAS 가 그대로 해 준다)
+  const oat  = oatNow();
   const sl   = S_LBL().toLowerCase();
 
   // NAV 소스 세 가지 — FMS(활성 웨이포인트) · NAV1 · NAV2
@@ -1254,8 +1256,10 @@ function updatePfdInfo() {
   const airHtml =
       `<span class="pi"><i>TAS</i><b style="color:#88ccff">${Math.round(tas * S_CV())}${sl}</b></span>`
     + `<span class="pi"><i>GS</i><b style="color:#00cc44">${Math.round(gs * S_CV())}${sl}</b></span>`
-    + `<span class="pi"><i>OAT</i><b style="color:#ffd54f">${uTemp(oatC)}</b></span>`
-    + `<span class="pi"><i>ISA</i><b style="color:#aaa">${uTemp(isaC)}</b></span>`;
+    // 자료가 없으면 '---' 로 비운다 — 없는 값을 표준대기로 채워 내보이면
+    // 조종사는 그것을 잰 값으로 읽는다
+    + `<span class="pi"><i>OAT</i><b style="color:${oat.c === null ? '#777' : '#ffd54f'}">`
+    + `${uTemp(oat.c)}</b></span>`;
 
   const navHtml = rows.map(rw => {
     const has = rw.lat !== null;
