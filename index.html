@@ -1649,8 +1649,28 @@ body.phone-mode .sw-btn {
 /* RNP 는 글자가 한 자(4·2·1·0.3)다. 높이·글자 크기는 맞추되 폭까지 50px 로
    잡으면 넷이 한 줄을 다 먹어 시계와 같은 줄에 서지 못한다. */
 body.phone-mode .rnp-btn { min-width: 34px; }
-body.phone-mode .cbtn { width: 40px; height: 28px; font-size: 15px; }
+body.phone-mode .cbtn { width: 40px; font-size: 15px; }
 body.phone-mode .ctrl-lbl-btn { font-size: 13px; padding: 0 5px; }
+/* 한 줄에 나란히 서는 것들은 높이를 하나로 못 박는다. 글자 수·줄 수에 맡겨
+   두면 제각각 자란다 — CRS 의 ◄► 는 28px 로 이웃보다 솟았고, CRS 이름표는
+   17px 로 주저앉았으며, SUSP 는 '자동' 이 붙는 순간 두 줄이 되어 혼자 커졌다.
+   기준은 NAV 소스 선택 버튼(.pi-sel)과 같은 24px 다. */
+body.phone-mode .ctrl-bar { --ctrl-btn-h: 24px; }
+body.phone-mode .obs-btn,
+body.phone-mode .susp-btn,
+body.phone-mode .brg-tog-btn,
+body.phone-mode .rnp-btn,
+body.phone-mode .sw-btn,
+body.phone-mode .cbtn,
+body.phone-mode .ctrl-lbl-btn {
+  height: var(--ctrl-btn-h); box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+/* '자동' 은 곁들이는 말이라 줄을 새로 만들지 않는다 — 옆에 붙여 폭만 늘린다 */
+body.phone-mode .susp-btn .susp-auto {
+  display: inline; margin-left: 4px; font-size: 10px; letter-spacing: 0;
+}
 body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 0.5px; }
 </style>
 </head>
