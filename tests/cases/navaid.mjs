@@ -294,8 +294,9 @@ export async function run(page, t) {
   t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·AHRS·RNP·SUSP)');
   // 조작부 맨 윗줄(#pfd-info)이 계기 옆 글자판을 대신 짊어진다. NAV 소스 줄은
   // 비행 중 가장 자주 읽는 값이라 일부러 크게 뒀고(폰에서는 세 줄), 그만큼 자리를 쓴다.
-  t.ok(bar.usable > bar.pfdH * 0.75,
-    `계기가 패널의 75% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
+  // 글자판(값 다섯 줄)과 조작부 두 줄을 합친 몫이다. 좁은 폰에서 가장 빠듯하다.
+  t.ok(bar.usable > bar.pfdH * 0.72,
+    `계기가 패널의 72% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
 
   // ── ⑦ 폰에서 계기 글씨가 커지는가 ────────────────────────────
   // 글꼴 지정이 예순 곳이 넘어 한자리에서 가로채 배율을 곱한다. 배율만 확인하면
@@ -366,14 +367,58 @@ export async function run(page, t) {
     t.eq(r.solo, wantPhone, `${label} — solo ${wantPhone}`);
     t.eq(r.bar, wantPhone, `${label} — 상단 탭바 ${wantPhone ? '있음' : '없음'}`);
     if (wantPhone) {
-      // 여기서 한 줄이어야 한다. 줄이 나뉘면 그만큼 계기가 눌린다.
-      t.eq(r.rows, 1, `${label} — 조작부가 한 줄이다 (${r.rows}줄)`);
+      // 두 줄이다 — 앞줄(CRS·OBS·BRG·SUSP)과 뒷줄(시계·RNP).
+      // 한 번 맞춰 두고 잘 안 건드리는 것을 뒷줄로 내렸다.
+      t.eq(r.rows, 2, `${label} — 조작부가 두 줄이다 (${r.rows}줄)`);
       // 이름표는 내렸다. RNP 만 남는다 — 버튼이 '4 2 1 0.3' 이라 없으면 못 읽는다.
       t.eq(r.labels.filter(x => ['AP', 'BRG', 'SUSP', 'NAV SRC'].includes(x)).length, 0,
         `${label} — 겹치는 이름표를 내렸다 (${r.labels.join(',')})`);
       t.ok(r.labels.includes('RNP'), `${label} — RNP 이름표는 남는다`);
     }
     t.eq(r.susp, 'SUSP', `${label} — SUSP 버튼 글자가 'SUSP' 다 (${r.susp})`);
+  }
+  await phone.setViewportSize(PHONE);
+  await phone.waitForTimeout(500);
+
+  // ── ⑦-4 PFD 아래가 왼쪽 선에 맞고, 시계·RNP 가 맨 아랫줄인가 ──
+  // 가운데 정렬이면 줄마다 시작점이 달라 눈이 매번 그 줄의 왼쪽 끝을 찾아야
+  // 한다. 그리고 자주 만지는 것(CRS·OBS·BRG·SUSP)이 앞줄, 한 번 맞춰 두는
+  // 것(시계·RNP)이 뒷줄이어야 손이 덜 간다.
+  for (const vp of [{ width: 810, height: 1080 }, { width: 390, height: 844 }]) {
+    await phone.setViewportSize(vp);
+    await phone.waitForTimeout(500);
+    const a = await phone.evaluate(() => {
+      const bar = document.querySelector('.ctrl-bar').getBoundingClientRect();
+      const box = sel => { const e = document.querySelector(sel); if (!e) return null;
+        const q = e.getBoundingClientRect(); return { l: q.left - bar.left, t: q.top - bar.top, h: q.height }; };
+      // 글자판 각 줄의 왼쪽 끝 — display:contents 인 껍데기(#pi-air)는 0,0 이라 뺀다
+      const rowLefts = [...document.querySelectorAll('#pfd-info .pi-row')].map(r =>
+        Math.round(Math.min(...[...r.children]
+          .map(c => c.getBoundingClientRect())
+          .filter(q => q.width > 0).map(q => q.left - bar.left))));
+      const px = sel => parseFloat(getComputedStyle(document.querySelector(sel)).fontSize);
+      return { rowLefts,
+               crs: box('.ctrl-group'), sw: box('.sw-group'), rnp: box('.nav-src-group'),
+               brg: box('.brg-tog-group'), susp: box('.susp-group'),
+               selH: Math.round(document.querySelector('.pi-sel').getBoundingClientRect().height),
+               obsH: Math.round(document.getElementById('obs-btn').getBoundingClientRect().height),
+               selFs: px('.pi-sel'), obsFs: px('#obs-btn'),
+               suspFs: px('#susp-btn'), rnpFs: px('#rnp-1') };
+    });
+    const L = vp.width + '×' + vp.height;
+    // 왼쪽 선 — 글자판 줄들과 조작부 첫 무리가 같은 자리에서 시작한다
+    const spread = Math.max(...a.rowLefts, a.crs.l) - Math.min(...a.rowLefts, a.crs.l);
+    t.ok(spread <= 12, `${L} — 줄들이 같은 왼쪽 선에서 시작한다 (편차 ${Math.round(spread)}px)`);
+    t.ok(a.crs.l <= 12, `${L} — 조작부가 왼쪽에 붙는다 (${Math.round(a.crs.l)}px)`);
+    // 크기 — NAV 소스 선택 버튼과 같은 규격
+    t.eq(a.obsH, a.selH, `${L} — 조작부 버튼 높이가 NAV 버튼과 같다 (${a.obsH} vs ${a.selH})`);
+    t.eq(a.obsFs, a.selFs, `${L} — 글자 크기도 같다 (${a.obsFs} vs ${a.selFs})`);
+    t.eq(a.suspFs, a.selFs, `${L} — SUSP 도 같다 (${a.suspFs})`);
+    t.eq(a.rnpFs, a.selFs, `${L} — RNP 도 같다 (${a.rnpFs})`);
+    // 시계·RNP 는 맨 아래 — 앞줄(CRS·BRG·SUSP)보다 아래에 있어야 한다
+    const front = Math.max(a.crs.t, a.brg.t, a.susp.t);
+    t.ok(a.sw.t > front, `${L} — 시계가 앞줄보다 아래다 (시계 ${Math.round(a.sw.t)} > 앞줄 ${Math.round(front)})`);
+    t.ok(a.rnp.t > front, `${L} — RNP 도 앞줄보다 아래다 (${Math.round(a.rnp.t)})`);
   }
   await phone.setViewportSize(PHONE);
   await phone.waitForTimeout(500);
