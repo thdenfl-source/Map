@@ -1,7 +1,7 @@
 // 보조 항법장치 모드 — 이 앱의 성격이 실제로 화면에 나오는가
 //
 // 세 가지를 본다.
-//   ① 스마트폰 크기로 열면 한 화면(MAP) + 하단 탭이 뜬다. 태블릿은 종전 3분할.
+//   ① 스마트폰 크기로 열면 한 화면(MAP) + 상단 탭이 뜬다. 태블릿은 종전 3분할.
 //   ② 기체를 조종하는 조작부(FCP·AFCS·트림·배속·FLY)가 화면에 없다.
 //   ③ GPS 가 끊기면 추측항법(DR)으로 위치를 이어 그리고, 오래 끊기면 멈춘다.
 export const name = '보조 항법 모드';
@@ -48,20 +48,30 @@ export async function run(page, t) {
       // 지도 창이 화면을 채우는가(옆에 다른 창이 남지 않는가)
       mapW: Math.round(document.getElementById('map-wrap').getBoundingClientRect().width),
       full: Math.round(window.innerWidth),
-      // 하단 탭이 본문을 가리지 않는가
+      // 탭바가 맨 위에 있고, 본문이 그 바로 아래에서 화면 끝까지 차는가.
+      // 어긋나면 사이에 검은 띠가 남거나 아래가 잘린다 — 기기 세로 길이마다
+      // 다르게 보이던 문제가 여기였다.
+      barTop: Math.round(document.getElementById('phone-bar').getBoundingClientRect().top),
+      appTop: Math.round(document.getElementById('app').getBoundingClientRect().top),
+      barBottom: Math.round(document.getElementById('phone-bar').getBoundingClientRect().bottom),
       appBottom: Math.round(document.getElementById('app').getBoundingClientRect().bottom),
       winH: Math.round(window.innerHeight),
+      reload: !!document.getElementById('phone-reload-btn'),
     };
   });
   t.eq(ph.phoneClass, true, '폰 크기에서는 body.phone-mode 가 붙는다');
   t.eq(ph.solo, true, '분할이 아니라 한 화면으로 뜬다');
   t.eq(ph.cur, 'map', `첫 화면은 MAP 이다 (${ph.cur})`);
-  t.eq(ph.barShown, true, '하단 탭바가 보인다');
+  t.eq(ph.barShown, true, '탭바가 보인다');
   t.eq(ph.activeTab, 'map', `MAP 탭이 눌린 상태로 표시된다 (${ph.activeTab})`);
   t.ok(ph.tabH >= 44, `탭 하나가 손가락으로 누를 크기다 (${ph.tabH}px ≥ 44)`);
   t.ok(ph.mapW > ph.full * 0.95, `지도가 화면을 가득 채운다 (${ph.mapW}px / ${ph.full}px)`);
-  t.ok(ph.appBottom <= ph.winH - ph.barH + 2,
-    `본문이 하단 탭 위에서 끝난다 (본문 ${ph.appBottom}px · 화면 ${ph.winH}px · 탭 ${ph.barH}px)`);
+  t.eq(ph.barTop, 0, `탭바가 화면 맨 위에 있다 (top ${ph.barTop}px)`);
+  t.ok(Math.abs(ph.appTop - ph.barBottom) <= 1,
+    `본문이 탭바 바로 아래에서 시작한다 (탭 아래 ${ph.barBottom}px · 본문 위 ${ph.appTop}px)`);
+  t.ok(Math.abs(ph.appBottom - ph.winH) <= 1,
+    `본문이 화면 아래 끝까지 찬다 (본문 ${ph.appBottom}px · 화면 ${ph.winH}px)`);
+  t.eq(ph.reload, true, '탭바에 새로고침 버튼이 있다');
 
   // 탭을 누르면 그 창으로 갈아 끼워진다 — 그리고 그 선택이 다음 실행까지 남는다
   const tap = await phone.evaluate(() => {
@@ -305,6 +315,29 @@ export async function run(page, t) {
   t.ok(font.before > 1, `폰에서는 계기 글씨 배율이 걸린다 (×${font.before})`);
   t.ok(/12\.5px/.test(font.scaled), `배율이 실제 글꼴에 곱해진다 (${font.scaled})`);
   t.ok(/10px/.test(font.plain), `배율 1 이면 그대로다 (${font.plain})`);
+
+  // ── ⑦-2 기기 세로 길이가 달라도 화면이 꽉 차는가 ────────────
+  // html·body 를 height:100% 로 두면 모바일 브라우저의 주소창이 접혔다 펴질
+  // 때마다 기준이 흔들려, 처음 켤 때 화면이 다 차지 않았다. 실제로 보이는
+  // 높이를 재서 넣는다(fitAppViewport) — 그러니 어느 세로 길이에서도 맞아야 한다.
+  for (const vp of [{ width: 360, height: 640 }, { width: 414, height: 896 },
+                    { width: 375, height: 667 }, { width: 390, height: 844 }]) {
+    await phone.setViewportSize(vp);
+    await phone.waitForTimeout(450);
+    const f = await phone.evaluate(() => {
+      const bar = document.getElementById('phone-bar').getBoundingClientRect();
+      const app = document.getElementById('app').getBoundingClientRect();
+      const pw  = document.getElementById('pfd-wrap').getBoundingClientRect();
+      const cv  = document.getElementById('pfd');
+      return { gap: Math.round(app.top - bar.bottom),
+               tail: Math.round(window.innerHeight - app.bottom),
+               canvasFits: pw.height > 0 ? cv.height === Math.round(pw.height) : true };
+    });
+    const L = vp.width + '×' + vp.height;
+    t.ok(Math.abs(f.gap) <= 1, `${L} — 탭바와 본문 사이에 빈틈이 없다 (${f.gap}px)`);
+    t.ok(Math.abs(f.tail) <= 1, `${L} — 아래에 남는 띠가 없다 (${f.tail}px)`);
+    t.eq(f.canvasFits, true, `${L} — 계기 캔버스가 자기 창 크기와 맞는다`);
+  }
 
   // ── ⑧ MAP 상단 버튼이 좌·우 라인 셀렉터로 서는가 ────────────
   // 한 줄에 열한 개를 밀어 넣으면 폰에서 버튼 하나가 30px 남짓이라 못 누른다.

@@ -57,6 +57,7 @@ function navGo(screen) {
   if (_soloActive) setSolo(screen);
   else enterSolo(screen);
   updateNavBar();
+  try { fitAppViewport(); } catch (e) { _swallow(e); }
 }
 
 // 폰에서도 분할을 보고 싶을 때가 있다(가로로 눕힌 큰 폰 등). 한 번 더 누르면 돌아온다.
@@ -108,11 +109,44 @@ function applyDeviceLayout() {
   updateNavBar();
 }
 
+// ── 화면을 실제 보이는 높이에 맞춘다 ─────────────────────────────
+// html·body 를 height:100% 로 두면 기준이 흔들린다. 모바일 브라우저는 주소창을
+// 접었다 폈다 하는데, 그때마다 100% 가 가리키는 높이가 달라진다. 처음 켤 때
+// 특히 어긋나서 계기가 화면을 다 채우지 못했다(기기 세로 길이에 따라 다르게
+// 보였던 것이 이 때문이다).
+//
+// 그래서 두 값을 재서 넣는다.
+//   --app-h        지금 실제로 보이는 높이(visualViewport 가 있으면 그쪽이 정확하다)
+//   --phone-bar-h  폰 탭바가 실제로 차지한 높이(글꼴·안전영역에 따라 달라진다)
+// 재서 넣지 않고 px 로 못 박으면 기기마다 아래가 잘리거나 검은 띠가 남는다.
+function fitAppViewport() {
+  const vv = window.visualViewport;
+  const h = Math.round((vv && vv.height) || window.innerHeight || 0);
+  if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
+
+  const bar = document.getElementById('phone-bar');
+  const barH = (bar && getComputedStyle(bar).display !== 'none')
+    ? Math.round(bar.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty('--phone-bar-h', barH + 'px');
+
+  // 계기·지도는 자기 상자 크기를 따로 들고 있다 — 상자가 바뀌었으니 다시 잡는다
+  try { resizePFD(); drawPFD(); } catch (e) { _swallow(e); }
+  try { if (typeof leafMap === 'object' && leafMap) leafMap.invalidateSize(); } catch (e) { _swallow(e); }
+  try { if (typeof _ml3d !== 'undefined' && _ml3d) _ml3d.resize(); } catch (e) { _swallow(e); }
+  try { scaleCdu(); } catch (e) { _swallow(e); }
+  try { if (typeof layoutMapLsk === 'function') layoutMapLsk(); } catch (e) { _swallow(e); }
+}
+// 주소창이 접히거나 키보드가 올라오면 visualViewport 만 바뀐다(resize 가 안 온다)
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitAppViewport);
+  window.visualViewport.addEventListener('scroll', fitAppViewport);
+}
+
 // 회전 직후에는 innerWidth/innerHeight 가 아직 옛값인 기기가 있어 한 박자 늦춘다
 let _layoutTimer = null;
 function _relayoutSoon() {
   clearTimeout(_layoutTimer);
-  _layoutTimer = setTimeout(applyDeviceLayout, 180);
+  _layoutTimer = setTimeout(() => { applyDeviceLayout(); fitAppViewport(); }, 180);
 }
 window.addEventListener('resize', _relayoutSoon);
 window.addEventListener('orientationchange', _relayoutSoon);
@@ -256,6 +290,10 @@ function _armCompassOnGesture() {
 // 그 뒤에 덮어야 하므로 여기서 다시 잡는다.
 (function initNavAid() {
   try { applyDeviceLayout(); } catch (e) { _swallow(e); }
+  // 처음 켤 때가 가장 잘 어긋난다 — 글꼴이 늦게 오거나 주소창이 뒤늦게 접힌다.
+  // 한 번으로는 모자라 몇 박자에 걸쳐 다시 잰다.
+  [0, 120, 400, 1000].forEach(ms =>
+    setTimeout(() => { try { fitAppViewport(); } catch (e) { _swallow(e); } }, ms));
   try { _armCompassOnGesture(); } catch (e) { _swallow(e); }
   // 지도·PFD 가 자리를 잡은 뒤 위치를 요청한다(권한 창이 로딩 중에 뜨지 않도록)
   setTimeout(() => { try { navAutoGps(); } catch (e) { _swallow(e); } }, 800);
