@@ -517,7 +517,8 @@ export async function run(page, t) {
   // 종전에는 남는 폭에 따라 접혔다 — 좁은 폰에서는 세 줄, 조금 넓으면 두 줄,
   // 패드·PC 에서는 한 줄. 그러면 화면 폭이 바뀔 때마다 FMS·NAV1·NAV2 가 서 있는
   // 자리가 달라져, 늘 같은 자리를 짚던 눈이 매번 다시 찾아야 했다.
-  for (const w of [320, 390, 430, 540, 768, 810, 1180, 1400]) {
+  // 데스크톱 창을 끝까지 늘려도 마찬가지다 — 폭이 남는다고 붙지 않는다.
+  for (const w of [320, 390, 430, 540, 768, 810, 1180, 1400, 1900, 2560]) {
     await phone.setViewportSize({ width: w, height: 844 });
     await phone.waitForTimeout(220);
     const r = await phone.evaluate(() => {
