@@ -353,8 +353,8 @@ html, body {
 /* HOVER PAGE / HOVER POS 는 두 줄로 쌓아 폭을 줄인다 */
 .hover-btns { display: flex; flex-direction: column; gap: 2px; align-items: stretch; }
 .hover-btns > button { width: 100%; padding: 2px 6px; }
-/* 모드 토글 버튼 공통(HOVER PAGE·HOVER POS·CRHT·ALT HOLD) */
-.hover-btn, .hover-pos-btn, .crht-btn, .alt-hold-btn {
+/* 모드 토글 버튼 공통(HOVER PAGE·HOVER POS·ALT HOLD) */
+.hover-btn, .hover-pos-btn, .alt-hold-btn {
   background: #1a1a1a; border: 1px solid #333; color: #555;
   font-size: 10px; font-weight: bold; padding: 3px 6px; cursor: pointer; border-radius: 2px;
   touch-action: manipulation; white-space: nowrap; font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -377,8 +377,6 @@ html, body {
 .gs-btn.armed { background: #2a1c00; border-color: #ffaa00; color: #ffcc44; }
 .gs-btn.on    { background: #2a0e2a; border-color: #ff44ff; color: #ff88ff;
                 box-shadow: 0 0 6px rgba(255,68,255,0.45); }
-.crht-btn.on     { background: #0e2e1a; border-color: #44ff88; color: #44ff88;
-                   box-shadow: 0 0 6px rgba(44,255,100,0.4); }
 .alt-hold-btn.on { background: #0e1a2e; border-color: #00cfff; color: #00cfff;
                    box-shadow: 0 0 6px rgba(0,200,255,0.4); }
 .alt-hold-group  { display: flex; flex-direction: column; align-items: center; gap: 2px; }
@@ -756,12 +754,27 @@ body.solo-mode .solo-panel-visible {
 #fdr-timeline { display: none; margin-top: 5px; }
 #fdr-timeline input[type=range] { width: 100%; accent-color: #4488ff; }
 /* ── Map top button bar ── */
+/* ── MAP 상단 툴바 → 좌·우 라인 셀렉터 ──────────────────────────
+   종전에는 한 줄에 열한 개를 밀어 넣어, 폰에서는 버튼 하나가 30px 남짓이라
+   누를 수가 없었다. 지도 양옆에 세로로 세운다(CDU 라인 셀렉터처럼).
+   지도는 그대로 두고 그 위에 뜬다 — 종전처럼 position:absolute 다.
+
+   가로 한 줄 → 세로 두 칸으로 만드는 방법:
+     · flex-flow: column wrap  으로 위에서 아래로 채우다 넘치면 다음 칸으로
+     · 컨테이너 높이(--lsk-h)를 여섯 개 높이로 묶어 그 지점에서 넘기고
+     · align-content: space-between 으로 첫 칸은 왼쪽 끝, 둘째 칸은 오른쪽 끝
+   컨테이너는 지도 위를 덮으므로 pointer-events 를 끄고 버튼만 되살린다 —
+   안 그러면 툴바가 지도 끌기·확대를 통째로 먹는다. */
 #map-top-bar {
-  position: absolute; top: 8px; left: 8px; right: 8px; z-index: 1000;
-  display: flex; gap: 4px;
+  --lsk-h: 210px;
+  position: absolute; top: 8px; left: 6px; right: 6px; z-index: 1000;
+  height: var(--lsk-h);
+  display: flex; flex-flow: column wrap; align-content: space-between;
+  gap: 4px;
+  pointer-events: none;
 }
 #map-top-bar button {
-  flex: 1; min-width: 0;
+  flex: 0 0 auto; width: 54px; pointer-events: auto;
   background: rgba(20,20,20,0.88); border: 1px solid #444; color: #fff;
   font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: bold;
   padding: 7px 2px; border-radius: 5px; cursor: pointer;
@@ -885,7 +898,9 @@ body.solo-mode .solo-panel-visible {
 #awy-panel.open { display: block; }
 #pp-menu {
   display: none;
-  position: absolute; top: 44px; z-index: 1200;
+  /* 라인 셀렉터에서는 ＋ 가 왼쪽 칸 셋째 자리다 — 그 옆으로 편다 */
+  position: absolute; top: 68px; left: 60px; z-index: 1200;
+  pointer-events: auto;
   background: rgba(8,8,14,0.95); border: 1px solid #00ff88; border-radius: 6px;
   padding: 4px; flex-direction: column; gap: 4px;
 }
@@ -1688,6 +1703,36 @@ body.phone-mode #map-sim-bar .sim-btn {
 }
 body.phone-mode #map-full-btn { min-width: 54px; }
 
+/* ── 계기 글자판(조작부 맨 윗줄) ────────────────────────────────
+   나침반 옆 캔버스에 그리던 것을 HTML 로 옮겼다. 기기 글꼴이라 같은 높이에서
+   훨씬 잘 읽히고, 계기를 다시 그리지 않아도 값만 바꿀 수 있다. */
+#pfd-info {
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 2px 4px 3px;
+  border-bottom: 1px solid #1e1e1e;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.pi-row {
+  display: flex; flex-wrap: wrap; justify-content: center;
+  align-items: baseline; gap: 2px 10px;
+  line-height: 1.25;
+}
+.pi { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.pi i { font-style: normal; color: #888; font-size: 9px; letter-spacing: 0.3px; }
+.pi b { font-size: 12px; font-weight: bold; }
+/* NAV 소스 한 덩어리 — 식별자 · 방위 · 거리 */
+.pi-src { padding: 0 4px; border-radius: 3px; }
+.pi-src.on { background: rgba(255,255,255,0.07); }
+.pi-src .pi-id  { color: #fff; font-size: 12px; font-weight: bold; }
+.pi-src .pi-brg { font-size: 11px; font-weight: bold; }
+.pi-src .pi-dst { color: #cccc66; font-size: 11px; font-weight: bold; }
+.pi-src.dim .pi-id, .pi-src.dim .pi-brg, .pi-src.dim .pi-dst { color: #666; }
+body.phone-mode #pfd-info { padding: 1px 3px 2px; }
+body.phone-mode .pi-row { gap: 1px 7px; }
+body.phone-mode .pi b, body.phone-mode .pi-src .pi-id { font-size: 11px; }
+body.phone-mode .pi i { font-size: 8px; }
+body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-dst { font-size: 10px; }
+
 /* ── 폰: PFD 아래 조작부를 낮춘다 ──────────────────────────────────
    PFD 는 (패널높이 − .ctrl-bar 높이) 안에 그려진다(03-pfd.js drawPFD).
    조작부가 네 줄로 쌓이면 그만큼 계기가 눌린다. 폰에서는
@@ -1821,7 +1866,7 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
             AP 의 <b>G/S</b> 버튼을 누르면 <b>ARM</b>(호박색)이 되고, 강하선에 닿는 순간 스스로
             <b>CAPT</b>(자홍색)로 붙잡아 <b>고도를 맡습니다</b> — 강하각과 지상속도에 맞는 강하율로
             내려가며(3°·120kt ≈ 640fpm) 벗어난 만큼만 되돌립니다. 잡고 있는 동안에는
-            <b>ALT·CRHT 유지가 물러납니다</b>(고도를 두 곳에서 몰면 서로 싸웁니다).
+            <b>ALT 유지가 물러납니다</b>(고도를 두 곳에서 몰면 서로 싸웁니다).
             신호를 잃거나(25NM 밖·안테나 뒤) 한 번 더 누르면 풀립니다.<br>
             상태는 <b>PFD 위쪽 AFCS 줄</b>에도 나옵니다 — 무장 중에는 왼쪽 칸에
             <b>ALT</b> 옆에 <b>흰색 G/S</b> 가 함께 뜨고(고도는 아직 ALT 가 맡고 있다는 뜻),
@@ -2044,7 +2089,7 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
       <table>
         <tr><td><b>5 / 6</b></td><td>CRS 좌 / 우 1°</td><td></td><td></td></tr>
       </table>
-      <div class="help-note">※ 나머지 키(IAS·HDG·VS·ALT·CRHT·트림·FLY)는 기체를 조종하는 것이라
+      <div class="help-note">※ 나머지 키(IAS·HDG·VS·ALT·트림·FLY)는 기체를 조종하는 것이라
       이 앱에서는 듣지 않습니다. 물리 키보드를 붙인 기기에서 숫자 키가 계기를 움직이는 일을 막기 위해서입니다.
       설정에서 <b>키보드 단축키</b>를 통째로 끌 수도 있습니다.</div>
       <h3>10. 조이스틱 / 게임패드</h3>
@@ -2062,8 +2107,8 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
         <li><b>설정 → 조종 장치 버튼 배정</b>에서 동작을 누르면 <b>입력 대기</b>가 되고,
             그때 누른 버튼이 그 동작에 잡힙니다. 배정은 기기에 저장되어 다음에도 그대로입니다.</li>
         <li>배정할 수 있는 동작: <b>FLY/PAUSE · FORCE TRIM · GSPD · HOVER POSITION</b>,
-            <b>트림 ▲▼◀▶ · 페달</b>, <b>HDG · IAS · ALT · CRHT · VS · CRS</b> 증감,
-            <b>ALT/CRHT 유지 · NAV · G/S · SUSP · OBS</b>, <b>HOVER PAGE</b>,
+            <b>트림 ▲▼◀▶ · 페달</b>, <b>HDG · IAS · ALT · VS · CRS</b> 증감,
+            <b>ALT 유지 · NAV · G/S · SUSP · OBS</b>, <b>HOVER PAGE</b>,
             지도 <b>추종 · HDG↑/N↑ · 확대/축소</b>.</li>
         <li>동작 성격에 따라 <b>누르는 순간 한 번</b>(FLY/PAUSE 등), <b>누르는 동안 유지</b>(트림),
             <b>누르고 있으면 연속</b>(HDG·IAS 등, 화면 버튼과 같은 리듬)으로 동작합니다.</li>
@@ -2142,6 +2187,15 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
     <canvas id="pfd"></canvas>
     <div class="ctrl-bar">
 
+      <!-- 0행: 계기 옆에 있던 글자판 — TAS·GS·OAT·ISA 와 NAV 소스 3가지.
+           종전에는 나침반 좌·우 여백에 캔버스로 그렸다. 그 자리를 비우면
+           나침반을 키울 수 있고 아래쪽 갈색도 줄어든다. 값 갱신은
+           03-pfd.js 의 updatePfdInfo(). -->
+      <div id="pfd-info">
+        <div class="pi-row" id="pi-air"></div>
+        <div class="pi-row" id="pi-nav"></div>
+      </div>
+
       <!-- 1행: SPD / HDG / CRS / VS / ALT / 스톱워치 -->
       <div class="ctrl-sub-row">
 
@@ -2182,14 +2236,6 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
           <div class="ctrl-row">
             <button class="cbtn" id="alt-dn">▼</button>
             <button class="cbtn" id="alt-up">▲</button>
-          </div>
-        </div>
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl">CRHT</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="crht-dn">▼</button>
-            <button class="cbtn" id="crht-up">▲</button>
           </div>
         </div>
 
@@ -2263,7 +2309,6 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
           <div class="ctrl-lbl">ALT</div>
           <div class="alt-hold-btns">
             <button class="alt-hold-btn" id="alt-hold-btn" data-act="toggleAltHold">ALT</button>
-            <button class="crht-btn"     id="crht-btn"     data-act="toggleCrht">CRHT</button>
             <button class="gs-btn"       id="gs-btn"       data-act="toggleGs"
                     title="G/S — ILS 강하선 추종. 무장(ARM)해 두면 강하선에 닿는 순간 잡아(CAPT) 고도를 맡습니다.">G/S</button>
           </div>

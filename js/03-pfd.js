@@ -59,33 +59,35 @@ function drawPFD() {
   const tapW = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
   const vsiW = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
   const aiX  = tapW, aiW = W - tapW * 2 - vsiW;
-  const aiH  = Math.floor(usableH * 0.52);
-  const hsiH = usableH - aiH;
+  // 아래 칸(나침반)은 비율이 아니라 나침반이 실제로 차지할 높이로 잡는다.
+  // 폰처럼 가로가 좁으면 나침반 크기는 폭에 걸려 더 못 커진다. 그런데 칸을
+  // 비율(0.48 등)로 잘라 두면 남는 높이가 전부 갈색으로 남는다 — 사용자가
+  // "갈색이 너무 넓다" 고 한 자리다. 남는 높이는 자세계가 가져간다.
+  const hsiR    = aiW * 0.44;                    // drawHSI 반지름(폭에 걸릴 때)
+  const hsiWant = Math.round(hsiR * 2 + 56);     // 나침반 + 위 바람표시 + 아래 여백
+  const hsiH = Math.max(Math.round(usableH * 0.32),
+                        Math.min(Math.round(usableH * 0.50), hsiWant));
+  const aiH  = usableH - hsiH;
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
   drawSpeedTape(0, 0, tapW, usableH);
-  // Right column:
-  //   Top half (aiH):  ALT tape + VSI (only beside ALT)
-  //   Bottom half (hsiH): CRHT display takes the full right-column width (tapW + vsiW)
-  drawAltTape(W - tapW - vsiW, 0, tapW, aiH);
-  drawVSI(W - vsiW, 0, vsiW, aiH);
-  drawCrhtDisplay(W - tapW - vsiW, aiH, tapW + vsiW, hsiH);
+  // 오른쪽 기둥 — 고도 테이프와 VSI 가 위아래를 통째로 쓴다.
+  // 종전에는 아래 절반을 CRHT(호버 기준고도) 표시가 차지했다. 보조 항법장치에는
+  // 기압고도계 하나면 충분하고, 그 조작부(CRHT ▲▼·CRHT 홀드)는 이미 없앴다 —
+  // 조작할 수 없는 값을 계기에만 남겨 두면 읽는 사람이 헷갈린다.
+  drawAltTape(W - tapW - vsiW, 0, tapW, usableH);
+  drawVSI(W - vsiW, 0, vsiW, usableH);
 
   // Dividers
   ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(tapW, 0);             ctx.lineTo(tapW, usableH);          ctx.stroke();
-  // Left edge of ALT tape (only top half — bottom half belongs to CRHT)
-  ctx.beginPath(); ctx.moveTo(W-tapW-vsiW, 0);      ctx.lineTo(W-tapW-vsiW, aiH);       ctx.stroke();
-  // Left edge of CRHT display in bottom half = same x as alt tape edge
-  ctx.beginPath(); ctx.moveTo(W-tapW-vsiW, aiH);    ctx.lineTo(W-tapW-vsiW, usableH);   ctx.stroke();
-  // Right edge of VSI (top half only)
-  ctx.beginPath(); ctx.moveTo(W-vsiW, 0);           ctx.lineTo(W-vsiW, aiH);            ctx.stroke();
-  // Horizontal divider between centre AI and HSI
+  // 고도 테이프 왼쪽 모서리 · VSI 오른쪽 모서리 — 둘 다 위아래 끝까지
+  ctx.beginPath(); ctx.moveTo(W-tapW-vsiW, 0);      ctx.lineTo(W-tapW-vsiW, usableH);   ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W-vsiW, 0);           ctx.lineTo(W-vsiW, usableH);        ctx.stroke();
+  // 가운데 자세계와 나침반 사이
   ctx.beginPath(); ctx.moveTo(tapW, aiH);           ctx.lineTo(W-tapW-vsiW, aiH);       ctx.stroke();
-  // Horizontal divider: between ALT/VSI (top) and CRHT (bottom) in right column
-  ctx.beginPath(); ctx.moveTo(W-tapW-vsiW, aiH);    ctx.lineTo(W, aiH);                 ctx.stroke();
 
   drawAI(aiX, 0, aiW, aiH);
   drawHSI(aiX, aiH, aiW, hsiH);
@@ -97,7 +99,7 @@ function drawPFD() {
 // ────────────────────────────────────────
 // ── FMA geometry constants (used by drawFMA + click handler) ──
 // FMA shows axis engagement state only; per-axis target values are drawn
-// inside the right-column ALT tape and CRHT display headers instead.
+// inside the right-column ALT tape header instead.
 const FMA_BOX_H  = 20;
 const FMA_MARGIN = 2;
 const FMA_GAP    = 3;
@@ -111,7 +113,7 @@ function drawFMA(x, y, w) {
   const Y0     = y + MARGIN;
   // Determine active mode per axis.  Default ALT | HDG | IAS — each axis
   // gets its own distinct label, never duplicating ALT on two axes.
-  //   Left   (collective): ALT or CRHT (or dim ALT when both holds are off)
+  //   Left   (collective): ALT (홀드가 꺼져 있으면 흐리게)
   //   Middle (yaw/roll)  : HDG or GS when GSPD
   //   Right  (pitch)     : IAS — or GS when GSPD engaged
   let left, leftOn,
@@ -125,7 +127,7 @@ function drawFMA(x, y, w) {
   if (gspdOn) {
     // GSPD engaged: both yaw/roll (mid) and pitch (right) are driven by
     // body-frame ground speed; capture GS on both axes.
-    left   = crhtOn ? 'CRHT' : 'ALT'; leftOn = true;
+    left   = 'ALT'; leftOn = true;
     // GSPD 는 요/롤 축을 가져간다. NAV·HDG SEL 이 켜져 있어도 조향하지 못하므로
     // 켜진 채 방치하지 말고 "대기"임을 분명히 적는다.
     // (버튼은 초록인데 기체가 안 도는 상황을 화면만 보고 알 수 있어야 한다)
@@ -133,8 +135,8 @@ function drawFMA(x, y, w) {
     midOn  = true;
     right  = 'GS'; rightOn = true;
   } else {
-    left   = crhtOn ? 'CRHT' : 'ALT';
-    leftOn = altHoldOn || crhtOn;     // dim ALT if both collective holds off
+    left   = 'ALT';
+    leftOn = altHoldOn;
     right  = 'IAS';
     rightOn = true;
   }
@@ -197,103 +199,6 @@ function drawFMA(x, y, w) {
       ctx.fillText(modes[i], bx + cellW / 2, ty);
     }
   }
-  ctx.restore();
-}
-
-// ────────────────────────────────────────
-// CRHT ALTITUDE DISPLAY  (bottom-right of PFD)
-// Mini altitude tape centred on selCrht, showing current S.alt on it.
-// ────────────────────────────────────────
-function drawCrhtDisplay(x, y, w, h) {
-  ctx.save(); ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.fillStyle = '#060612'; ctx.fillRect(x, y, w, h);
-
-  // ── Target/VS header box (top) ──
-  // 머리글 높이와 두 줄의 베이스라인도 글씨 배율을 따른다 — px 로 두면
-  // 키운 두 번째 줄(VS)이 머리글 밖으로 나가 눈금 라벨과 겹친다.
-  const HEAD_H = Math.round(26 * pfdFontScale);
-  const hL1 = Math.round(11 * pfdFontScale), hL2 = Math.round(22 * pfdFontScale);
-  const tapeY  = y + HEAD_H;
-  const tapeH  = h - HEAD_H;
-  const target = selCrht;
-  const cy     = tapeY + tapeH / 2;
-  const pp100  = tapeH / 20;
-  const on     = crhtOn;
-  const tickColor = on ? '#44ff88' : '#555';
-
-  // Tape ticks centred on target (within moving-scale region only)
-  const ccv = A_CV(), cMin = unitAlt === 'm' ? 50 : 100, cMaj = unitAlt === 'm' ? 100 : 500;
-  const dTgt = target * ccv;
-  const a0 = Math.floor((dTgt - 1100 * ccv) / cMin) * cMin;
-  for (let a = a0; a <= dTgt + 1200 * ccv; a += cMin) {
-    const ty = cy - (a / ccv - target) * pp100 / 100;
-    if (ty < tapeY || ty > tapeY + tapeH) continue;
-    const maj = Math.abs(a % cMaj) < 1e-6;
-    ctx.strokeStyle = maj ? tickColor : '#282828';
-    ctx.lineWidth   = maj ? 1.5 : 0.8;
-    ctx.beginPath(); ctx.moveTo(x + 7, ty); ctx.lineTo(x + (maj ? 16 : 10), ty); ctx.stroke();
-    if (maj) {
-      ctx.fillStyle  = tickColor;
-      ctx.font       = `${Math.max(8, w * 0.14)}px Helvetica Neue, Arial, sans-serif`;
-      ctx.textAlign  = 'left';
-      ctx.fillText(Math.round(a), x + 18, ty + 4);
-    }
-  }
-
-  // Current altitude marker (triangle on left edge)
-  const altY = cy - (S.alt - target) * pp100 / 100;
-  if (altY >= tapeY + 3 && altY <= tapeY + tapeH - 3) {
-    ctx.fillStyle = on ? '#00cfff' : '#555';
-    ctx.beginPath();
-    ctx.moveTo(x + 1, altY);
-    ctx.lineTo(x + 7, altY - 5);
-    ctx.lineTo(x + 7, altY + 5);
-    ctx.closePath(); ctx.fill();
-  }
-
-  // Current altitude readout box (centre of tape) — mirrors ALT tape style
-  const bh = 22;
-  ctx.fillStyle   = '#000';
-  ctx.fillRect(x, cy - bh / 2, w, bh);
-  ctx.strokeStyle = on ? '#44ff88' : '#333';
-  ctx.lineWidth   = on ? 1.5 : 1;
-  ctx.strokeRect(x, cy - bh / 2, w, bh);
-  ctx.fillStyle   = on ? '#44ff88' : '#555';
-  ctx.font        = `bold ${Math.max(10, w * 0.16)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign   = 'center';
-  ctx.fillText(Math.round(S.alt * ccv), x + w / 2, cy + 5);
-
-  // ── CRHT setting + change-rate box (top header) — same style as ALT header ──
-  ctx.fillStyle = '#000';
-  ctx.fillRect(x + 1, y + 1, w - 2, HEAD_H - 2);
-  ctx.strokeStyle = on ? '#44ff88' : '#333';
-  ctx.lineWidth   = on ? 1.5 : 1;
-  ctx.strokeRect(x + 1, y + 1, w - 2, HEAD_H - 2);
-
-  // Line 1: "CRHT" label + selCrht setting value
-  ctx.font      = `bold ${Math.max(9, w * 0.14)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = on ? '#44ff88' : '#555';
-  ctx.fillText(pfdFontScale > 1.05 ? 'CRHT' : 'CRHT ' + A_LBL(), x + 4, y + hL1);
-  ctx.font      = `bold ${Math.max(10, w * 0.16)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'right';
-  ctx.fillStyle = on ? '#fff' : '#666';
-  ctx.fillText(Math.round(selCrht * ccv), x + w - 4, y + hL1);
-
-  // Line 2: VS change rate (500 fpm during convergence)
-  let vsStr = '---';
-  if (on) {
-    const d = selCrht - S.alt;
-    vsStr = Math.abs(d) < 1 ? '0' : (d > 0 ? '+' : '−') + '500';
-  }
-  ctx.font      = `${Math.max(8, w * 0.13)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = on ? '#ffaa44' : '#444';
-  ctx.fillText('VS', x + 4, y + hL2);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = on ? '#ffaa44' : '#444';
-  ctx.fillText(vsStr, x + w - 4, y + hL2);
-
   ctx.restore();
 }
 
@@ -699,8 +604,11 @@ function drawHSI(x, y, w, h) {
   ctx.fillRect(x,y,w,h);
 
   const cx   = x + w / 2;
-  const r    = Math.min(w * 0.38, h * 0.46);  // leave room for side panels
-  const cy   = y + h * 0.50;
+  // 옆 글자판을 조작부로 내보낸 만큼 나침반을 키운다. 왼쪽에 바람 표시 하나만
+  // 남았으므로 그 폭(sideW)만 남기면 된다 — 종전 0.38w 는 글자판 두 벌을
+  // 재우던 값이라 지금은 나침반을 공연히 작게 만든다.
+  const r    = Math.min(w * 0.44, h * 0.47);
+  const cy   = y + h * 0.54;
   const arrowR = r * 0.84;
 
   // ── Hover Page mode: simplified HSI + GPS speed readouts ──
@@ -711,9 +619,8 @@ function drawHSI(x, y, w, h) {
   }
 
   // ── side panel widths ──
-  const sideW = (w - r * 2) / 2 - 8;  // available width each side
+  const sideW = (w - r * 2) / 2 - 8;  // 남은 여백(바람 표시가 쓴다)
   const leftX  = x + 4;
-  const rightX = cx + r + 4;
 
   // ── BRG1·BRG2 좌우 패널은 아래 NAV SOURCE 3줄이 대신한다 ──
   // 그 3줄에 FMS·NAV1·NAV2 의 식별자·방위·거리가 이미 다 있어서, 좌측 BRG1
@@ -724,17 +631,21 @@ function drawHSI(x, y, w, h) {
   {
     const wdirFmt = fmtA(toMag(windDir));   // 바람도 자북 기준으로 표기
     const wspdFmt = String(Math.round(windSpd)).padStart(2,'0');
-    const wdX = leftX + sideW / 2;
-    const wdY = y + h * 0.10;
+    // 나침반을 키운 뒤로 옆 여백(sideW)이 거의 없다. 가운데 정렬로 두면
+    // 글자가 왼쪽 속도 테이프 위로 넘어간다 — 왼쪽 끝에 붙여 쓰고, 화살표는
+    // 글자 오른쪽에 세운다.
+    const wdY = y + 3;
     const fs  = Math.max(9, r * 0.105);
     ctx.save();
     ctx.font = `bold ${fs}px Helvetica Neue, Arial, sans-serif`;
     ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${wdirFmt}°/${wspdFmt}kt`, wdX, wdY + fs * 1.1);
+    ctx.textAlign = 'left';
+    const wTxt = `${wdirFmt}°/${wspdFmt}kt`;
+    ctx.fillText(wTxt, leftX, wdY + fs);
+    const wdX = leftX + ctx.measureText(wTxt).width + 10;
 
     // Wind arrow: points in direction wind is blowing TO (windDir + 180)
-    const aLen = Math.min(sideW * 0.32, 14);
+    const aLen = Math.min(Math.max(sideW, 20) * 0.32, 14);
     const wto  = normA(windDir + 180) * D2R;
     const ax   = Math.sin(wto) * aLen;
     const ay   = -Math.cos(wto) * aLen;
@@ -750,113 +661,12 @@ function drawHSI(x, y, w, h) {
     ctx.restore();
   }
 
-  // ── 우측 NAV SOURCE 3줄: 소스별 목적지(명칭·방위·거리) ──
-  // 좌하단 TAS/OAT·GS/ISA와 같은 방식(황토 바탕 위 한 줄 중앙정렬)으로 맞춘다.
-  {
-    const rows = [];
-    {   // FMS — 비행계획 활성 웨이포인트
-      const ok = S.awp >= 0 && S.awp < S.wps.length;
-      const wp = ok ? S.wps[S.awp] : null;
-      rows.push({ src:'FMS', ident: ok ? (wp.ident || 'WPT') : '----',
-                  lat: ok ? wp.lat : null, lon: ok ? wp.lon : null, color:'#00cc44' });
-    }
-    ['NAV1','NAV2'].forEach(id => {
-      const rr = navRadios[id] || {};
-      const ok = rr.lat !== null && rr.lat !== undefined && rr.lon !== null && rr.lon !== undefined;
-      rows.push({ src:id, ident: ok ? (rr.id || '----') : '----',
-                  lat: ok ? rr.lat : null, lon: ok ? rr.lon : null, color:'#44aaff',
-                  dme: true, elev: rr.elev || 0 });
-    });
-
-    const colX  = rightX + sideW / 2;
-    const valFs = Math.max(9, r * 0.100);
-    const lblFs = Math.max(7, r * 0.072);
-    const lblFont = `${lblFs}px Helvetica Neue, Arial, sans-serif`;
-    const valFont = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
-    // 좌하단 TAS/OAT(0.83)·GS/ISA(0.95)와 같은 간격·같은 하단선으로 맞춰 좌우 균형을 맞춘다
-    const rowY = [y + h * 0.71, y + h * 0.83, y + h * 0.95];
-
-    ctx.save();
-    rows.forEach((rw, i) => {
-      const has = rw.lat !== null;
-      const brg = has ? fmtA(toMag(bearing(S.lat, S.lon, rw.lat, rw.lon))) + '°' : '---°';
-      // VOR/DME 는 경사거리(항공기↔국 직선거리), FMS 는 GPS 수평거리다.
-      const dNM = !has ? 0
-                : rw.dme ? dmeDist(rw.lat, rw.lon, rw.elev)
-                : distance(S.lat, S.lon, rw.lat, rw.lon);
-      const dst = has ? uDist(dNM, 1) : '--.-';
-      const parts = [
-        [rw.src + ' ', navSrc === rw.src ? rw.color : '#888', lblFont],
-        [rw.ident,     has ? '#fff' : '#666',                 valFont],
-        ['  ' + brg,   has ? rw.color : '#666',               valFont],
-        ['  ' + dst,   has ? '#cccc66' : '#666',              valFont],
-      ];
-      let total = 0;
-      parts.forEach(pp => { ctx.font = pp[2]; total += ctx.measureText(pp[0]).width; });
-      // 사이드 컬럼이 좁을 때 글자가 HSI 영역 밖으로 새지 않도록 좌우로 물린다
-      let px = Math.max(x + 2, Math.min(colX - total / 2, x + w - total - 2));
-      // 선택된 소스는 은은한 배경으로 강조
-      if (navSrc === rw.src) {
-        ctx.fillStyle = 'rgba(0,0,0,0.28)';
-        ctx.fillRect(px - 4, rowY[i] - valFs, total + 8, valFs * 1.35);
-      }
-      ctx.textAlign = 'left';
-      parts.forEach(pp => {
-        ctx.font = pp[2]; ctx.fillStyle = pp[1];
-        ctx.fillText(pp[0], px, rowY[i]);
-        px += ctx.measureText(pp[0]).width;
-      });
-    });
-    ctx.restore();
-  }
-
-  // ── 좌하단 2줄 정보: ①TAS·OAT ②GS·ISA ──
-  {
-    // TAS: altitude-corrected from displayed speed (~+2% per 1000 ft)
-    const tas = S.spd * (1 + 0.02 * S.alt / 1000);
-    // GS: TAS vector + (effective) wind vector. Wind is gated by the
-    // speed-dependent effect factor — 0 in hover/low-speed, full at cruise.
-    const wto = normA(windDir + 180) * D2R;
-    const wEff = effectiveWindSpd();
-    const gsN = tas * Math.cos(S.hdg * D2R) + wEff * Math.cos(wto);
-    const gsE = tas * Math.sin(S.hdg * D2R) + wEff * Math.sin(wto);
-    const gs  = Math.sqrt(gsN*gsN + gsE*gsE);
-    // ISA: 표준대기 온도, OAT: 지면 METAR 온도 기준 감률 보정(-1.98°C/1000ft)
-    const isaC = 15 - 1.98 * S.alt / 1000;
-    const oatC = _oatSurfaceC - 1.98 * S.alt / 1000;
-
-    const colX  = leftX + sideW / 2;
-    const valFs = Math.max(10, r * 0.115);
-    const lblFs = Math.max(8, r * 0.08);
-    const row1Y = y + h * 0.83;
-    const row2Y = y + h * 0.95;
-
-    ctx.save();
-    // 한 줄에 [라벨, 값, 라벨, 값]을 이어 그려 가운데 정렬
-    const lblFont = `${lblFs}px Helvetica Neue, Arial, sans-serif`;
-    const valFont = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
-    const drawRow = (yPos, parts) => {
-      let total = 0;
-      parts.forEach(p => { ctx.font = p[2]; total += ctx.measureText(p[0]).width; });
-      let x = colX - total / 2;
-      ctx.textAlign = 'left';
-      parts.forEach(p => {
-        ctx.font = p[2]; ctx.fillStyle = p[1];
-        ctx.fillText(p[0], x, yPos);
-        x += ctx.measureText(p[0]).width;
-      });
-    };
-    const _sl = S_LBL().toLowerCase();
-    drawRow(row1Y, [
-      ['TAS ', '#888', lblFont], [`${Math.round(tas*S_CV())}${_sl}`, '#88ccff', valFont],
-      ['  OAT ', '#888', lblFont], [uTemp(oatC), '#ffd54f', valFont],
-    ]);
-    drawRow(row2Y, [
-      ['GS ', '#888', lblFont], [`${Math.round(gs*S_CV())}${_sl}`, '#00cc44', valFont],
-      ['  ISA ', '#888', lblFont], [uTemp(isaC), '#aaa', valFont],
-    ]);
-    ctx.restore();
-  }
+  // ── 나침반 옆 글자판은 조작부로 옮겼다 ──
+  // 종전에는 여기(HSI 좌·우 여백)에 TAS·OAT·GS·ISA 와 NAV 소스 3줄을 그렸다.
+  // 그러느라 나침반을 폭의 38% 로 줄여야 했고, 아래쪽 갈색이 넓게 남았다.
+  // 지금은 조작부 맨 윗줄(#pfd-info)이 같은 값을 HTML 로 보여 준다 —
+  // 캔버스를 다시 그리지 않아도 되고, 글자도 기기 글꼴이라 훨씬 잘 읽힌다.
+  // 계산은 updatePfdInfo() 에 있다(03-pfd.js 끝).
 
   // ── compass ──
   ctx.save(); ctx.translate(cx, cy);
@@ -1396,3 +1206,77 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
 }
 
 
+
+// ══════════════════════════════════════════════════════
+// 계기 글자판 — 조작부 맨 윗줄(#pfd-info)
+// ══════════════════════════════════════════════════════
+// 종전에는 나침반 좌·우 여백에 캔버스로 그렸다(TAS·OAT·GS·ISA 두 줄과
+// NAV 소스 세 줄). 그 자리를 비워 나침반을 키우고 아래쪽 갈색을 줄였다.
+// 계산은 그대로 옮겨 왔고, 그리는 곳만 HTML 로 바뀌었다.
+//
+// 프레임마다 DOM 을 건드리지 않는다 — 값이 실제로 바뀔 때만 쓴다.
+// GPS 모드에서는 위치가 3초에 한 번 오므로 그보다 자주 그릴 이유도 없다.
+let _piLast = '';
+function updatePfdInfo() {
+  const air = document.getElementById('pi-air');
+  const nav = document.getElementById('pi-nav');
+  if (!air || !nav) return;
+
+  // TAS — 표시속도를 고도로 보정(1000ft 당 약 +2%)
+  const tas = S.spd * (1 + 0.02 * S.alt / 1000);
+  // GS — TAS 벡터 + 유효 바람 벡터(저속에서는 바람 영향이 0 으로 줄어든다)
+  const wto  = normA(windDir + 180) * D2R;
+  const wEff = effectiveWindSpd();
+  const gsN  = tas * Math.cos(S.hdg * D2R) + wEff * Math.cos(wto);
+  const gsE  = tas * Math.sin(S.hdg * D2R) + wEff * Math.sin(wto);
+  const gs   = Math.sqrt(gsN * gsN + gsE * gsE);
+  // ISA 는 표준대기, OAT 는 지면 METAR 온도에 감률(-1.98°C/1000ft) 보정
+  const isaC = 15 - 1.98 * S.alt / 1000;
+  const oatC = _oatSurfaceC - 1.98 * S.alt / 1000;
+  const sl   = S_LBL().toLowerCase();
+
+  // NAV 소스 세 가지 — FMS(활성 웨이포인트) · NAV1 · NAV2
+  const rows = [];
+  {
+    const ok = S.awp >= 0 && S.awp < S.wps.length;
+    const wp = ok ? S.wps[S.awp] : null;
+    rows.push({ src: 'FMS', ident: ok ? (wp.ident || 'WPT') : '----',
+                lat: ok ? wp.lat : null, lon: ok ? wp.lon : null, color: '#00cc44' });
+  }
+  ['NAV1', 'NAV2'].forEach(id => {
+    const rr = navRadios[id] || {};
+    const ok = rr.lat !== null && rr.lat !== undefined && rr.lon !== null && rr.lon !== undefined;
+    rows.push({ src: id, ident: ok ? (rr.id || '----') : '----',
+                lat: ok ? rr.lat : null, lon: ok ? rr.lon : null, color: '#44aaff',
+                dme: true, elev: rr.elev || 0 });
+  });
+
+  const airHtml =
+      `<span class="pi"><i>TAS</i><b style="color:#88ccff">${Math.round(tas * S_CV())}${sl}</b></span>`
+    + `<span class="pi"><i>GS</i><b style="color:#00cc44">${Math.round(gs * S_CV())}${sl}</b></span>`
+    + `<span class="pi"><i>OAT</i><b style="color:#ffd54f">${uTemp(oatC)}</b></span>`
+    + `<span class="pi"><i>ISA</i><b style="color:#aaa">${uTemp(isaC)}</b></span>`;
+
+  const navHtml = rows.map(rw => {
+    const has = rw.lat !== null;
+    const brg = has ? fmtA(toMag(bearing(S.lat, S.lon, rw.lat, rw.lon))) + '°' : '---°';
+    // VOR/DME 는 경사거리(항공기↔국 직선거리), FMS 는 GPS 수평거리다
+    const dNM = !has ? 0
+              : rw.dme ? dmeDist(rw.lat, rw.lon, rw.elev)
+              : distance(S.lat, S.lon, rw.lat, rw.lon);
+    const dst = has ? uDist(dNM, 1) : '--.-';
+    const sel = navSrc === rw.src;
+    return `<span class="pi pi-src${sel ? ' on' : ''}${has ? '' : ' dim'}">`
+         + `<i style="${sel ? 'color:' + rw.color : ''}">${rw.src}</i>`
+         + `<span class="pi-id">${rw.ident}</span>`
+         + `<span class="pi-brg" style="${has ? 'color:' + rw.color : ''}">${brg}</span>`
+         + `<span class="pi-dst">${dst}</span></span>`;
+  }).join('');
+
+  // 바뀐 것이 없으면 손대지 않는다 — innerHTML 은 매번 다시 파싱된다
+  const key = airHtml + navHtml;
+  if (key === _piLast) return;
+  _piLast = key;
+  air.innerHTML = airHtml;
+  nav.innerHTML = navHtml;
+}

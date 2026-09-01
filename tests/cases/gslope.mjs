@@ -21,7 +21,7 @@ export async function run(page, t) {
   await page.evaluate(() => {
     setNavRadio('NAV1', '109.90', 'ISEL');   // 김포 14L
     setNavSrc('NAV1');
-    gsArmed = false; gsOn = false; altHoldOn = false; crhtOn = false;
+    gsArmed = false; gsOn = false; altHoldOn = false;
     updateGsBtn();
   });
 
@@ -137,7 +137,7 @@ export async function run(page, t) {
     S.lat = p[0]; S.lon = p[1];
     S.alt = ELEV + 10 * FT_NM * Math.tan(ANG * Math.PI / 180) - 250;   // 250ft 낮게
     S.hdg = toTrue(CRS); S.spd = 120; S.bnk = 0; windSpd = 0;
-    altHoldOn = false; crhtOn = false; navApOn = false; hdgSelOn = false;
+    altHoldOn = false; navApOn = false; hdgSelOn = false;
     gsArmed = true; gsOn = false; updateGsBtn();
     S.running = true; S.lastT = null;
     const t0 = performance.now(), out = [];
@@ -169,7 +169,7 @@ export async function run(page, t) {
     const p = destPoint(GP[0], GP[1], toTrue(normA(CRS + 180)), 6);
     S.lat = p[0]; S.lon = p[1];
     S.alt = ELEV + 6 * FT_NM * Math.tan(ANG * Math.PI / 180);
-    S.spd = 120; gspdOn = false; altHoldOn = true; crhtOn = false;
+    S.spd = 120; gspdOn = false; altHoldOn = true;
     // 스트립은 PFD 왼쪽 절반의 맨 윗줄에 있다. 승강계에도 'G/S' 머리글이 있으므로
     // 가로 위치로 갈라야 한다 — 승강계는 오른쪽 끝이다.
     const half = document.getElementById('pfd').width * 0.6;
@@ -180,7 +180,7 @@ export async function run(page, t) {
         return orig.call(this, tx, px, py, ...a);
       };
       try { drawPFD(); } finally { proto.fillText = orig; }
-      return seen.filter(s => /^(ALT|CRHT|G\/S|NAV|HDG|IAS|GS)/.test(s));
+      return seen.filter(s => /^(ALT|G\/S|NAV|HDG|IAS|GS)/.test(s));
     };
     gsArmed = false; gsOn = false; updateGsBtn();
     const off = shot();
@@ -203,7 +203,7 @@ export async function run(page, t) {
     const p = destPoint(GP[0], GP[1], toTrue(normA(CRS + 180)), 6);
     S.lat = p[0]; S.lon = p[1];
     S.alt = ELEV + 6 * FT_NM * Math.tan(ANG * Math.PI / 180);
-    altHoldOn = true; crhtOn = false; gspdOn = false;
+    altHoldOn = true; gspdOn = false;
     // 스트립 글자를 그릴 때의 fillStyle 을 엿본다
     const half = document.getElementById('pfd').width * 0.6;
     const grab = () => {

@@ -70,7 +70,6 @@ let _simLoopRunning = false;  // guard against double-starting the rAF loop
 // ── AFCS Preselects ──
 let selSpd  = 80;   // IAS preselect (kt)
 let selAlt  = 500;  // ALT preselect (ft) — target for ALT hold mode
-let selCrht = 500;  // CRHT preselect (ft) — target for CRHT hold mode
 let selHdg  = 360;  // HDG preselect (°, 1-360)
 // ── HDG SEL: 선택 헤딩으로 표준선회(360°/2분 = 3°/s)로 선회 ──
 // 뱅크각은 속도의 16% (표준선회 근사). 실제 선회율은 비행모델의 조정선회식
@@ -89,13 +88,11 @@ function stdRateBank(spd) {        // 표준선회 뱅크각(°) — 속도의 1
 // 동기화하지 않으면 시뮬레이션으로 돌아오는 순간 AFCS가 옛 HDG bug로 선회해 버린다.
 function syncHdgBug() { selHdg = ((Math.round(S.hdg) + 359) % 360) + 1; }
 let selVS   = 1000; // VS preselect (fpm, magnitude) — used by ALT hold mode
-                    // CRHT hold mode ignores this and always converges at 500 fpm
 let spdTrend = 0;   // 6-second speed trend (knots, smoothed)
 let _spdPrev = 80;  // previous-frame IAS for trend computation
 
 // ── AFCS Altitude Hold Modes ──
 // altHoldOn : converges S.alt → selAlt  at selVS fpm (pilot-set rate)
-// crhtOn    : converges S.alt → selCrht at  500 fpm   (fixed, mutually exclusive with altHoldOn)
 // Default: ALT hold engaged on startup, holding the initial 500 ft.
 let altHoldOn = true;
 
@@ -122,7 +119,7 @@ function toggleBrg2Lbl() {
 // ── G/S (글라이드 패스 추종) ──────────────────────────────────────
 // 무장(armed)해 두면 강하선에 닿는 순간 스스로 붙잡아(captured) 고도를 맡는다.
 // 실제 오토파일럿과 같은 순서다 — 아래에서 접근하다 강하선을 만나면 잡는다.
-// 잡고 나면 ALT·CRHT 유지는 물러난다(고도를 두 곳에서 몰면 싸운다).
+// 잡고 나면 ALT 유지는 물러난다(고도를 두 곳에서 몰면 싸운다).
 let gsArmed = false, gsOn = false;
 function gsAvailable() { return !!gsDeviation(); }
 function updateGsBtn() {
@@ -224,7 +221,6 @@ function toggleBrg2() {
 // actual lateral/forward GPS speed toward the reference at 80/15 kt/s.
 let hoverPageOn = false;
 let gspdOn      = false;
-let crhtOn      = false;   // Cruise Hold Trim — 4th axis engagement flag (shown on FMA)
 // Coast state: body-frame motion is preserved after disengage when the
 // velocity has components the base motion model can't represent (any
 // lateral, or aft / negative forward). Convergence is off; body
@@ -272,7 +268,6 @@ function updateApInhibit() {
 function updateHoverBtns() {
   const hb  = document.getElementById('hover-btn');
   const gb  = document.getElementById('gspd-btn');
-  const cb  = document.getElementById('crht-btn');
   const ahb = document.getElementById('alt-hold-btn');
   if (!hb || !gb) return;
   // ALT hold button
@@ -284,8 +279,6 @@ function updateHoverBtns() {
   gb.disabled = false;
   gb.classList.toggle('on', gspdOn);
   updateApInhibit();
-  // CRHT: always enabled
-  if (cb) cb.classList.toggle('on', crhtOn);
   // Trim cells: always active — F/A adjusts speed in normal flight, L/R applies bank roll
   ['trim-l','trim-r','trim-fwd','trim-aft'].forEach(id => {
     const e = document.getElementById(id);
@@ -363,26 +356,12 @@ function toggleGspd() {
 function toggleAltHold() {
   altHoldOn = !altHoldOn;
   if (altHoldOn) {
-    crhtOn = false;  // mutually exclusive
   } else {
     S.vs = 0;  // prevent unintended climb/descent after disengagement
   }
   updateHoverBtns();
 }
 
-function toggleCrht() {
-  crhtOn = !crhtOn;
-  if (crhtOn) {
-    // Engage CRHT mode and snap the target to the current altitude.
-    // From here the pilot can trim selCrht in 10 ft steps via the
-    // CRHT +/- buttons; convergence runs at the fixed 500 fpm rate.
-    selCrht   = Math.round(S.alt);
-    altHoldOn = false;
-  } else {
-    S.vs = 0;  // prevent unintended climb/descent after disengagement
-  }
-  updateHoverBtns();
-}
 
 function gspdTrim(dir) {
   if (!gspdOn) return;
