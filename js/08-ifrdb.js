@@ -444,7 +444,7 @@ function addAppWps() {
 
 // ── 시작 안내 오버레이 ──
 // 안내 내용이 크게 바뀌면 이 버전을 올린다 → '다시 보지 않기'를 했어도 한 번 더 표시
-const HELP_VERSION = '2';
+const HELP_VERSION = '3';
 function closeHelp() {
   if (document.getElementById('help-dontshow')?.checked) {
     try { localStorage.setItem('helpDismissed', HELP_VERSION); } catch(e) { _swallow(e); }

@@ -117,6 +117,14 @@ function toggleKbdShortcuts() {
   try { localStorage.setItem('kbdShortcuts', kbdShortcuts ? '1' : '0'); } catch(e) { _swallow(e); }
   stopAllHolds();
 }
+// 항법 보조 모드에서는 조종 필드를 키보드로도 건드리지 못하게 한다.
+// 화면에서 버튼만 내리고 키는 살려 두면, 물리 키보드를 붙인 기기(DeX·데스크톱)
+// 에서 숫자 키가 계기를 움직여 "왜 값이 바뀌지" 가 된다. CRS 는 코스 선택이라 남긴다.
+const _NAV_KEY_FIELDS = ['crs'];
+function _keyFieldAllowed(field) {
+  if (typeof simPanelOn !== 'undefined' && simPanelOn) return true;
+  return _NAV_KEY_FIELDS.includes(field);
+}
 document.addEventListener('keydown', e => {
   if (!kbdShortcuts) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -124,6 +132,7 @@ document.addEventListener('keydown', e => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
   const m = _keyMap[e.key];
   if (!m) return;
+  if (!_keyFieldAllowed(m[0])) return;
   e.preventDefault();
   applyDelta(m[0], m[1]);
 });
@@ -134,6 +143,8 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  // 트림·FLY·GSPD 는 전부 조종이다 — 항법 보조 모드에서는 키도 듣지 않는다
+  if (!_keyFieldAllowed('trim')) return;
   if (e.key === 'Enter') { e.preventDefault(); forceTrim(); return; }
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();                        // 페이지 스크롤 방지
@@ -983,6 +994,8 @@ function updateSoloBtn() {
     b.textContent = on ? '✥ 분할' : `⛶ ${k.toUpperCase()} 단독`;
     b.classList.toggle('active', on);
   });
+  // 폰 하단 탭도 같은 자리에서 갱신한다 — setSolo/exitSolo 가 모두 여기를 지난다
+  try { if (typeof updateNavBar === 'function') updateNavBar(); } catch(e) { _swallow(e); }
 }
 
 // MAP 상단 툴바의 FULL/HALF 토글 — 상황에 맞게 전체화면 진입/분할 복귀

@@ -27,6 +27,9 @@ function startGPS() {
   }
   // 이전 watch가 남아있으면 정리(중복 방지)
   if (gpsWatchId !== null) { try { navigator.geolocation.clearWatch(gpsWatchId); } catch(e){ _swallow(e); } gpsWatchId = null; }
+  // 손으로 켠 것이라면 지난번 거부 기록은 지운다(권한을 다시 물을 기회를 준다)
+  try { localStorage.removeItem('gpsDenied'); } catch(e) { _swallow(e); }
+  try { if (typeof drReset === 'function') drReset(); } catch(e) { _swallow(e); }
 
   // 즉시 GPS 모드로 전환(시뮬레이션 물리와 충돌 방지) + '위치 확인 중' 표시
   gpsMode = true;
@@ -71,6 +74,11 @@ function stopGPS() {
   _gpsPrev = null;
   stopDevOrientation();
   updateGpsBtn();
+  try { if (typeof drReset === 'function') drReset(); } catch(e) { _swallow(e); }
+  // 조작부를 감춘 항법 보조 모드(기본)에서는 여기서 끝이다. 종전처럼 80kt·500ft
+  // 같은 시뮬 초기값을 밀어 넣으면, 실제로 측정한 적 없는 숫자가 계기에 뜬다.
+  // 마지막으로 측정된 값을 그대로 두고 GPS 표시만 내린다.
+  if (typeof simPanelOn !== 'undefined' && !simPanelOn) return;
   // Reset to simulation defaults
   S.spd = 80; S.hdg = 360; S.alt = 500;
   S.pit = pitchFromSpd(80); S.bnk = 0; bankTarget = 0; _rollRate = 0;
@@ -151,7 +159,11 @@ function applyGPS(pos) {
   }
   if (spdKt !== null) {
     S.spd = Math.max(0, Math.round(spdKt));
-    S.pit = pitchFromSpd(S.spd);
+    // 자세계 — 우리에겐 자세 센서가 없다. 종전에는 속도에서 피치를 지어내
+    // (pitchFromSpd) 인공수평선을 기울였는데, 시뮬레이터라면 몰라도 실제 위치를
+    // 읽는 장치에서 그것은 없는 정보를 있는 척하는 것이다. 수평으로 둔다.
+    if (typeof simPanelOn !== 'undefined' && !simPanelOn) { S.pit = 0; S.bnk = 0; }
+    else S.pit = pitchFromSpd(S.spd);
   }
   _devHdgAuto(spdKt);   // 속도에 따라 나침반 이벤트 자동 on/off(발열 저감)
 
@@ -174,11 +186,21 @@ function applyGPS(pos) {
 
   // ── 고도 ── GPS 고도(m) → ft
   if (c.altitude !== null && !isNaN(c.altitude)) {
-    S.alt = Math.max(0, Math.round(c.altitude * 3.28084));
+    const altFt = Math.max(0, Math.round(c.altitude * 3.28084));
+    // 승강률 — 두 측정 사이의 고도차로 낸다. GPS 고도는 수평위치보다 훨씬 거칠어
+    // 그대로 쓰면 바늘이 널뛴다. 지수평활(0.3)로 눌러 읽을 수 있게 만든다.
+    if (_gpsPrev && typeof _gpsPrev.alt === 'number') {
+      const dtMin = (nowMs - _gpsPrev.ms) / 60000;
+      if (dtMin > 0.01) {                       // 0.6초보다 짧은 간격은 쓰지 않는다
+        const raw = (altFt - _gpsPrev.alt) / dtMin;
+        S.vs = Math.max(-3000, Math.min(3000, Math.round(S.vs * 0.7 + raw * 0.3)));
+      }
+    }
+    S.alt = altFt;
   }
 
   S.lat = lat; S.lon = lon;
-  _gpsPrev = { lat, lon, ms: nowMs };
+  _gpsPrev = { lat, lon, ms: nowMs, alt: S.alt };
 
   // Trail
   const last = S.trail[S.trail.length - 1];
@@ -192,6 +214,10 @@ function applyGPS(pos) {
   updateNav();
   // Status overlay (좌표 + 속도/고도/방위 요약)
   const acc = c.accuracy ? c.accuracy.toFixed(0) + 'm' : '--';
+  // 측정값이 돌아왔으니 추측항법(DR) 경고는 걷는다
+  try { if (typeof drReset === 'function') drReset(); } catch(e) { _swallow(e); }
+  const _st = document.getElementById('gps-status');
+  _st.style.borderColor = ''; _st.style.color = '';
   // 좌표창 오른쪽에 한 줄로 표시(높이 통일)
   document.getElementById('gps-status').innerHTML =
     `● ${decToDMS(S.lat, true)} ${decToDMS(S.lon, false)} · ` +
@@ -227,6 +253,9 @@ function showGpsError(msg) {
 function gpsError(err) {
   // 권한 거부(code 1)만 치명적 → GPS 종료 후 안내
   if (err && err.code === 1) {
+    // 거부한 사실을 적어 둔다. 켤 때마다 자동으로 다시 물으면 성가시기 때문이다
+    // (GPS 버튼을 직접 누르면 그 기록은 지워지고 다시 요청한다).
+    try { localStorage.setItem('gpsDenied', '1'); } catch(e) { _swallow(e); }
     showGpsError('위치 권한이 거부되었습니다<br>설정 → Safari(브라우저) → 위치 → 허용');
     stopGPS();
     return;

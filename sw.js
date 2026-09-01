@@ -1,6 +1,6 @@
-// VFR Flight Sim — Service Worker
+// GPS 보조 항법장치 — Service Worker
 // 버전을 올리면 캐시가 갱신됩니다
-const CACHE = 'vfr-flight-v402';
+const CACHE = 'vfr-flight-v403';
 const CORE  = [
   './index.html',
   './manifest.json',
@@ -40,6 +40,7 @@ const CORE  = [
   './js/11-charts.js',
   './js/12-joystick.js',
   './js/13-joyhid.js',
+  './js/14-navaid.js',
 ];
 
 // 설치 시 핵심 파일 캐시 (HTTP 캐시 우회로 항상 최신본 저장)

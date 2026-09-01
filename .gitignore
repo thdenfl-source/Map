@@ -1,0 +1,3 @@
+# 회귀 테스트용 의존성 — 저장소에는 넣지 않는다(tests/README.md 참고)
+node_modules/
+package-lock.json
