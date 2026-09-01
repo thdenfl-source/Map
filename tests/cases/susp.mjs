@@ -78,7 +78,7 @@ export async function run(page, t) {
   t.eq(ui.lbl, 'SUSP', `버튼 위에 SUSP 이름표가 따로 선다 (${ui.lbl})`);
   t.eq(ui.shown, true, 'SUSP 은 항법용이라 보조 항법 모드에서도 화면에 남는다');
   t.ok(ui.lblAbove, '이름표가 자기 버튼 위에 있다');
-  t.eq(ui.txt, 'On', `버튼 글자는 늘 On 이다 (${ui.txt})`);
+  t.eq(ui.txt, 'SUSP', `버튼 글자는 늘 SUSP 다 (${ui.txt})`);
   // 켜짐은 AP 의 NAV·OBS 버튼과 같은 녹색으로 보인다 — 실제로 칠해진 색을 잰다
   t.ok(/^rgb\(0, 2[0-9][0-9], /.test(ui.onCol.border) && ui.onCol.border === ui.navCol.border,
     `켜지면 NAV 버튼과 같은 녹색이다 (${ui.onCol.border} · NAV ${ui.navCol.border})`);
@@ -100,7 +100,7 @@ export async function run(page, t) {
     return { txt: b.textContent.trim(), cls: b.className,
              border: getComputedStyle(b).borderTopColor };
   });
-  t.eq(off.txt, 'On', '꺼져도 글자는 On 그대로다 — 켜짐은 색으로 보인다');
+  t.eq(off.txt, 'SUSP', '꺼져도 글자는 SUSP 그대로다 — 켜짐은 색으로 보인다');
   t.ok(!/\b(on|auto)\b/.test(off.cls) && !/rgb\(0, 2/.test(off.border),
     `꺼지면 녹색이 빠진다 (${off.border})`);
   t.eq(rel.awp, 'CCC', `풀고 나면 다음 지점으로 넘어간다 (${rel.awp})`);
@@ -162,7 +162,7 @@ export async function run(page, t) {
   t.ok(auto.inHold.susp && !auto.inHold.manual,
     '홀딩이면 SUSP 가 저절로 걸린다(손으로 켠 것은 아니다)');
   t.ok(/auto/.test(auto.inHold.cls), `버튼이 '자동' 으로 보인다 (${auto.inHold.cls})`);
-  t.eq(auto.inHold.txt, 'On자동', `저절로 걸린 것은 On 옆에 '자동' 이 붙는다 (${auto.inHold.txt})`);
+  t.eq(auto.inHold.txt, 'SUSP자동', `저절로 걸린 것은 SUSP 옆에 '자동' 이 붙는다 (${auto.inHold.txt})`);
   t.eq(auto.inHold.awp, 'FIX', '홀딩 중에는 그 지점에 머문다');
   t.eq(auto.after.holdOn, false, 'SUSP 를 누르면 홀딩을 그만둔다');
   t.eq(auto.after.susp, false, '보류도 함께 풀린다');
