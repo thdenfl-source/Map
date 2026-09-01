@@ -574,6 +574,7 @@ function toggleFixPanel() {
   const open = !p.classList.contains('open');
   p.classList.toggle('open', open);
   if (open) _fixRenderPanel();
+  mapPanelOpened('fix-panel', open);
   _fixUpdateBtn();
 }
 function _fixUpdateBtn() {
@@ -800,6 +801,7 @@ function toggleAwyLayer() {   // AWY 버튼 → 카테고리 패널 열기/닫�
   const open = !p.classList.contains('open');
   p.classList.toggle('open', open);
   if (open) _awyRenderPanel();
+  mapPanelOpened('awy-panel', open);
   _awyUpdateBtn();
 }
 // 저장된 상태 복원
@@ -885,6 +887,7 @@ function toggleAspcPanel(){
   const open=!p.classList.contains('open');
   p.classList.toggle('open',open);
   if(open)_aspcRenderPanel();
+  mapPanelOpened('aspc-panel', open);
   _aspcUpdateBtn();
 }
 // 저장된 표시 상태 복원
@@ -1696,12 +1699,14 @@ function openGeoSearch() {
   const p = document.getElementById('geo-panel');
   if (!p) return;
   p.classList.add('open');
+  mapPanelOpened('geo-panel', true);
   const q = document.getElementById('geo-q');
   if (q) { try { q.focus(); q.select(); } catch (e) { _swallow(e); } }
 }
 function closeGeoSearch() {
   const p = document.getElementById('geo-panel');
   if (p) p.classList.remove('open');
+  mapPanelOpened('geo-panel', false);
 }
 function _geoMsg(txt, col) {
   const el = document.getElementById('geo-list');
@@ -1754,4 +1759,131 @@ function geoPick(i) {
   q.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runGeoSearch(); }
   });
+})();
+
+// ══════════════════════════════════════════════════════
+// 지도 하위 창 — 누른 버튼에서 가지 치듯 붙인다
+// ══════════════════════════════════════════════════════
+// 상단 툴바를 좌·우 라인 셀렉터로 세운 뒤, 하위 창들이 제자리를 잃었다.
+// top:44px · right:8px 처럼 옛 가로 툴바 시절 좌표에 못 박혀 있어서, 지금은
+// 버튼 열을 그대로 덮어 버린다(＋ 메뉴가 WX·NOTAM 을 가리는 식이다).
+//
+// 창을 누른 버튼 옆에 붙이고, 그 사이를 짧은 줄기로 잇는다. 어느 버튼에서
+// 나온 창인지 눈으로 바로 읽히고, 버튼도 가려지지 않는다.
+//   · 왼쪽 열 버튼 → 창은 오른쪽(화면 안쪽)으로
+//   · 오른쪽 열 버튼 → 창은 왼쪽(화면 안쪽)으로
+// 창이 지도 밖으로 나가지 않게 가장자리에서 물린다.
+const MAP_PANELS = [
+  ['pp-menu',    'pp-btn'],
+  ['wx-panel',   'wx-btn'],
+  ['fix-panel',  'fix-btn'],
+  ['awy-panel',  'awy-btn'],
+  ['aspc-panel', 'aspc-btn'],
+  ['geo-panel',  'pp-btn'],     // 주소 검색은 ＋ 메뉴에서 열린다
+];
+const MAP_BRANCH_GAP = 14;      // 줄기 길이(px)
+const MAP_BRANCH_EDGE = 6;      // 지도 가장자리 여백
+
+function _mapPanelBtn(panelId) {
+  const pair = MAP_PANELS.find(p => p[0] === panelId);
+  return pair ? document.getElementById(pair[1]) : null;
+}
+
+function isMapPanelOpen(panelId) {
+  const el = document.getElementById(panelId);
+  if (!el) return false;
+  // wx-panel 만 style.display 로 여닫는다(나머지는 .open 클래스)
+  return panelId === 'wx-panel' ? el.style.display === 'block'
+                                : el.classList.contains('open');
+}
+
+function anchorMapPanel(panelId) {
+  const panel = document.getElementById(panelId);
+  const btn   = _mapPanelBtn(panelId);
+  const wrap  = document.getElementById('map-wrap');
+  if (!panel || !btn || !wrap) return;
+  const B = btn.getBoundingClientRect();
+  if (!B.width) return;                      // 버튼이 숨겨져 있으면 손대지 않는다
+  const W = wrap.getBoundingClientRect();
+  // 버튼이 어느 쪽 열에 있는가 — 창은 늘 화면 안쪽으로 편다
+  const rightCol = (B.left + B.width / 2 - W.left) > W.width / 2;
+  // 두 버튼 열 사이의 빈 띠 — 창은 이 안에 들어가야 어느 쪽 열도 덮지 않는다.
+  // 폰(390px)에서는 WX(380px)·공역(290px) 처럼 넓은 창이 통째로는 못 들어가서,
+  // 그냥 두면 가장자리에 밀려 반대쪽 열을 덮는다. 띠 폭에 맞춰 좁힌다 —
+  // 안이 접히거나 스크롤되는 창들이라 좁아도 읽힌다.
+  let colL = W.left, colR = W.right;
+  document.querySelectorAll('#map-top-bar button').forEach(x => {
+    const q = x.getBoundingClientRect();
+    if (!q.width) return;                    // 숨긴 버튼(폰의 FULL 등)은 셈에서 뺀다
+    if (q.left + q.width / 2 - W.left > W.width / 2) colR = Math.min(colR, q.left);
+    else colL = Math.max(colL, q.right);
+  });
+  const avail = Math.max(150, (colR - MAP_BRANCH_GAP) - (colL + MAP_BRANCH_GAP));
+  panel.style.maxWidth = Math.round(avail) + 'px';
+  const P = panel.getBoundingClientRect();
+  if (!P.width) return;
+  // style.left/top 은 창의 offsetParent 기준이다. 지도 기준으로 잰 값을 그대로
+  // 넣으면 그 둘이 어긋난 만큼 밀린다 — 기준점을 맞춰 둔다.
+  const O = (panel.offsetParent || wrap).getBoundingClientRect();
+
+  let left = rightCol ? (B.left - W.left) - MAP_BRANCH_GAP - P.width
+                      : (B.right - W.left) + MAP_BRANCH_GAP;
+  left = Math.max(MAP_BRANCH_EDGE, Math.min(W.width - P.width - MAP_BRANCH_EDGE, left));
+  let top = B.top - W.top;
+  top = Math.max(MAP_BRANCH_EDGE, Math.min(W.height - P.height - MAP_BRANCH_EDGE, top));
+
+  panel.style.right = 'auto';
+  panel.style.left  = Math.round(left + (W.left - O.left)) + 'px';
+  panel.style.top   = Math.round(top  + (W.top  - O.top))  + 'px';
+  panel.dataset.branch = rightCol ? 'right' : 'left';
+  // 줄기는 버튼 한가운데 높이에 맞춘다. 창이 가장자리에서 밀렸으면 그만큼
+  // 어긋나므로 창 기준으로 다시 잰다.
+  const stemY = (B.top + B.height / 2) - (W.top + top);
+  panel.style.setProperty('--branch-y',
+    Math.max(8, Math.min(P.height - 8, Math.round(stemY))) + 'px');
+}
+
+function _mapPanelClose(panelId) {
+  switch (panelId) {
+    case 'pp-menu':    togglePpMenu(false); break;
+    case 'wx-panel':   closeWxPanel(); break;
+    case 'fix-panel':  toggleFixPanel(); break;
+    case 'awy-panel':  toggleAwyLayer(); break;
+    case 'aspc-panel': toggleAspcPanel(); break;
+    case 'geo-panel':  closeGeoSearch(); break;
+  }
+}
+
+// 하위 창을 여닫을 때마다 부른다. 여는 쪽이면 다른 창을 먼저 닫는다 —
+// 같은 열의 두 창이 겹치면 어느 버튼에서 나온 것인지 알 수 없다.
+function mapPanelOpened(panelId, open) {
+  const panel = document.getElementById(panelId);
+  const btn   = _mapPanelBtn(panelId);
+  if (btn) btn.classList.toggle('branch-open', !!open);
+  if (!panel) return;
+  if (open) {
+    MAP_PANELS.forEach(([id]) => {
+      if (id !== panelId && isMapPanelOpen(id)) { try { _mapPanelClose(id); } catch(e) { _swallow(e); } }
+    });
+    // 크기가 잡힌 뒤에 재야 폭·높이가 0 이 아니다
+    requestAnimationFrame(() => { try { anchorMapPanel(panelId); } catch(e) { _swallow(e); } });
+  } else {
+    panel.style.left = ''; panel.style.top = ''; panel.style.right = '';
+    panel.style.maxWidth = '';
+    panel.style.removeProperty('--branch-y');
+    delete panel.dataset.branch;
+  }
+}
+
+// 화면이 바뀌면(회전·분할 조절·전체화면 전환) 열려 있는 창을 다시 붙인다
+(function reanchorOnResize() {
+  let t = null;
+  const again = () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      MAP_PANELS.forEach(([id]) => { if (isMapPanelOpen(id)) anchorMapPanel(id); });
+    }, 160);
+  };
+  window.addEventListener('resize', again);
+  window.addEventListener('orientationchange', again);
 })();

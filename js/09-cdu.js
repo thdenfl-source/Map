@@ -436,11 +436,13 @@ makePanelDraggable('ship-panel', 'ship-panel-header');
 function openWxPanel() {
   document.getElementById('wx-panel').style.display = 'block';
   document.getElementById('wx-btn').classList.add('wx-active');
+  mapPanelOpened('wx-panel', true);
 }
 
 function closeWxPanel() {
   document.getElementById('wx-panel').style.display = 'none';
   document.getElementById('wx-btn').classList.remove('wx-active');
+  mapPanelOpened('wx-panel', false);
 }
 
 function toggleWxPanel() {
@@ -454,12 +456,8 @@ function togglePpMenu(force) {
   const m = document.getElementById('pp-menu');
   const open = (force !== undefined) ? force : !m.classList.contains('open');
   m.classList.toggle('open', open);
-  if (open) {
-    // ＋ 버튼 바로 아래 위치 정렬
-    const btn = document.getElementById('pp-btn');
-    const bar = document.getElementById('map-top-bar');
-    m.style.left = Math.max(4, btn.offsetLeft + bar.offsetLeft - 6) + 'px';
-  }
+  // 자리 잡기는 mapPanelOpened → anchorMapPanel 이 맡는다(＋ 버튼에서 가지 친다)
+  mapPanelOpened('pp-menu', open);
 }
 // 십자(지도 중앙) 위치에 웨이포인트 추가
 function chAddWaypoint() {

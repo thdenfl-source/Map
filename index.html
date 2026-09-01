@@ -898,7 +898,7 @@ body.solo-mode .solo-panel-visible {
 #awy-panel.open { display: block; }
 #pp-menu {
   display: none;
-  /* 라인 셀렉터에서는 ＋ 가 왼쪽 칸 셋째 자리다 — 그 옆으로 편다 */
+  /* 자리는 anchorMapPanel() 이 잡는다(누른 버튼 옆으로) — 여기 값은 첫 프레임용 */
   position: absolute; top: 68px; left: 60px; z-index: 1200;
   pointer-events: auto;
   background: rgba(8,8,14,0.95); border: 1px solid #00ff88; border-radius: 6px;
@@ -1703,6 +1703,44 @@ body.phone-mode #map-sim-bar .sim-btn {
 }
 body.phone-mode #map-full-btn { min-width: 54px; }
 
+/* ── 지도 하위 창 — 버튼에서 가지 친 모양 ──────────────────────
+   창은 누른 버튼 옆(화면 안쪽)에 붙고, 그 사이를 짧은 줄기가 잇는다.
+   자리는 anchorMapPanel() 이 잡고(10-tools.js), 여기서는 줄기와 강조만 그린다.
+     data-branch="left"  = 왼쪽 열 버튼에서 나온 창 → 줄기는 창의 왼쪽
+     data-branch="right" = 오른쪽 열 버튼에서 나온 창 → 줄기는 창의 오른쪽
+   --branch-y 는 버튼 한가운데 높이(창 기준)다. */
+#pp-menu    { --bc: #00ff88; }
+#wx-panel   { --bc: #44aa66; }
+#fix-panel  { --bc: #26c6da; }
+#awy-panel  { --bc: #8bc34a; }
+#aspc-panel { --bc: #ba68c8; }
+#geo-panel  { --bc: #4a90d9; }
+[data-branch]::before,
+[data-branch]::after {
+  content: ''; position: absolute; pointer-events: none;
+  top: var(--branch-y, 18px);
+}
+/* 줄기 — 버튼 쪽으로 뻗는 가로선 */
+[data-branch]::before {
+  width: 14px; height: 2px; margin-top: -1px;
+  background: var(--bc, #4a90d9); opacity: 0.85;
+}
+/* 줄기 끝의 점 — 어느 버튼에 붙었는지 짚어 준다 */
+[data-branch]::after {
+  width: 6px; height: 6px; margin-top: -3px;
+  border-radius: 50%; background: var(--bc, #4a90d9);
+}
+[data-branch="left"]::before  { left: -14px; }
+[data-branch="left"]::after   { left: -17px; }
+[data-branch="right"]::before { right: -14px; }
+[data-branch="right"]::after  { right: -17px; }
+/* 창이 열려 있는 동안 그 버튼도 함께 켠다 — 다시 누르면 닫힌다는 표시다 */
+#map-top-bar button.branch-open {
+  background: rgba(20,32,44,0.96);
+  border-color: #7ab8f5; color: #cfe6ff;
+  box-shadow: 0 0 8px rgba(122,184,245,0.45);
+}
+
 /* ── 계기 글자판(조작부 맨 윗줄) ────────────────────────────────
    나침반 옆 캔버스에 그리던 것을 HTML 로 옮겼다. 기기 글꼴이라 같은 높이에서
    훨씬 잘 읽히고, 계기를 다시 그리지 않아도 값만 바꿀 수 있다. */
@@ -2447,11 +2485,6 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
         <button id="gps-btn" data-act="toggleGPS">GPS</button>
         <button id="wx-btn" data-act="toggleWxPanel">WX</button>
         <button id="pp-btn" data-act="togglePpMenu">＋</button>
-        <div id="pp-menu">
-          <button onclick="ppAddWaypoint();togglePpMenu(false)">PP 현재위치</button>
-          <button onclick="chAddWaypoint();togglePpMenu(false)">＋ 십자위치</button>
-          <button onclick="openGeoSearch();togglePpMenu(false)">🔎 주소 검색</button>
-        </div>
         <button id="rain-btn" data-act="toggleRain">RAIN</button>
         <button id="wind-btn" data-act="toggleWind">WIND</button>
         <button id="notam-btn" data-act="toggleNotamLayer">NOTAM</button>
@@ -2474,6 +2507,13 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
             좌표(37.5665, 126.9780)를 그대로 넣어도 됩니다.<br>
             지명 검색은 OpenStreetMap(Nominatim) 자료이며 <b>항법용이 아닙니다</b>.</div>
         </div>
+      </div>
+      <!-- ＋ 메뉴 — 다른 하위 창과 같은 자리에 둔다(#map-wrap 직속).
+           툴바 안에 두면 기준점이 툴바가 되어 자리 셈이 어긋난다. -->
+      <div id="pp-menu">
+        <button onclick="ppAddWaypoint();togglePpMenu(false)">PP 현재위치</button>
+        <button onclick="chAddWaypoint();togglePpMenu(false)">＋ 십자위치</button>
+        <button onclick="openGeoSearch();togglePpMenu(false)">🔎 주소 검색</button>
       </div>
       <div id="aspc-panel"></div>
       <div id="fix-panel"></div>
