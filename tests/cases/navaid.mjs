@@ -20,6 +20,9 @@ async function open(browser, url, viewport, init) {
   await p.goto(url);
   await p.waitForFunction(() => typeof S === 'object' && typeof isPhoneLayout === 'function',
     null, { timeout: 20000 });
+  // 시작 안내 창은 화면을 통째로 덮는다 — 열려 있으면 무엇을 눌러도
+  // 그 창이 잡히고, elementFromPoint 도 지도 대신 창을 돌려준다.
+  await p.evaluate(() => { const o = document.getElementById('help-overlay'); if (o) o.style.display = 'none'; });
   await p.waitForTimeout(700);
   return [ctx, p];
 }
@@ -84,7 +87,7 @@ export async function run(page, t) {
     return {
       navaid: document.body.classList.contains('navaid'),
       // 조종·시뮬 전용
-      spd: gone('spd-up'), vs: gone('vs-up'), alt: gone('alt-up'), crht: gone('crht-up'),
+      spd: gone('spd-up'), vs: gone('vs-up'), alt: gone('alt-up'),
       hdg: gone('hdg-up'), wdir: gone('wdir-up'), fly: gone('map-fly-btn'),
       simspd: gone('simspd-4'), trim: gone('trim-group'), navap: gone('nav-ap-btn'),
       gs: gone('gs-btn'), hover: gone('hover-pos-btn'),
@@ -97,7 +100,7 @@ export async function run(page, t) {
     };
   });
   t.eq(hidden.navaid, true, '기본은 항법 보조 모드다 (body.navaid)');
-  for (const [k, label] of [['spd', 'IAS'], ['vs', 'VS'], ['alt', 'ALT'], ['crht', 'CRHT'],
+  for (const [k, label] of [['spd', 'IAS'], ['vs', 'VS'], ['alt', 'ALT'],
                             ['hdg', 'HDG bug'], ['wdir', '시뮬 바람'], ['fly', 'FLY'],
                             ['simspd', '배속'], ['trim', '트림·페달'], ['navap', 'NAV 커플링'],
                             ['gs', 'G/S'], ['hover', 'HOVER']]) {
@@ -262,8 +265,10 @@ export async function run(page, t) {
   t.ok(bar.rows >= 1 && bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
   t.ok(bar.h > 20 && bar.h <= 90, `조작부 높이가 90px 아래다 (${bar.h}px)`);
   t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·FMS·RNP·SUSP)');
-  t.ok(bar.usable > bar.pfdH * 0.9,
-    `계기가 패널의 90% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
+  // 조작부 맨 윗줄(#pfd-info)이 계기 옆 글자판을 대신 짊어진다. 그 몫까지
+  // 합쳐도 계기가 패널의 대부분을 쓴다 — 캔버스에서 걷어낸 자리가 더 크다.
+  t.ok(bar.usable > bar.pfdH * 0.85,
+    `계기가 패널의 85% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
 
   // ── ⑦ 폰에서 계기 글씨가 커지는가 ────────────────────────────
   // 글꼴 지정이 예순 곳이 넘어 한자리에서 가로채 배율을 곱한다. 배율만 확인하면
@@ -283,6 +288,81 @@ export async function run(page, t) {
   t.ok(font.before > 1, `폰에서는 계기 글씨 배율이 걸린다 (×${font.before})`);
   t.ok(/12\.5px/.test(font.scaled), `배율이 실제 글꼴에 곱해진다 (${font.scaled})`);
   t.ok(/10px/.test(font.plain), `배율 1 이면 그대로다 (${font.plain})`);
+
+  // ── ⑧ MAP 상단 버튼이 좌·우 라인 셀렉터로 서는가 ────────────
+  // 한 줄에 열한 개를 밀어 넣으면 폰에서 버튼 하나가 30px 남짓이라 못 누른다.
+  // 지도 양옆에 세로로 세우되, 지도를 덮어 끌기·확대를 먹지 않아야 한다.
+  await phone.evaluate(() => navGo('map'));
+  await phone.waitForTimeout(500);
+  const lsk = await phone.evaluate(() => {
+    const bar = document.getElementById('map-top-bar');
+    const cols = {};
+    let minW = 999;
+    bar.querySelectorAll('button').forEach(b => {
+      const r = b.getBoundingClientRect();
+      if (r.height === 0) return;                       // 폰에서 감춘 것(FULL)
+      minW = Math.min(minW, r.width);
+      const k = r.left < window.innerWidth / 2 ? 'L' : 'R';
+      (cols[k] = cols[k] || []).push(b.id);
+    });
+    // 툴바가 지도를 먹지 않는가 — 컨테이너는 통과시키고 버튼만 받아야 한다
+    const barPe = getComputedStyle(bar).pointerEvents;
+    const btnPe = getComputedStyle(bar.querySelector('#gps-btn')).pointerEvents;
+    // 두 칸 사이 가운데는 지도가 그대로 보여야 한다
+    const mid = document.elementFromPoint(window.innerWidth / 2, 120);
+    return { left: (cols.L || []).length, right: (cols.R || []).length,
+             minW: Math.round(minW), barPe, btnPe,
+             midIsMap: !!(mid && (mid.id === 'map' || mid.closest('#map'))) };
+  });
+  t.ok(lsk.left >= 3 && lsk.right >= 3,
+    `버튼이 좌·우 두 칸으로 갈린다 (좌 ${lsk.left} · 우 ${lsk.right})`);
+  t.ok(lsk.minW >= 44, `버튼 폭이 손가락으로 누를 크기다 (${lsk.minW}px)`);
+  t.eq(lsk.barPe, 'none', '툴바 바탕은 지도 조작을 통과시킨다');
+  t.eq(lsk.btnPe, 'auto', '버튼만 터치를 받는다');
+  t.eq(lsk.midIsMap, true, '두 칸 사이 가운데는 지도가 그대로 보인다');
+
+  // ── ⑨ 계기 글자판이 조작부로 옮겨졌는가 ──────────────────────
+  await phone.evaluate(() => navGo('pfd'));
+  await phone.waitForTimeout(500);
+  const info = await phone.evaluate(() => {
+    const air = document.getElementById('pi-air');
+    const nav = document.getElementById('pi-nav');
+    return { air: (air.textContent || ''), nav: (nav.textContent || ''),
+             srcCount: nav.querySelectorAll('.pi-src').length,
+             h: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height) };
+  });
+  for (const k of ['TAS', 'GS', 'OAT', 'ISA']) {
+    t.ok(info.air.includes(k), `조작부 윗줄에 ${k} 가 있다`);
+  }
+  t.eq(info.srcCount, 3, 'NAV 소스 세 가지(FMS·NAV1·NAV2)가 모두 있다');
+  t.ok(/FMS/.test(info.nav) && /NAV1/.test(info.nav) && /NAV2/.test(info.nav),
+    '세 소스의 이름이 다 보인다');
+  t.ok(info.h > 10 && info.h < 60, `글자판이 두 줄 안이다 (${info.h}px)`);
+
+  // ── ⑩ CRHT 가 없어졌는가 · 갈색이 줄었는가 ───────────────────
+  const crht = await phone.evaluate(() => {
+    const dead = n => { try { return new Function('return typeof ' + n)() === 'undefined'; }
+                        catch (e) { return true; } };
+    // 계기 칸 나눔 — drawPFD 와 같은 셈
+    const W = cvs.width, H = cvs.height;
+    const usableH = H - document.querySelector('.ctrl-bar').offsetHeight;
+    const tapW = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
+    const vsiW = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
+    const hsiR = (W - tapW * 2 - vsiW) * 0.44;
+    const hsiH = Math.max(Math.round(usableH * 0.32),
+                          Math.min(Math.round(usableH * 0.50), Math.round(hsiR * 2 + 56)));
+    return { fn: dead('drawCrhtDisplay'), flag: dead('crhtOn'), sel: dead('selCrht'),
+             toggle: dead('toggleCrht'),
+             btn: !document.getElementById('crht-btn') && !document.getElementById('crht-up'),
+             hsiH, aiH: usableH - hsiH, usableH };
+  });
+  t.eq(crht.fn, true, 'CRHT 표시를 그리는 함수가 없다');
+  t.eq(crht.flag && crht.sel && crht.toggle, true, 'CRHT 상태값·토글도 남지 않았다');
+  t.eq(crht.btn, true, 'CRHT 버튼도 마크업에 없다');
+  t.ok(crht.hsiH < crht.aiH,
+    `나침반 칸(갈색)이 자세계보다 좁다 (${crht.hsiH}px < ${crht.aiH}px)`);
+  t.ok(crht.hsiH < crht.usableH * 0.42,
+    `갈색이 계기의 42% 아래다 (${crht.hsiH}px / ${crht.usableH}px)`);
 
   await pctx.close();
 }

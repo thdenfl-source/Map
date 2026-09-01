@@ -19,7 +19,7 @@ function saveSession() {
       s: { lat:S.lat, lon:S.lon, hdg:S.hdg, spd:S.spd, alt:S.alt, pit:S.pit, bnk:S.bnk,
            crs:S.crs, vs:S.vs, running:S.running, wps:S.wps, awp:S.awp, fwp:S.fwp },
       gps: gpsMode,
-      fcp: { selSpd, selAlt, selCrht, selVS, selHdg, hdgSelOn, altHoldOn, crhtOn, gspdOn, rollApOn, bankTarget,
+      fcp: { selSpd, selAlt, selVS, selHdg, hdgSelOn, altHoldOn, gspdOn, rollApOn, bankTarget,
              gspdActLat, gspdActFwd, gspdRefLat, gspdRefFwd, gspdCoasting },
       nav: { obsOn, navSrc, navRadios, vorObsCrs },
       view: { mapHdgUp, followMode, leftSel, midSel, rightSel, tripleMode },
@@ -41,8 +41,8 @@ function restoreSession() {
     });
     const f = snap.fcp || {};
     if (f.selSpd!=null) selSpd=f.selSpd; if (f.selAlt!=null) selAlt=f.selAlt;
-    if (f.selCrht!=null) selCrht=f.selCrht; if (f.selVS!=null) selVS=f.selVS; if (f.selHdg!=null) selHdg=f.selHdg; if (f.hdgSelOn!=null) hdgSelOn=f.hdgSelOn;
-    altHoldOn=!!f.altHoldOn; crhtOn=!!f.crhtOn; gspdOn=!!f.gspdOn; rollApOn=f.rollApOn!==false;
+    if (f.selVS!=null) selVS=f.selVS; if (f.selHdg!=null) selHdg=f.selHdg; if (f.hdgSelOn!=null) hdgSelOn=f.hdgSelOn;
+    altHoldOn=!!f.altHoldOn; gspdOn=!!f.gspdOn; rollApOn=f.rollApOn!==false;
     bankTarget=f.bankTarget||0;
     gspdActLat=f.gspdActLat||0; gspdActFwd=f.gspdActFwd||0;
     gspdRefLat=(f.gspdRefLat===undefined?null:f.gspdRefLat); gspdRefFwd=(f.gspdRefFwd===undefined?null:f.gspdRefFwd);
@@ -181,8 +181,7 @@ function init(){
 
   // ── PFD canvas tap-to-edit ──
   // FMA row (top of AI)  : middle cell → HDG preselect, right cell → IAS preselect
-  // ALT header box (top of ALT tape, right column top half) → selAlt
-  // CRHT header box (top of CRHT display, right column bottom half) → selCrht
+  // ALT header box (top of ALT tape, right column) → selAlt / selVS
   async function onPfdTap(clientX, clientY) {
     const rect = cvs.getBoundingClientRect();
     const scX  = cvs.width  / rect.width;
@@ -196,17 +195,18 @@ function init(){
     const W      = cvs.width;
     const H      = cvs.height;
     const usableH = H - CTRL_H;
-    const tapW   = Math.max(56, Math.min(76, W * 0.082));
-    const vsiW   = Math.max(28, Math.min(38, W * 0.046));
+    // drawPFD 와 같은 셈을 쓴다 — 글씨 배율(pfdFontScale)까지 따라가야 한다.
+    // 여기가 어긋나면 눌러도 엉뚱한 자리가 잡힌다.
+    const tapW   = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
+    const vsiW   = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
     const aiX    = tapW;
     const aiW    = W - tapW * 2 - vsiW;
-    const aiH    = Math.floor(usableH * 0.52);
+    const aiH    = Math.floor(usableH * 0.56);
 
-    // Right-column header box (where selAlt / selCrht + VS are shown)
-    const HEAD_H   = 26;
+    // Right-column header box (where selAlt + VS are shown)
+    const HEAD_H   = Math.round(26 * pfdFontScale);
     const altX     = W - tapW - vsiW;
-    const altRight = W - vsiW;                  // ALT tape right edge (top half)
-    const crhtRight = W;                        // CRHT display right edge (bottom half — full width incl. former VSI column)
+    const altRight = W - vsiW;                  // ALT tape right edge
 
     // — ALT tape header (top half, x in [altX, altRight]) —
     // Header is sub-divided: top half ≈ selAlt, bottom half ≈ selVS
@@ -220,15 +220,6 @@ function init(){
       }
       return;
     }
-    // — CRHT display header (bottom half, x in [altX, crhtRight]) —
-    // Tap for a free-form CRHT target entry (alternative to the
-    // 10 ft step CRHT +/- buttons in the ctrl-bar's first row).
-    if (py >= aiH && py <= aiH + HEAD_H && px >= altX && px <= crhtRight) {
-      const v = await uiPrompt('CRHT preselect (ft):', selCrht, { numeric: true });
-      if (v !== null) { const n = parseInt(v, 10); if (!isNaN(n) && n >= 0) selCrht = n; }
-      return;
-    }
-
     // — FMA row (centre AI column, top) — HDG / IAS preselect entry —
     if (px < aiX || px > aiX + aiW) return;
     const cellW  = Math.floor((aiW - FMA_MARGIN * 2 - FMA_GAP * 2) / 3);
@@ -2994,7 +2985,7 @@ function act(name, ...args) {
         UNI('spd',  '속도', [{v:'kt',t:'kt'},   {v:'kmh',t:'km/h'}], unitSpd) +
         UNI('temp', '온도', [{v:'C',t:'°C'},    {v:'F',t:'°F'}],     unitTemp) +
         `<div style="color:#4a5563;font-size:9px;margin:-1px 0 8px 2px;line-height:1.4;">` +
-          `PFD 계기(속도·고도·CRHT·VSI·BRG)와 지도·T-CUT·VNAV·INFO·경보에 모두 적용됩니다.<br>` +
+          `PFD 계기(속도·고도·VSI·BRG)와 지도·T-CUT·VNAV·INFO·경보에 모두 적용됩니다.<br>` +
           `고도를 m로 두면 수직속도(VSI)는 m/s로 표시됩니다.</div>` +
         `<div style="color:#556;font-size:9px;letter-spacing:1px;margin:2px 0 5px;">표시 / 경보</div>` +
         TOG('night', '야간 모드', '지도·화면 저휘도 + 붉은 딤', nightMode) +

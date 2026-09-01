@@ -33,10 +33,8 @@ function applyDelta(field, d){
       }
       break;
     case 'vs':
-      if (altHoldOn || crhtOn) {
+      if (altHoldOn) {
         // Hold mode active: VS ▲/▼ adjusts the convergence rate preselect.
-        // altHoldOn uses selVS directly; crhtOn uses fixed 500 fpm but
-        // pre-setting selVS here means it takes effect if ALT hold is engaged next.
         selVS = Math.max(50, Math.min(3000, selVS + d));
       } else {
         S.vs = Math.max(-3000, Math.min(3000, S.vs + d));
@@ -44,17 +42,9 @@ function applyDelta(field, d){
       break;
     case 'alt':
       // ALT +/- now adjusts the AFCS target (selAlt). Auto-engages ALT hold so
-      // S.alt converges to the new target at selVS rate. Disengages CRHT.
+      // S.alt converges to the new target at selVS rate.
       selAlt    = Math.max(0, Math.min(45000, selAlt + d));
       altHoldOn = true;
-      crhtOn    = false;
-      updateHoverBtns();
-      break;
-    case 'crht':
-      // CRHT +/- adjusts selCrht in fine 10 ft steps. Auto-engages CRHT hold.
-      selCrht   = Math.max(0, Math.min(45000, selCrht + d));
-      crhtOn    = true;
-      altHoldOn = false;
       updateHoverBtns();
       break;
     case 'wdir': windDir = normA(windDir + d); break;
@@ -99,7 +89,7 @@ function fcpSync(which) {
 
 // ── 키보드 매핑 (FCP 조작) ──
 // 1/2: IAS ∓1 · 3/4: HDG 좌/우 1° · 5/6: CRS 좌/우 1°
-// 7/8: VS ∓10fpm · 9/0: ALT ∓10ft · -/=: CRHT ∓10ft
+// 7/8: VS ∓10fpm · 9/0: ALT ∓10ft
 // 키를 누르고 있으면 OS 키 반복으로 연속 조작. 입력창 포커스 중에는 무시.
 const _keyMap = {
   '1': ['spd', -1],  '2': ['spd', 1],
@@ -107,7 +97,6 @@ const _keyMap = {
   '5': ['crs', -1],  '6': ['crs', 1],
   '7': ['vs', -10],  '8': ['vs', 10],
   '9': ['alt', -10], '0': ['alt', 10],
-  '-': ['crht', -10], '=': ['crht', 10],
 };
 // 물리 키보드 단축키(DeX·데스크톱에서 오작동 시 설정에서 끌 수 있음)
 let kbdShortcuts = true;
@@ -175,7 +164,6 @@ const btnMap={
   // 상위모드(AFCS) 해제 기능이 들어가면 파워(출력) 직접 제어로 바꾼다.
   'coll-up':['vs',100],'coll-dn':['vs',-100],
   'alt-dn':['alt',-100],'alt-up':['alt',100],
-  'crht-dn':['crht',-10],'crht-up':['crht',10],
   'wdir-dn':['wdir',-5],'wdir-up':['wdir',5],
   'wspd-dn':['wspd',-1],'wspd-up':['wspd',1],
 };
@@ -377,7 +365,7 @@ function simStep(ts){
         S.lat += gsN * sc;
         S.lon += gsE * sc / Math.cos(S.lat * D2R);
         // Altitude update — hold modes override manual VS while engaged
-        // G/S 를 잡고 있으면 고도는 강하선이 정한다(ALT·CRHT 보다 앞선다).
+        // G/S 를 잡고 있으면 고도는 강하선이 정한다(ALT 유지보다 앞선다).
         try { gsCaptureCheck(); } catch(e) { _swallow(e); }
         const _gs = gsOn ? gsDeviation() : null;
         if (_gs) {
@@ -402,15 +390,6 @@ function simStep(ts){
             const step = Math.sign(diff) * Math.min(Math.abs(diff), rate / 60 * dt);
             S.alt = Math.max(0, Math.min(45000, S.alt + step));
             S.vs  = Math.sign(diff) * rate;
-          }
-        } else if (crhtOn) {
-          // CRHT hold: always 500 fpm — rate is NOT user-configurable.
-          const diff = selCrht - S.alt;
-          if (Math.abs(diff) < 0.5) { S.alt = selCrht; S.vs = 0; }
-          else {
-            const step = Math.sign(diff) * Math.min(Math.abs(diff), 500 / 60 * dt);
-            S.alt = Math.max(0, Math.min(45000, S.alt + step));
-            S.vs  = Math.sign(diff) * 500;
           }
         } else if (S.vs !== 0) {
           S.alt = Math.max(0, Math.min(45000, S.alt + S.vs / 60 * dt));
@@ -567,6 +546,8 @@ function simStep(ts){
       }
     }
     drawPFD();
+    // 계기 옆 글자판(조작부 맨 윗줄) — 값이 바뀔 때만 DOM 을 건드린다
+    try { updatePfdInfo(); } catch(e) { _swallow(e); }
   }
   } catch(e) {
     // 한 프레임의 예외로 rAF 체인이 끊겨 PFD가 검게 멈추는 것을 방지
