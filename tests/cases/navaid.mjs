@@ -259,16 +259,19 @@ export async function run(page, t) {
     // 항법용 조작부는 그대로 눌러 쓸 수 있어야 한다(줄이느라 없애지 않았는가)
     const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'nav-fms', 'rnp-1', 'susp-btn']
       .filter(id => { const e = document.getElementById(id); return e && e.getBoundingClientRect().height > 0; });
-    return { h: Math.round(r.height), rows, alive: alive.length,
+    // '두 줄' 은 버튼 줄 이야기다. 맨 윗줄(#pfd-info)은 읽기만 하는 글자판이라
+    // 따로 뺀다 — 섞어 재면 글자 크기를 바꿀 때마다 이 검사가 흔들린다.
+    const infoH = document.getElementById('pfd-info').getBoundingClientRect().height;
+    return { h: Math.round(r.height - infoH), rows, alive: alive.length,
              usable: Math.round(pw.height - r.height), pfdH: Math.round(pw.height) };
   });
   t.ok(bar.rows >= 1 && bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
-  t.ok(bar.h > 20 && bar.h <= 90, `조작부 높이가 90px 아래다 (${bar.h}px)`);
+  t.ok(bar.h > 20 && bar.h <= 90, `버튼 줄 높이가 90px 아래다 (${bar.h}px)`);
   t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·FMS·RNP·SUSP)');
-  // 조작부 맨 윗줄(#pfd-info)이 계기 옆 글자판을 대신 짊어진다. 그 몫까지
-  // 합쳐도 계기가 패널의 대부분을 쓴다 — 캔버스에서 걷어낸 자리가 더 크다.
-  t.ok(bar.usable > bar.pfdH * 0.85,
-    `계기가 패널의 85% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
+  // 조작부 맨 윗줄(#pfd-info)이 계기 옆 글자판을 대신 짊어진다. NAV 소스 줄은
+  // 비행 중 가장 자주 읽는 값이라 일부러 크게 뒀고(폰에서는 세 줄), 그만큼 자리를 쓴다.
+  t.ok(bar.usable > bar.pfdH * 0.75,
+    `계기가 패널의 75% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
 
   // ── ⑦ 폰에서 계기 글씨가 커지는가 ────────────────────────────
   // 글꼴 지정이 예순 곳이 넘어 한자리에서 가로채 배율을 곱한다. 배율만 확인하면
@@ -327,8 +330,10 @@ export async function run(page, t) {
   const info = await phone.evaluate(() => {
     const air = document.getElementById('pi-air');
     const nav = document.getElementById('pi-nav');
+    const px = el => parseFloat(getComputedStyle(el).fontSize);
     return { air: (air.textContent || ''), nav: (nav.textContent || ''),
              srcCount: nav.querySelectorAll('.pi-src').length,
+             airPx: px(air.querySelector('b')), navPx: px(nav.querySelector('.pi-id')),
              h: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height) };
   });
   for (const k of ['TAS', 'GS', 'OAT', 'ISA']) {
@@ -337,7 +342,11 @@ export async function run(page, t) {
   t.eq(info.srcCount, 3, 'NAV 소스 세 가지(FMS·NAV1·NAV2)가 모두 있다');
   t.ok(/FMS/.test(info.nav) && /NAV1/.test(info.nav) && /NAV2/.test(info.nav),
     '세 소스의 이름이 다 보인다');
-  t.ok(info.h > 10 && info.h < 60, `글자판이 두 줄 안이다 (${info.h}px)`);
+  t.ok(info.h > 10 && info.h < 140, `글자판이 지나치게 자라지 않았다 (${info.h}px)`);
+  // NAV 소스는 어디로·어느 방위·몇 마일을 읽는 줄이다. 나머지 글자의 두 배로
+  // 두기로 했다 — 작으면 비행 중에 못 읽는다.
+  t.ok(info.navPx >= info.airPx * 1.8,
+    `NAV 소스 글자가 나머지의 두 배쯤이다 (${info.navPx}px vs ${info.airPx}px)`);
 
   // ── ⑩ CRHT 가 없어졌는가 · 갈색이 줄었는가 ───────────────────
   const crht = await phone.evaluate(() => {

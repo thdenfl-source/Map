@@ -45,21 +45,17 @@ export async function run(page, t) {
   t.ok(far.dme - far.horiz < 0.02 && far.dme > far.horiz,
     `멀리서는 수평거리와 사실상 같다 (차이 ${((far.dme - far.horiz) * 1852).toFixed(0)}m)`);
 
-  // ── PFD 우측 NAV1 줄에 실제로 그 값이 찍히는가 ──
-  // 캔버스라 글자를 읽을 수 없으니 fillText 를 잠깐 엿본다.
-  const drawn = await page.evaluate(([SEL]) => {
+  // ── PFD NAV1 줄에 실제로 그 값이 찍히는가 ──
+  // 이 줄은 캔버스가 아니라 조작부 맨 윗줄(#pfd-info)의 HTML 이다. 글자를
+  // 그대로 읽으면 되므로 fillText 를 엿보던 것을 걷었다.
+  const nmTxt = await page.evaluate(([SEL]) => {
     setNavRadio('NAV1', '115.5', 'SEL');
     navSrc = 'NAV1'; applyNavRadioToPfd();
     S.alt = 6000; S.lat = SEL[0]; S.lon = SEL[1];
     S.awp = -1;                                  // FMS 줄은 '----'
-    const proto = CanvasRenderingContext2D.prototype;
-    const orig = proto.fillText;
-    const seen = [];
-    proto.fillText = function (txt, ...a) { seen.push(String(txt)); return orig.call(this, txt, ...a); };
-    try { drawPFD(); } finally { proto.fillText = orig; }
-    return seen;
+    updatePfdInfo();
+    return [...document.querySelectorAll('#pi-nav .pi-dst')].map(e => e.textContent.trim());
   }, [SEL]);
-  const nmTxt = drawn.filter(s => /NM$/.test(s.trim())).map(s => s.trim());
   t.ok(nmTxt.includes('1.0 NM'),
     `PFD NAV1 줄이 1.0 NM 을 보여 준다 (${nmTxt.join(' / ') || '없음'})`);
   t.ok(!nmTxt.includes('0.0 NM'),
