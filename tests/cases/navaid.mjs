@@ -235,22 +235,32 @@ export async function run(page, t) {
   // ── ⑥ 폰에서 계기가 눌리지 않는가 ────────────────────────────
   // PFD 는 (패널높이 − 조작부높이) 안에 그려진다. 조작부가 여러 줄로 쌓이면
   // 그만큼 계기가 작아진다 — 폰에서는 두 줄 안으로 접혀야 한다.
+  // 앞에서 CDU 탭으로 옮겨 놨다. PFD 가 숨어 있으면 잰 값이 전부 0 이 되고,
+  // 그러면 '두 줄 안이다' 같은 검사가 0 ≤ 2 로 공허하게 통과한다.
+  await phone.evaluate(() => navGo('pfd'));
+  await phone.waitForTimeout(400);
   const bar = await phone.evaluate(() => {
     const b = document.querySelector('.ctrl-bar');
     const r = b.getBoundingClientRect();
-    // 눈에 보이는 줄 수 = 무리들의 서로 다른 윗변 개수
-    const tops = new Set();
+    // 눈에 보이는 줄 수 — 무리들의 세로 중심을 모아 띄엄띄엄한 덩어리를 센다.
+    // 윗변으로 세면 안 된다: 가운데 정렬이라 같은 줄이어도 키가 다른 무리끼리
+    // 윗변이 몇 px 씩 어긋나, 한 줄이 여러 줄로 잡힌다.
+    const mids = [];
     b.querySelectorAll('.ctrl-group,.sw-group,.brg-tog-group,.nav-src-group,.susp-group')
-      .forEach(e => { const q = e.getBoundingClientRect(); if (q.height > 0) tops.add(Math.round(q.top)); });
+      .forEach(e => { const q = e.getBoundingClientRect(); if (q.height > 0) mids.push(q.top + q.height / 2); });
+    mids.sort((m, n) => m - n);
+    const rows = mids.length
+      ? 1 + mids.slice(1).filter((v, i) => v - mids[i] > 10).length
+      : 0;
     const pw = document.getElementById('pfd-wrap').getBoundingClientRect();
     // 항법용 조작부는 그대로 눌러 쓸 수 있어야 한다(줄이느라 없애지 않았는가)
     const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'nav-fms', 'rnp-1', 'susp-btn']
       .filter(id => { const e = document.getElementById(id); return e && e.getBoundingClientRect().height > 0; });
-    return { h: Math.round(r.height), rows: tops.size, alive: alive.length,
+    return { h: Math.round(r.height), rows, alive: alive.length,
              usable: Math.round(pw.height - r.height), pfdH: Math.round(pw.height) };
   });
-  t.ok(bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
-  t.ok(bar.h <= 90, `조작부 높이가 90px 아래다 (${bar.h}px)`);
+  t.ok(bar.rows >= 1 && bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
+  t.ok(bar.h > 20 && bar.h <= 90, `조작부 높이가 90px 아래다 (${bar.h}px)`);
   t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·FMS·RNP·SUSP)');
   t.ok(bar.usable > bar.pfdH * 0.9,
     `계기가 패널의 90% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
