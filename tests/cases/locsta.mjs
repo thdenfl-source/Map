@@ -210,13 +210,15 @@ export async function run(page, t) {
     S.lat = 38.0; S.lon = 128.6; S.alt = 3000; S.awp = -1;
     setNavRadio('NAV1', '109.30', null); setNavSrc('NAV1');
     updatePfdInfo();
+    // 줄 앞의 선택 버튼(.pi-sel)이 곧 그 줄의 이름이다
     const row = [...document.querySelectorAll('#pi-nav .pi-src')]
-      .find(e => (e.querySelector('i') || {}).textContent === 'NAV1');
+      .find(e => (e.querySelector('.pi-sel') || {}).textContent === 'NAV1');
     if (!row) return '';
     return [...row.children].map(e => e.textContent.trim()).join(' ').replace(/\s+/g, ' ').trim();
   });
-  t.ok(/^NAV1 IYAN\s+\d{3}°\s+[\d.]+ NM$/.test(pfd),
-    `PFD NAV1 줄에 로컬라이저 명칭·방위·거리가 나온다 (${pfd || '없음'})`);
+  // 이름 · 방위 · 래디얼(R###) · 거리 순이다
+  t.ok(/^NAV1 IYAN\s+\d{3}°\s+R\d{3}\s+[\d.]+ NM$/.test(pfd),
+    `PFD NAV1 줄에 명칭·방위·래디얼·거리가 나온다 (${pfd || '없음'})`);
 
   // ── CDU 주파수 입력창에 명칭이 뜨는가 ──
   // 종전에는 VOR 목록만 뒤져서 ILS 주파수를 넣으면 명칭 칸이 빈 채로 남았다.
