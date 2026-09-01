@@ -442,18 +442,12 @@ function addAppWps() {
   fpGo('LIST');
 }
 
-// ── 시작 안내 오버레이 ──
-// 안내 내용이 크게 바뀌면 이 버전을 올린다 → '다시 보지 않기'를 했어도 한 번 더 표시
-const HELP_VERSION = '3';
+// ── 사용 안내 ──
+// 켤 때 저절로 뜨지는 않는다. 보조 항법장치는 열자마자 위치가 보여야 하는 물건이라,
+// 첫 화면을 설명 창으로 가리지 않는다. 안내가 필요하면 CDU 설정 → '사용 안내 다시 보기'.
+// (종전에는 여기서 helpDismissed / HELP_VERSION 으로 '다시 보지 않기'를 관리했다.
+//  저절로 뜨지 않게 된 뒤로는 기억해 둘 것이 없어 함께 걷어냈다.)
 function closeHelp() {
-  if (document.getElementById('help-dontshow')?.checked) {
-    try { localStorage.setItem('helpDismissed', HELP_VERSION); } catch(e) { _swallow(e); }
-  }
   document.getElementById('help-overlay').style.display = 'none';
-}
-function showHelpOnLaunch() {
-  let dismissed = null;
-  try { dismissed = localStorage.getItem('helpDismissed'); } catch(e) { _swallow(e); }
-  if (dismissed !== HELP_VERSION) document.getElementById('help-overlay').style.display = 'flex';
 }
 

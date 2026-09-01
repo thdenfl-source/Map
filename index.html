@@ -1624,7 +1624,8 @@ body.night-mode::after {
   display: flex; justify-content: space-between; align-items: center;
   padding: 9px 14px; background: #101a28; border-top: 1px solid #24405e;
 }
-#help-foot label { color: #99a; font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#help-foot span { color: #99a; font-size: 11px; }
+#help-foot span b { color: #7fffb0; }
 #help-foot button {
   background: #14324f; border: 1px solid #4a90d9; color: #8ac6ff;
   font-size: 12px; font-weight: bold; padding: 7px 20px; border-radius: 5px; cursor: pointer;
@@ -2038,8 +2039,8 @@ body.phone-mode #map-full-btn { min-width: 54px; }
       ※ DeX·데스크톱에서 물리 키보드로 입력할 때 계기가 움직이면 <b>설정 → 키보드 단축키</b>를 끄십시오.</div>
     </div>
     <div id="help-foot">
-      <label><input type="checkbox" id="help-dontshow"> 다시 보지 않기</label>
-      <button data-act="closeHelp">시작하기</button>
+      <span>CDU 설정 → <b>사용 안내 다시 보기</b> 에서 언제든 다시 열 수 있습니다.</span>
+      <button data-act="closeHelp">닫기</button>
     </div>
   </div>
 </div>

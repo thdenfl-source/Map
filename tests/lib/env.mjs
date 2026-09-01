@@ -26,7 +26,7 @@ export function buildEnv() {
   return { dir, file, url: 'file://' + file };
 }
 
-// 페이지를 띄우고 도움말 오버레이를 닫은 상태로 반환
+// 페이지를 띄워 반환한다(안내 창은 켤 때 저절로 뜨지 않는다 — 닫을 것이 없다)
 export async function openApp(browser, { cdu = false } = {}) {
   const { url } = buildEnv();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
@@ -44,7 +44,6 @@ export async function openApp(browser, { cdu = false } = {}) {
   await page.waitForFunction(
     () => typeof S === 'object' && S !== null && typeof distance === 'function' && typeof leafMap === 'object',
     null, { timeout: 20000 });
-  await page.getByText('시작하기').click().catch(() => {});
   await page.waitForTimeout(200);
   if (cdu) { await page.evaluate(() => selectPanel('right', 'cdu')); await page.waitForTimeout(300); }
   return page;
