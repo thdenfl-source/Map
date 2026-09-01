@@ -38,7 +38,7 @@ function updateNav(){
 // ══════════════════════════════════════════════════════
 // FLIGHT PLAN STATE MACHINE
 // ══════════════════════════════════════════════════════
-let fpMode = 'LIST'; // 'LIST'|'ADD'|'IDENT'|'LAT'|'LON'|'IFR'|'SIDNEW'|'HOLD'|'WPT'
+let fpMode = 'LIST'; // 'LIST'|'ADD'|'IDENT'|'LAT'|'LON'|'IFR'|'SIDNEW'|'HOLD'|'WPT'|'GEO'
 let fpWptIdx  = -1;    // 상세 화면을 연 웨이포인트
 let fpEditIdx = -1;    // 이름·좌표를 '새로 추가' 가 아니라 '고치는' 대상
 let fpNumFld  = null;  // 상세 화면의 숫자 입력 대상 ('VALT' | 'VOFS')
@@ -82,6 +82,7 @@ function fpRender() {
     case 'RB':    fpRenderRadial(area, title, footer); break;
     case 'RR':    fpRenderRadial(area, title, footer); break;
     case 'REFPICK': fpRenderRefPick(area, title, footer); break;
+    case 'GEO':   fpRenderGeo(area, title, footer);   break;
   }
 }
 
@@ -859,6 +860,9 @@ function fpRenderAdd(area, title, footer) {
       <div class="fp-input-type-btn" data-act="fpGo" data-arg='["IFR"]'>
         <span style="font-size:16px;">✈</span><span>IFR 절차</span>
       </div>
+      <div class="fp-input-type-btn fp-cyan" data-act="fpGo" data-arg='["GEO"]'>
+        <span style="font-size:16px;">🔎</span><span>주소 검색</span>
+      </div>
     </div>
     <div style="color:#87ceeb;font-size:9px;font-weight:bold;letter-spacing:1px;margin:10px 0 5px;">국내 공항</div>
     <div class="fp-ap-grid">${apBtns}</div>`;
@@ -1192,3 +1196,89 @@ function clearFP(){
   updateWpMarkers();fpRender();updateNav();
 }
 
+
+// ══════════════════════════════════════════════════════
+// ADD WAYPOINT — 주소·지명으로 찾기
+// ══════════════════════════════════════════════════════
+// 지도의 ＋ → 주소 검색과 같은 일을 CDU 안에서 한다. 찾는 방법(geoSearch)은
+// 한 벌만 두고 화면만 둘이다 — 지도를 보며 찍을 때가 있고, 비행계획을 짜며
+// 이름으로 넣을 때가 있다.
+//
+// 화면이 다시 그려져도 입력한 말과 찾은 결과가 날아가지 않게 여기 담아 둔다
+// (CDU 는 fpRender() 로 통째로 다시 그린다).
+let fpGeoQ = '';
+let fpGeoResults = [];
+let fpGeoMsg = '주소나 지명을 넣고 찾으십시오.';
+let fpGeoBusy = false;
+
+function fpRenderGeo(area, title, footer) {
+  title.textContent = 'ADDRESS / PLACE';
+  const list = fpGeoResults.length
+    ? fpGeoResults.map((r, i) =>
+        `<div class="geo-item" data-act="fpGeoPick" data-arg='[${i}]'>` +
+        `<b>${_geoEsc(r.name)}</b><span>${_geoEsc(r.detail)}</span>` +
+        `<span style="color:#4a7a8a;">${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}</span></div>`).join('')
+    : `<div style="color:#8a97a5;font-size:9px;line-height:1.5;">${_geoEsc(fpGeoMsg)}</div>`;
+  area.innerHTML = `
+    <div style="display:flex;gap:4px;margin-bottom:6px;">
+      <input id="fp-geo-q" type="search" value="${_geoEsc(fpGeoQ)}"
+             placeholder="예: 서울시청 · 강원 양양군 손양면" autocomplete="off"
+             style="flex:1;min-width:0;background:#0a1016;color:#dfe7ee;border:1px solid #2a5a7a;
+                    border-radius:4px;padding:6px 8px;font-size:12px;font-family:inherit;">
+      <button class="fp-ifr-add" data-act="fpGeoSearch"
+              style="flex:0 0 auto;margin:0;padding:6px 10px;">${fpGeoBusy ? '…' : '검색'}</button>
+    </div>
+    <div id="fp-geo-list" style="display:flex;flex-direction:column;gap:4px;
+         max-height:330px;overflow-y:auto;-webkit-overflow-scrolling:touch;">${list}</div>
+    <div style="color:#5a7484;font-size:8px;line-height:1.45;margin-top:6px;">
+      고르면 그 자리에 웨이포인트가 들어가고 상세 카드가 열립니다.
+      좌표(37.5665, 126.9780)를 그대로 넣어도 됩니다.<br>
+      지명 검색은 OpenStreetMap(Nominatim) 자료이며 <b>항법용이 아닙니다</b>.
+    </div>`;
+  footer.innerHTML = `
+    <div class="fp-nav-btn" data-act="fpGo" data-arg='["ADD"]'><span>↩</span>Cancel</div>
+    <div class="fp-nav-btn" data-act="fpGo" data-arg='["LIST"]'><span>📋</span>FP</div>
+    <div class="fp-nav-btn fp-nav-enter" data-act="fpGeoSearch"><span>🔎</span>Search</div>`;
+  // 입력한 말을 붙들어 둔다 — 검색 결과가 오면 화면을 다시 그리기 때문이다.
+  // 엔터로도 찾을 수 있게 한다(키패드의 '이동' 을 누르는 손이 자연스럽다).
+  const q = document.getElementById('fp-geo-q');
+  if (q) {
+    q.addEventListener('input', () => { fpGeoQ = q.value; });
+    q.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); fpGeoSearch(); }
+    });
+  }
+}
+
+async function fpGeoSearch() {
+  // 화면이 다시 그려지기 전이면 입력창에서 곧장 읽는다(input 이벤트를 놓쳤을 때 대비)
+  const el = document.getElementById('fp-geo-q');
+  if (el) fpGeoQ = el.value;
+  if (!String(fpGeoQ).trim()) {
+    fpGeoResults = []; fpGeoMsg = '찾을 주소나 지명을 넣으십시오.';
+    fpRender(); return;
+  }
+  fpGeoBusy = true; fpGeoResults = []; fpGeoMsg = '찾는 중…';
+  fpRender();
+  try {
+    fpGeoResults = await geoSearch(fpGeoQ);
+    if (!fpGeoResults.length) fpGeoMsg = '찾은 곳이 없습니다. 다른 말로 찾아보십시오.';
+  } catch (e) {
+    fpGeoResults = [];
+    fpGeoMsg = '찾지 못했습니다 — 연결을 확인하십시오(오프라인에서는 검색이 안 됩니다).';
+  }
+  fpGeoBusy = false;
+  fpRender();
+}
+
+// 고르면 그 자리에 웨이포인트를 넣고 상세 카드를 연다.
+// 지도 쪽 geoPick 과 이름 규칙(AD1·AD2…)을 맞춘다 — 어디서 넣었든 같은 이름이어야
+// 비행계획에서 헷갈리지 않는다.
+function fpGeoPick(i) {
+  const r = fpGeoResults[i];
+  if (!r) return;
+  const n = S.wps.filter(w => /^AD\d*$/.test(w.ident)).length + 1;
+  pushWP({ ident: 'AD' + n, name: r.name, lat: r.lat, lon: r.lon });
+  try { leafMap.setView([r.lat, r.lon], Math.max(leafMap.getZoom(), 12)); } catch (e) { _swallow(e); }
+  fpWptOpen(S.wps.length - 1);
+}

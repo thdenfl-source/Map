@@ -145,8 +145,76 @@ export async function run(page, t) {
   t.ok(esc.txt.includes('<img'), '글자로만 보여 준다');
   t.eq(esc.items, 1, "따옴표가 든 주소여도 목록이 깨지지 않는다");
 
+  // ── CDU 의 ADD WAYPOINT 에서도 같은 검색을 쓴다 ──────────────
+  // 지도를 보며 찍을 때가 있고, 비행계획을 짜며 이름으로 넣을 때가 있다.
+  // 찾는 방법(geoSearch)은 한 벌이고 화면만 둘이다.
+  const cdu = await page.evaluate(async () => {
+    // 앞 단계가 넣어 둔 웨이포인트와 검색 캐시를 비운다 — 캐시가 남아 있으면
+    // fetch 를 부르지 않아 "같은 검색을 쓰는가" 를 확인할 수 없다.
+    S.wps = []; S.awp = -1; S.fwp = -1; _geoCache.clear();
+    openFlightPlan(); fpGo('ADD');
+    const btns = [...document.querySelectorAll('#fp-content-area [data-act="fpGo"]')]
+      .map(e => e.textContent.trim());
+    fpGo('GEO');
+    const title = document.getElementById('fp-mode-title').textContent;
+    const hasInput = !!document.getElementById('fp-geo-q');
+
+    const orig = window.fetch;
+    let called = '';
+    window.fetch = url => {
+      called = String(url);
+      return Promise.resolve({ ok: true, json: async () => [
+        { name: '서울시청', display_name: '서울특별시 중구 세종대로 110', lat: '37.5663', lon: '126.9779' },
+        { name: '양양비행장', display_name: '강원 양양군 손양면', lat: '38.0613', lon: '128.6690' },
+      ] });
+    };
+    const q = document.getElementById('fp-geo-q');
+    q.value = '서울시청'; q.dispatchEvent(new Event('input', { bubbles: true }));
+    await fpGeoSearch();
+    window.fetch = orig;
+
+    const items = [...document.querySelectorAll('#fp-geo-list .geo-item')]
+      .map(e => e.querySelector('b').textContent);
+    const before = S.wps.length;
+    fpGeoPick(0);
+    const w = S.wps[S.wps.length - 1];
+    return { btns, title, hasInput, called, items,
+             added: S.wps.length - before, ident: w.ident, name: w.name,
+             lat: +w.lat.toFixed(4), lon: +w.lon.toFixed(4),
+             mode: fpMode, wptTitle: document.getElementById('fp-mode-title').textContent,
+             kept: fpGeoQ };
+  });
+  t.ok(cdu.btns.some(b => b.includes('주소 검색')),
+    `ADD WAYPOINT 에 주소 검색이 있다 (${cdu.btns.join(' / ')})`);
+  t.eq(cdu.title, 'ADDRESS / PLACE', `누르면 검색 화면이 열린다 (${cdu.title})`);
+  t.eq(cdu.hasInput, true, '입력창이 있다');
+  t.ok(cdu.called.includes('nominatim') || cdu.called.includes('q='),
+    '지도 쪽과 같은 검색을 부른다');
+  t.eq(cdu.items.join(','), '서울시청,양양비행장', `찾은 곳을 목록으로 그린다 (${cdu.items.join(',')})`);
+  t.eq(cdu.kept, '서울시청', '다시 그려져도 입력한 말이 남는다');
+  t.eq(cdu.added, 1, '고르면 웨이포인트가 하나 들어간다');
+  t.eq(cdu.ident, 'AD1', `이름 규칙이 지도 쪽과 같다 (${cdu.ident})`);
+  t.eq(cdu.name, '서울시청', '찾은 이름이 함께 들어간다');
+  t.ok(Math.abs(cdu.lat - 37.5663) < 1e-4 && Math.abs(cdu.lon - 126.9779) < 1e-4,
+    `좌표가 그대로다 (${cdu.lat}, ${cdu.lon})`);
+  t.eq(cdu.mode, 'WPT', '넣자마자 상세 카드가 열린다');
+  t.ok(cdu.wptTitle.includes('AD1'), `그 카드가 방금 넣은 지점이다 (${cdu.wptTitle})`);
+
+  // 빈 칸으로 찾으면 조르지 않고 안내만 한다
+  const empty = await page.evaluate(async () => {
+    fpGo('GEO');
+    const q = document.getElementById('fp-geo-q');
+    q.value = '   '; q.dispatchEvent(new Event('input', { bubbles: true }));
+    await fpGeoSearch();
+    return { items: document.querySelectorAll('#fp-geo-list .geo-item').length,
+             msg: document.getElementById('fp-geo-list').textContent.trim() };
+  });
+  t.eq(empty.items, 0, '빈 칸으로 찾으면 목록이 비어 있다');
+  t.ok(empty.msg.includes('넣으십시오'), `무엇을 해야 하는지 알려 준다 (${empty.msg.slice(0, 30)})`);
+
   // 뒷정리
   await page.evaluate(() => {
+    fpGeoQ = ''; fpGeoResults = []; fpMode = 'LIST';
     S.wps = []; S.awp = -1; S.fwp = -1;
     _geoResults = []; _geoCache.clear();
     document.getElementById('geo-q').value = '';
