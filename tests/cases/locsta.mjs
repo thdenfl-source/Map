@@ -204,16 +204,16 @@ export async function run(page, t) {
   t.eq(dup.gimp, 'IOFR', `김포에서 108.70 은 IOFR (${dup.gimp})`);
   t.eq(dup.daeg, 'ITAG', `대구에서 같은 108.70 은 ITAG (${dup.daeg})`);
 
-  // ── PFD 우측 NAV 줄에 명칭·방위·거리가 나오는가 ──
-  // 캔버스라 글자를 읽을 수 없으니 fillText 를 엿본다.
+  // ── PFD NAV 줄에 명칭·방위·거리가 나오는가 ──
+  // 이 줄은 캔버스가 아니라 조작부 맨 윗줄(#pfd-info)의 HTML 이다.
   const pfd = await page.evaluate(() => {
     S.lat = 38.0; S.lon = 128.6; S.alt = 3000; S.awp = -1;
     setNavRadio('NAV1', '109.30', null); setNavSrc('NAV1');
-    const proto = CanvasRenderingContext2D.prototype, orig = proto.fillText, seen = [];
-    proto.fillText = function (x, ...a) { seen.push(String(x)); return orig.call(this, x, ...a); };
-    try { drawPFD(); } finally { proto.fillText = orig; }
-    const i = seen.indexOf('NAV1 ');
-    return i < 0 ? '' : seen.slice(i, i + 4).join('').replace(/\s+/g, ' ').trim();
+    updatePfdInfo();
+    const row = [...document.querySelectorAll('#pi-nav .pi-src')]
+      .find(e => (e.querySelector('i') || {}).textContent === 'NAV1');
+    if (!row) return '';
+    return [...row.children].map(e => e.textContent.trim()).join(' ').replace(/\s+/g, ' ').trim();
   });
   t.ok(/^NAV1 IYAN\s+\d{3}°\s+[\d.]+ NM$/.test(pfd),
     `PFD NAV1 줄에 로컬라이저 명칭·방위·거리가 나온다 (${pfd || '없음'})`);
