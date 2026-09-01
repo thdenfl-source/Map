@@ -75,6 +75,20 @@ export async function run(page, t) {
   t.eq(tap.saved, 'cdu', '마지막으로 본 창을 기억한다');
   t.ok(tap.cduW > 0, `CDU 가 실제로 자리를 차지한다 (${tap.cduW}px)`);
 
+  // 켤 때 설명 창이 첫 화면을 가리지 않는다 — 열자마자 위치가 보여야 한다.
+  // 안내 자체는 CDU 설정에서 열 수 있으므로, 자동으로 뜨지 않는지만 본다.
+  const help = await phone.evaluate(() => {
+    const ov = document.getElementById('help-overlay');
+    const shown = getComputedStyle(ov).display !== 'none';
+    CDU_ACT.showHelpOverlay();                           // 설정에서 부르는 길
+    const opened = getComputedStyle(ov).display !== 'none';
+    closeHelp();
+    return { shown, opened, closed: getComputedStyle(ov).display === 'none' };
+  });
+  t.eq(help.shown, false, '켜자마자 설명 창이 뜨지 않는다');
+  t.eq(help.opened, true, '설정에서 부르면 그때는 열린다');
+  t.eq(help.closed, true, '닫기로 닫힌다');
+
   // ── ② 조종 조작부가 화면에 없다 ────────────────────────────────
   // getBoundingClientRect 로 본다 — display:none 이면 0×0 이다.
   const hidden = await phone.evaluate(() => {
