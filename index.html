@@ -1761,16 +1761,34 @@ body.phone-mode #map-full-btn { min-width: 54px; }
 }
 .pi-sel:active { background: #1e2430; }
 .pi-sel.on { background: #0e2a16; border-color: #00cc44; color: #4dffa0; }
+/* #pi-air 는 값들을 담기만 한다 — 자기 상자를 만들지 않고 AHRS 버튼과 같은
+   줄에 늘어서게 한다(그래야 줄바꿈도 네 값이 함께 움직인다) */
+#pi-air { display: contents; }
+/* AHRS — 자세 기준을 잡는 버튼. 비행 중 한 손으로 누르는 자리라 크게 둔다 */
+.pi-ahrs {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 20px; font-weight: bold; letter-spacing: 1px;
+  min-width: 84px; padding: 5px 12px; border-radius: 5px; cursor: pointer;
+  background: #14161c; border: 1px solid #4a5464; color: #9fb0c4;
+  touch-action: manipulation; white-space: nowrap; align-self: center;
+}
+.pi-ahrs:active { background: #1e2430; }
+.pi-ahrs.on {
+  background: #0e2a16; border-color: #00cc44; color: #4dffa0;
+  box-shadow: 0 0 8px rgba(0,204,68,0.4);
+}
 .pi-src.dim .pi-id, .pi-src.dim .pi-brg, .pi-src.dim .pi-dst { color: #666; }
 body.phone-mode #pfd-info { padding: 1px 3px 2px; }
-body.phone-mode .pi-row { gap: 1px 7px; }
+body.phone-mode .pi-row { gap: 1px 4px; }
 body.phone-mode .pi b { font-size: 20px; }
-body.phone-mode .pi i { font-size: 16px; }
+body.phone-mode .pi i { font-size: 13px; }
 body.phone-mode .pi-src i { font-size: 16px; }
 body.phone-mode .pi-src .pi-id { font-size: 22px; }
 body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-rad,
 body.phone-mode .pi-src .pi-dst { font-size: 20px; }
 body.phone-mode .pi-sel { font-size: 14px; min-width: 50px; padding: 3px 6px; }
+body.phone-mode .pi-ahrs { font-size: 17px; min-width: 0; padding: 4px 8px; letter-spacing: 0.5px; }
+body.phone-mode .pi { gap: 2px; }
 
 /* ── 폰: PFD 아래 조작부를 낮춘다 ──────────────────────────────────
    PFD 는 (패널높이 − .ctrl-bar 높이) 안에 그려진다(03-pfd.js drawPFD).
@@ -2227,7 +2245,15 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
            나침반을 키울 수 있고 아래쪽 갈색도 줄어든다. 값 갱신은
            03-pfd.js 의 updatePfdInfo(). -->
       <div id="pfd-info">
-        <div class="pi-row" id="pi-air"></div>
+        <!-- AHRS 는 TAS 왼쪽에 세운다. 자세를 잡는 버튼이라 계기를 보는 눈이
+             머무는 자리에 있어야 한다 — 조작부 구석에 있으면 손이 안 간다.
+             #pi-air 는 updatePfdInfo() 가 innerHTML 로 갈아 끼우므로 버튼을
+             그 안에 두면 지워진다. 밖에 두고 display:contents 로 같은 줄에 세운다. -->
+        <div class="pi-row">
+          <button class="pi-ahrs" id="ahrs-btn" data-act="toggleAhrs"
+                  title="지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다">AHRS</button>
+          <span id="pi-air"></span>
+        </div>
         <div class="pi-row" id="pi-nav"></div>
       </div>
 
@@ -2314,8 +2340,6 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
         <div class="ctrl-group">
           <div class="ctrl-lbl">AP</div>
           <div style="display:flex;gap:4px;align-items:center;">
-            <button class="obs-btn" id="ahrs-btn" data-act="toggleAhrs"
-                    title="지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다">AHRS</button>
             <button class="obs-btn" id="obs-btn" data-act="toggleObs">OBS</button>
             <button class="obs-btn sim-only" id="nav-ap-btn" data-act="toggleNavAp">NAV</button>
             <button class="obs-btn sim-only" id="icpt-btn" data-act="cycleIntercept"
