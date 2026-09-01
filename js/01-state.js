@@ -1129,8 +1129,9 @@ function dmeDist(lat, lon, stnElevFt) {
 
 // ── 외기온도(OAT) ────────────────────────────────────────────────────
 // 값을 두 곳에서 받는다.
-//   ① 기상청(KMA) 격자 예보 — 지금 이 자리의 기온. 09-cdu.js 의 _kmaOatTick()
+//   ① 공개 기상자료의 격자 기온 — 지금 이 자리의 기온. 09-cdu.js 의 _oatTick()
 //      이 위치가 바뀌거나 10분이 지나면 받아 둔다. 격자 표고도 함께 온다.
+//      기상청 창구를 먼저 두드리고, 막히면 다른 모델에서라도 받아 온다(src).
 //   ② 가장 가까운 공항의 METAR — 실측이지만 최대 60NM 떨어진 자리의 값이다.
 // 둘 다 없으면 null 이다. 종전에는 표준대기 15°C 가 기본값으로 앉아 있어,
 // 아무 자료가 없을 때도 OAT 자리에 그럴듯한 숫자가 떴다 — 측정하지 않은 것을
@@ -1140,7 +1141,7 @@ function dmeDist(lat, lon, stnElevFt) {
 // 먼저 돌아 "_oatSurfaceC is not defined" 예외가 한 번 나고 OAT 가 빈 채로 그려졌다.
 window._oatSurfaceC  = window._oatSurfaceC ?? 15;   // METAR 지면 온도(°C)
 window._oatSurfaceAt = window._oatSurfaceAt ?? 0;   // 그 METAR 를 받은 시각(0=없음)
-window._oatKma       = window._oatKma ?? null;      // { c, elevFt, lat, lon, at }
+window._oatKma       = window._oatKma ?? null;      // { c, elevFt, lat, lon, at, src, name }
 
 // 표준 감률 — 대류권에서 1000ft 오를 때마다 약 1.98°C 내려간다
 const OAT_LAPSE_C_PER_1000FT = 1.98;
@@ -1153,7 +1154,8 @@ function oatNow() {
   const k = window._oatKma;
   if (k && now - k.at < OAT_MAX_AGE_MS) {
     // 격자 표고에서 잰 기온이므로 거기서부터 지금 고도까지만 감률을 먹인다
-    return { c: k.c - OAT_LAPSE_C_PER_1000FT * (S.alt - k.elevFt) / 1000, src: 'KMA' };
+    return { c: k.c - OAT_LAPSE_C_PER_1000FT * (S.alt - k.elevFt) / 1000,
+             src: k.src || 'KMA' };
   }
   if (window._oatSurfaceAt && now - window._oatSurfaceAt < OAT_MAX_AGE_MS) {
     return { c: _oatSurfaceC - OAT_LAPSE_C_PER_1000FT * S.alt / 1000, src: 'METAR' };

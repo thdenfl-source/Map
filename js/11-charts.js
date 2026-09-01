@@ -2147,6 +2147,7 @@ appRegister({
   fpType,
   hardReload,
   lockScreen,
+  oatInfo,
   openAimPackage,
   openShipPanel,
   resetSim,
