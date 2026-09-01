@@ -232,5 +232,47 @@ export async function run(page, t) {
   t.ok(inst.climb.vs < 98, `한 번에 튀지 않게 눌러 읽는다 (${inst.climb.vs} < 98fpm)`);
   t.eq(inst.climb.pit, 0, '상승 중에도 인공수평선은 수평이다');
 
+  // ── ⑥ 폰에서 계기가 눌리지 않는가 ────────────────────────────
+  // PFD 는 (패널높이 − 조작부높이) 안에 그려진다. 조작부가 여러 줄로 쌓이면
+  // 그만큼 계기가 작아진다 — 폰에서는 두 줄 안으로 접혀야 한다.
+  const bar = await phone.evaluate(() => {
+    const b = document.querySelector('.ctrl-bar');
+    const r = b.getBoundingClientRect();
+    // 눈에 보이는 줄 수 = 무리들의 서로 다른 윗변 개수
+    const tops = new Set();
+    b.querySelectorAll('.ctrl-group,.sw-group,.brg-tog-group,.nav-src-group,.susp-group')
+      .forEach(e => { const q = e.getBoundingClientRect(); if (q.height > 0) tops.add(Math.round(q.top)); });
+    const pw = document.getElementById('pfd-wrap').getBoundingClientRect();
+    // 항법용 조작부는 그대로 눌러 쓸 수 있어야 한다(줄이느라 없애지 않았는가)
+    const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'nav-fms', 'rnp-1', 'susp-btn']
+      .filter(id => { const e = document.getElementById(id); return e && e.getBoundingClientRect().height > 0; });
+    return { h: Math.round(r.height), rows: tops.size, alive: alive.length,
+             usable: Math.round(pw.height - r.height), pfdH: Math.round(pw.height) };
+  });
+  t.ok(bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
+  t.ok(bar.h <= 90, `조작부 높이가 90px 아래다 (${bar.h}px)`);
+  t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·FMS·RNP·SUSP)');
+  t.ok(bar.usable > bar.pfdH * 0.9,
+    `계기가 패널의 90% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
+
+  // ── ⑦ 폰에서 계기 글씨가 커지는가 ────────────────────────────
+  // 글꼴 지정이 예순 곳이 넘어 한자리에서 가로채 배율을 곱한다. 배율만 확인하면
+  // 되는 게 아니라, 그 배율이 실제로 캔버스 문맥에 걸리는지까지 본다.
+  const font = await phone.evaluate(() => {
+    const before = pfdFontScale;
+    const cv = document.getElementById('pfd').getContext('2d');
+    setPfdFontScale(1.25);
+    cv.font = 'bold 10px Helvetica Neue, Arial, sans-serif';
+    const scaled = cv.font;
+    setPfdFontScale(1);
+    cv.font = 'bold 10px Helvetica Neue, Arial, sans-serif';
+    const plain = cv.font;
+    setPfdFontScale(before);
+    return { before, scaled, plain };
+  });
+  t.ok(font.before > 1, `폰에서는 계기 글씨 배율이 걸린다 (×${font.before})`);
+  t.ok(/12\.5px/.test(font.scaled), `배율이 실제 글꼴에 곱해진다 (${font.scaled})`);
+  t.ok(/10px/.test(font.plain), `배율 1 이면 그대로다 (${font.plain})`);
+
   await pctx.close();
 }

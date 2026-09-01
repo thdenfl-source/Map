@@ -1687,6 +1687,63 @@ body.phone-mode #map-sim-bar .sim-btn {
   flex: 1 0 auto; min-width: 54px; min-height: 32px; font-size: 11px;
 }
 body.phone-mode #map-full-btn { min-width: 54px; }
+
+/* ── 폰: PFD 아래 조작부를 낮춘다 ──────────────────────────────────
+   PFD 는 (패널높이 − .ctrl-bar 높이) 안에 그려진다(03-pfd.js drawPFD).
+   조작부가 네 줄로 쌓이면 그만큼 계기가 눌린다. 폰에서는
+     · 세 개의 .ctrl-sub-row 칸막이를 없애 한 흐름으로 잇고(display:contents)
+     · 각 무리를 세로(이름표 위·버튼 아래)에서 가로로 눕히고
+     · 굳이 없어도 되는 이름표를 내린다
+   그러면 두 줄 안팎으로 접히고 높이가 절반 아래로 떨어진다. */
+body.phone-mode .ctrl-bar {
+  flex-direction: row; flex-wrap: wrap;
+  justify-content: center; align-items: center;
+  gap: 3px 5px; padding: 3px 4px;
+}
+body.phone-mode .ctrl-sub-row { display: contents; }
+/* 칸막이를 없애면 무리들이 마크업 순서대로 흘러 SUSP 가 홀로 셋째 줄에 남는다.
+   자주 만지는 것(코스·시계·OBS·SUSP)을 앞줄에, 한 번 정해 두는 것(BRG·NAV SRC·RNP)을
+   뒷줄에 오도록 순서를 다시 매긴다 — 그러면 두 줄에 맞아떨어진다. */
+body.phone-mode .ctrl-group    { order: 1; }   /* CRS · AP(OBS) */
+body.phone-mode .sw-group      { order: 2; }
+body.phone-mode .susp-group    { order: 3; }
+body.phone-mode .brg-tog-group { order: 4; }
+body.phone-mode .nav-src-group { order: 5; }
+body.phone-mode .ctrl-group,
+body.phone-mode .sw-group,
+body.phone-mode .brg-tog-group,
+body.phone-mode .nav-src-group,
+body.phone-mode .susp-group {
+  flex-direction: row; align-items: center; gap: 3px;
+}
+body.phone-mode .ctrl-lbl { font-size: 9px; letter-spacing: 0; }
+body.phone-mode .cbtn { width: 30px; height: 25px; font-size: 13px; }
+/* 시계 — 폰에서 가장 넓은 덩어리라 여기를 줄여야 한 줄이 산다 */
+body.phone-mode .sw-group { padding: 1px 4px; gap: 4px; }
+body.phone-mode .sw-display { font-size: 13px; letter-spacing: 1px; min-width: 66px; }
+body.phone-mode .sw-btn { font-size: 9px; padding: 2px 5px; }
+body.phone-mode .obs-btn { font-size: 10px; padding: 3px 7px; }
+body.phone-mode .susp-btn { font-size: 10px; min-width: 38px; padding: 3px 7px; }
+body.phone-mode .brg-tog-btn { font-size: 9px; padding: 2px 5px; }
+body.phone-mode .brg-tog-btn.brg-bdp { font-size: 8px; padding: 2px 4px; }
+body.phone-mode .brg-tog-btns { gap: 2px; }
+body.phone-mode .nav-src-btn { font-size: 10px; padding: 2px 5px; }
+body.phone-mode .rnp-btn { font-size: 10px; padding: 2px 4px; }
+/* NAV SRC · RNP 무리는 세로로 쌓인 이름표·여백이 많다. 가로로 눕히면서
+   자리만 잡고 있던 것들(빈 튜닝 VOR 라벨, 위아래 밀어내기)을 걷어낸다. */
+body.phone-mode .nav-src-group .nav-icao-lbl { margin: 0; min-height: 0; line-height: 1; font-size: 9px; }
+body.phone-mode .nav-src-group .nav-icao-lbl[style*="hidden"] { display: none; }
+body.phone-mode .nav-src-group .rnp-lbl { margin: 0; font-size: 9px; line-height: 1; }
+body.phone-mode .nav-src-group .rnp-btns { margin: 0; }
+/* 'AP' · 'BRG' · 'NAV SRC' · 'SUSP' 는 버튼 글자(OBS·BRG1·FMS·On)가 곧 이름이라
+   이름표가 겹쳐 읽힌다. 좁은 폭에서 두 번 말할 자리가 없다 — 이름표를 내린다.
+   ('On' 만으로는 무슨 스위치인지 모르므로 SUSP 만 버튼 글자를 바꿔 준다) */
+body.phone-mode .brg-tog-group > .ctrl-lbl,
+body.phone-mode .susp-group > .ctrl-lbl,
+body.phone-mode .ctrl-group > .ctrl-lbl:not(.ctrl-lbl-btn):not([id]),
+body.phone-mode .nav-src-group > .ctrl-lbl:first-child { display: none; }
+body.phone-mode .susp-btn { font-size: 0; min-width: 0; padding: 3px 7px; }
+body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spacing: 1px; }
 </style>
 </head>
 <body>

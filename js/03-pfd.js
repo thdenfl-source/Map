@@ -9,6 +9,35 @@
 const cvs = document.getElementById('pfd');
 const ctx = cvs.getContext('2d');
 
+// ── 계기 글씨 배율 ────────────────────────────────────────────────
+// 폰에서는 계기 글씨가 너무 작다. 속도·고도 테이프는 폭이 최소값(56px)에 걸려
+// 있어서 글씨도 Math.max(...) 하한에 붙어 버리기 때문이다.
+//
+// 글꼴을 지정하는 자리가 예순 곳이 넘는다. 하나씩 고치면 반드시 어딘가를
+// 빠뜨리고, 나중에 새로 그리는 곳이 생기면 또 어긋난다. 그래서 이 캔버스의
+// font 지정 자체를 한자리에서 가로채 배율을 곱한다. 이 캔버스에만 건다 —
+// CanvasRenderingContext2D.prototype 을 건드리면 지도·차트까지 함께 커진다.
+let pfdFontScale = 1;
+(function installPfdFontScale() {
+  const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'font');
+  if (!d || !d.set) return;                    // 지원하지 않는 브라우저면 배율 없이 간다
+  Object.defineProperty(ctx, 'font', {
+    configurable: true,
+    get() { return d.get.call(this); },
+    set(v) {
+      d.set.call(this, (pfdFontScale === 1) ? v
+        : String(v).replace(/(\d*\.?\d+)px/, (m, n) => (parseFloat(n) * pfdFontScale).toFixed(2) + 'px'));
+    },
+  });
+})();
+// 배율을 바꾸면 곧바로 다시 그린다(설정을 바꾸고 화면을 기다리게 하지 않는다)
+function setPfdFontScale(s) {
+  const v = Math.max(1, Math.min(1.6, Number(s) || 1));
+  if (v === pfdFontScale) return;
+  pfdFontScale = v;
+  try { drawPFD(); } catch (e) { _swallow(e); }
+}
+
 function resizePFD() {
   const el = document.getElementById('pfd-wrap');
   cvs.width  = el.clientWidth;
@@ -25,8 +54,10 @@ function drawPFD() {
   const ctrlEl = document.querySelector('.ctrl-bar');
   const CTRL_H = ctrlEl ? ctrlEl.offsetHeight : 80;
   const usableH = H - CTRL_H;
-  const tapW = Math.max(56, Math.min(76, W * 0.082));
-  const vsiW = Math.max(28, Math.min(38, W * 0.046));
+  // 테이프 폭도 글씨 배율을 따라 넓힌다. 테이프 안의 글씨는 대부분 폭(w)에
+  // 비례해 정해지므로, 폭을 그대로 두고 글씨만 키우면 숫자가 상자를 넘는다.
+  const tapW = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
+  const vsiW = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
   const aiX  = tapW, aiW = W - tapW * 2 - vsiW;
   const aiH  = Math.floor(usableH * 0.52);
   const hsiH = usableH - aiH;
@@ -178,7 +209,10 @@ function drawCrhtDisplay(x, y, w, h) {
   ctx.fillStyle = '#060612'; ctx.fillRect(x, y, w, h);
 
   // ── Target/VS header box (top) ──
-  const HEAD_H = 26;
+  // 머리글 높이와 두 줄의 베이스라인도 글씨 배율을 따른다 — px 로 두면
+  // 키운 두 번째 줄(VS)이 머리글 밖으로 나가 눈금 라벨과 겹친다.
+  const HEAD_H = Math.round(26 * pfdFontScale);
+  const hL1 = Math.round(11 * pfdFontScale), hL2 = Math.round(22 * pfdFontScale);
   const tapeY  = y + HEAD_H;
   const tapeH  = h - HEAD_H;
   const target = selCrht;
@@ -240,11 +274,11 @@ function drawCrhtDisplay(x, y, w, h) {
   ctx.font      = `bold ${Math.max(9, w * 0.14)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'left';
   ctx.fillStyle = on ? '#44ff88' : '#555';
-  ctx.fillText('CRHT ' + A_LBL(), x + 4, y + 11);
+  ctx.fillText(pfdFontScale > 1.05 ? 'CRHT' : 'CRHT ' + A_LBL(), x + 4, y + hL1);
   ctx.font      = `bold ${Math.max(10, w * 0.16)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'right';
   ctx.fillStyle = on ? '#fff' : '#666';
-  ctx.fillText(Math.round(selCrht * ccv), x + w - 4, y + 11);
+  ctx.fillText(Math.round(selCrht * ccv), x + w - 4, y + hL1);
 
   // Line 2: VS change rate (500 fpm during convergence)
   let vsStr = '---';
@@ -255,10 +289,10 @@ function drawCrhtDisplay(x, y, w, h) {
   ctx.font      = `${Math.max(8, w * 0.13)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'left';
   ctx.fillStyle = on ? '#ffaa44' : '#444';
-  ctx.fillText('VS', x + 4, y + 22);
+  ctx.fillText('VS', x + 4, y + hL2);
   ctx.textAlign = 'right';
   ctx.fillStyle = on ? '#ffaa44' : '#444';
-  ctx.fillText(vsStr, x + w - 4, y + 22);
+  ctx.fillText(vsStr, x + w - 4, y + hL2);
 
   ctx.restore();
 }
@@ -465,7 +499,10 @@ function drawAltTape(x, y, w, h) {
 
   // ── Target/VS box at the top — shows the AFCS ALT setting + change rate ──
   // Height is reserved at the top of the tape so the moving scale starts below it.
-  const HEAD_H = 26;
+  // 머리글 높이와 두 줄의 베이스라인도 글씨 배율을 따른다 — px 로 두면
+  // 키운 두 번째 줄(VS)이 머리글 밖으로 나가 눈금 라벨과 겹친다.
+  const HEAD_H = Math.round(26 * pfdFontScale);
+  const hL1 = Math.round(11 * pfdFontScale), hL2 = Math.round(22 * pfdFontScale);
   const tapeY  = y + HEAD_H;
   const tapeH  = h - HEAD_H;
   const cy     = tapeY + tapeH / 2;
@@ -520,11 +557,12 @@ function drawAltTape(x, y, w, h) {
   ctx.font      = `bold ${Math.max(9, w * 0.14)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'left';
   ctx.fillStyle = on ? '#00cfff' : '#666';
-  ctx.fillText('ALT ' + A_LBL(), x + 4, y + 11);
+  // 글씨를 키운 폰에서는 'ALT FT' 가 값과 겹친다 — 그때는 단위를 뺀다
+  ctx.fillText(pfdFontScale > 1.05 ? 'ALT' : 'ALT ' + A_LBL(), x + 4, y + hL1);
   ctx.font      = `bold ${Math.max(10, w * 0.16)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'right';
   ctx.fillStyle = on ? '#fff' : '#777';
-  ctx.fillText(Math.round(selAlt * acv), x + w - 4, y + 11);
+  ctx.fillText(Math.round(selAlt * acv), x + w - 4, y + hL1);
 
   // Line 2: VS preselect (selVS) — pilot-settable rate for ALT hold mode.
   // When ALT hold is active, shows signed rate matching convergence direction.
@@ -540,10 +578,10 @@ function drawAltTape(x, y, w, h) {
   ctx.font      = `${Math.max(8, w * 0.13)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'left';
   ctx.fillStyle = on ? '#ffaa44' : '#665533';
-  ctx.fillText('VS', x + 4, y + 22);
+  ctx.fillText('VS', x + 4, y + hL2);
   ctx.textAlign = 'right';
   ctx.fillStyle = on ? '#ffaa44' : '#665533';
-  ctx.fillText(vsStr, x + w - 4, y + 22);
+  ctx.fillText(vsStr, x + w - 4, y + hL2);
 
   // Altitude trend vector (magenta, 6-second VS extrapolation)
   if (Math.abs(S.vs) > 10) {
@@ -1017,9 +1055,11 @@ function drawHSI(x, y, w, h) {
 
   // ── HDG / CRS readout boxes (Garmin 스타일: 시안 라벨 + 흰 숫자) ──
   // HSI 윗 테두리(y)에 박스 아랫변이 맞닿도록 위로 올려 컴퍼스 로즈와 겹치지 않게 함
-  const bw=64, bh=20, gap=4;
+  // 상자 크기도 글씨 배율을 따른다 — px 로 못 박아 두면 글씨를 키운 순간
+  // 라벨(HDG)과 값(009°)이 겹친다.
+  const bw = Math.round(64 * pfdFontScale), bh = Math.round(20 * pfdFontScale), gap = 4;
   const boxY = y - bh;              // 박스 아랫변 = HSI 윗 테두리
-  const txtY = boxY + 14;          // 텍스트 베이스라인(박스 상단 기준 +14)
+  const txtY = boxY + Math.round(14 * pfdFontScale);   // 텍스트 베이스라인
   const hdgX = cx - bw - gap/2;
   const crsX = cx + gap/2;
   ctx.lineWidth=1;

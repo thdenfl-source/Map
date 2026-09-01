@@ -91,9 +91,14 @@ function updateNavBar() {
 // 사용자가 스스로 들어간 단독 화면까지 풀어 버리면 안 되기 때문이다.
 let _phoneSoloByUs   = false;   // 한 화면으로 접은 것이 우리인가(사용자인가)
 let _phoneSplitByUser = false;  // 폰인데도 분할을 보겠다고 사용자가 정했는가
+// 폰 계기 글씨 배율 — 팔 길이에서 읽는 태블릿과 달리 폰은 화면이 작아
+// 같은 글씨가 훨씬 작게 보인다. 테이프 폭이 최소값에 걸려 글씨도 하한에
+// 붙는 탓에 그냥 두면 읽히지 않는다.
+const PHONE_FONT_SCALE = 1.25;
 function applyDeviceLayout() {
   const phone = isPhoneLayout();
   document.body.classList.toggle('phone-mode', phone);
+  try { setPfdFontScale(phone ? PHONE_FONT_SCALE : 1); } catch (e) { _swallow(e); }
   if (phone) {
     if (!_soloActive && !_phoneSplitByUser) { enterSolo(phoneStartScreen()); _phoneSoloByUs = true; }
   } else if (_phoneSoloByUs && _soloActive) {
