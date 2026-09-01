@@ -33,14 +33,17 @@ document.body.classList.toggle('navaid', !simPanelOn);
 // ══════════════════════════════════════════════════════
 // 화면 배치 — 스마트폰은 한 창, 태블릿은 분할
 // ══════════════════════════════════════════════════════
-// 짧은 변으로 가른다. 세로로 들든 가로로 눕히든 같은 판정이 나와야 하기 때문이다
-//   · 아이폰 16 Pro Max 440×956 → 짧은 변 440 → 폰
-//   · 아이패드 미니     744×1133 → 짧은 변 744 → 태블릿
+// 한 화면으로 볼 것인가, 나눠 볼 것인가.
+//   · 짧은 변이 600px 아래 — 폰이다. 가로로 눕혀도 창 셋을 세울 폭이 안 나온다.
+//   · 세로로 든 화면 — 태블릿이라도 한 화면이 낫다. 아이패드를 세로로 들면
+//     폭이 768~834px 인데 여기에 창을 둘·셋 세우면 계기가 손바닥만 해진다.
+//     가로로 눕히면 그때 분할로 돌아간다.
 const PHONE_SHORT_MAX = 600;
 const PHONE_SCREENS = ['map', 'pfd', 'plan', 'cdu'];
 
 function isPhoneLayout() {
-  return Math.min(window.innerWidth, window.innerHeight) < PHONE_SHORT_MAX;
+  const w = window.innerWidth, h = window.innerHeight;
+  return Math.min(w, h) < PHONE_SHORT_MAX || h > w;
 }
 
 // 폰에서 마지막으로 보던 창 — 다시 켜면 그 자리에서 시작한다

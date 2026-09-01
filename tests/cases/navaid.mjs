@@ -339,6 +339,45 @@ export async function run(page, t) {
     t.eq(f.canvasFits, true, `${L} — 계기 캔버스가 자기 창 크기와 맞는다`);
   }
 
+  // ── ⑦-3 세로로 들면 태블릿도 한 화면으로 ─────────────────────
+  // 아이패드를 세로로 들면 폭이 768~834px 다. 여기에 창을 둘·셋 세우면 계기가
+  // 손바닥만 해진다 — 세로일 때는 폰과 같이 한 화면으로 본다. 가로로 눕히면
+  // 그때 분할로 돌아간다.
+  for (const [label, vp, wantPhone] of [
+        ['아이패드 세로', { width: 810, height: 1080 }, true],
+        ['아이패드 가로', { width: 1080, height: 810 }, false]]) {
+    await phone.setViewportSize(vp);
+    await phone.waitForTimeout(500);
+    const r = await phone.evaluate(() => {
+      // 조작부가 몇 줄인가 — 무리들의 세로 중심을 모아 띄엄띄엄한 덩어리를 센다
+      const mids = [];
+      document.querySelectorAll('.ctrl-bar .ctrl-group,.ctrl-bar .sw-group,' +
+        '.ctrl-bar .brg-tog-group,.ctrl-bar .nav-src-group,.ctrl-bar .susp-group')
+        .forEach(e => { const q = e.getBoundingClientRect(); if (q.height > 0) mids.push(q.top + q.height / 2); });
+      mids.sort((a, b) => a - b);
+      const rows = mids.length ? 1 + mids.slice(1).filter((v, i) => v - mids[i] > 10).length : 0;
+      const labels = [...document.querySelectorAll('.ctrl-bar .ctrl-lbl')]
+        .filter(e => e.getBoundingClientRect().height > 0).map(e => e.textContent.trim());
+      return { phone: document.body.classList.contains('phone-mode'), solo: _soloActive,
+               bar: document.getElementById('phone-bar').getBoundingClientRect().height > 0,
+               rows, labels, susp: document.getElementById('susp-btn').textContent.trim() };
+    });
+    t.eq(r.phone, wantPhone, `${label} — ${wantPhone ? '한 화면' : '분할'}로 본다`);
+    t.eq(r.solo, wantPhone, `${label} — solo ${wantPhone}`);
+    t.eq(r.bar, wantPhone, `${label} — 상단 탭바 ${wantPhone ? '있음' : '없음'}`);
+    if (wantPhone) {
+      // 여기서 한 줄이어야 한다. 줄이 나뉘면 그만큼 계기가 눌린다.
+      t.eq(r.rows, 1, `${label} — 조작부가 한 줄이다 (${r.rows}줄)`);
+      // 이름표는 내렸다. RNP 만 남는다 — 버튼이 '4 2 1 0.3' 이라 없으면 못 읽는다.
+      t.eq(r.labels.filter(x => ['AP', 'BRG', 'SUSP', 'NAV SRC'].includes(x)).length, 0,
+        `${label} — 겹치는 이름표를 내렸다 (${r.labels.join(',')})`);
+      t.ok(r.labels.includes('RNP'), `${label} — RNP 이름표는 남는다`);
+    }
+    t.eq(r.susp, 'SUSP', `${label} — SUSP 버튼 글자가 'SUSP' 다 (${r.susp})`);
+  }
+  await phone.setViewportSize(PHONE);
+  await phone.waitForTimeout(500);
+
   // ── ⑧ MAP 상단 버튼이 좌·우 라인 셀렉터로 서는가 ────────────
   // 한 줄에 열한 개를 밀어 넣으면 폰에서 버튼 하나가 30px 남짓이라 못 누른다.
   // 지도 양옆에 세로로 세우되, 지도를 덮어 끌기·확대를 먹지 않아야 한다.

@@ -169,9 +169,10 @@ function updateSuspBtn() {
   const auto = navSuspAuto() && !suspOn;
   b.classList.toggle('auto', auto);
   b.classList.toggle('on', suspOn);
-  // 글자는 늘 'On' — 켜졌는지는 AP 의 NAV 버튼처럼 색으로 보인다(녹색).
+  // 글자는 늘 'SUSP' — 켜졌는지는 AP 의 NAV 버튼처럼 색으로 보인다(녹색).
+  // 종전에는 'On' 이었는데, 이름표를 내린 뒤로는 무슨 스위치인지 알 수 없었다.
   // 저절로 걸린 경우에만 '자동' 을 덧붙인다.
-  const want = auto ? 'On<span class="susp-auto">자동</span>' : 'On';
+  const want = auto ? 'SUSP<span class="susp-auto">자동</span>' : 'SUSP';
   if (b.innerHTML !== want) b.innerHTML = want;
 }
 function toggleSusp() {
