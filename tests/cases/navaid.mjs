@@ -419,7 +419,20 @@ export async function run(page, t) {
                selH: Math.round(document.querySelector('.pi-sel').getBoundingClientRect().height),
                obsH: Math.round(document.getElementById('obs-btn').getBoundingClientRect().height),
                selFs: px('.pi-sel'), obsFs: px('#obs-btn'),
-               suspFs: px('#susp-btn'), rnpFs: px('#rnp-1') };
+               suspFs: px('#susp-btn'), rnpFs: px('#rnp-1'),
+               // 한 줄에 나란히 서는 것들의 높이 — 하나라도 다르면 줄이 들쭉날쭉해진다.
+               // SUSP 는 '자동' 이 붙은 모습으로도 재 본다(홀딩·미스드어프로치에서 그렇게 뜬다).
+               btnHs: (() => {
+                 const b = document.getElementById('susp-btn');
+                 const was = b.innerHTML;
+                 b.innerHTML = 'SUSP<span class="susp-auto">자동</span>';
+                 const suspAuto = Math.round(b.getBoundingClientRect().height);
+                 b.innerHTML = was;
+                 const one = sel => Math.round(document.querySelector(sel).getBoundingClientRect().height);
+                 return { crsLbl: one('#crs-lbl-btn'), crsUp: one('#crs-up'),
+                          obs: one('#obs-btn'), brg: one('#brg1-tog'),
+                          susp: one('#susp-btn'), suspAuto, rnp: one('#rnp-1') };
+               })() };
     });
     const L = vp.width + '×' + vp.height;
     // 왼쪽 선 — 글자판 줄들과 조작부 첫 무리가 같은 자리에서 시작한다
@@ -431,6 +444,12 @@ export async function run(page, t) {
     t.eq(a.obsFs, a.selFs, `${L} — 글자 크기도 같다 (${a.obsFs} vs ${a.selFs})`);
     t.eq(a.suspFs, a.selFs, `${L} — SUSP 도 같다 (${a.suspFs})`);
     t.eq(a.rnpFs, a.selFs, `${L} — RNP 도 같다 (${a.rnpFs})`);
+    // 높이도 하나로 — CRS 의 ◄► 는 이웃보다 솟았고 CRS 이름표는 주저앉았으며,
+    // SUSP 는 '자동' 이 붙으면 두 줄이 되어 혼자 커졌다. 전부 .pi-sel 에 맞춘다.
+    const hs = Object.entries(a.btnHs).filter(([, h]) => h !== a.selH);
+    t.eq(hs.length, 0,
+      `${L} — 조작부 버튼 높이가 모두 ${a.selH}px 로 같다` +
+      (hs.length ? ' (' + hs.map(([k, h]) => `${k}=${h}`).join(', ') + ')' : ''));
     // 시계·RNP 는 맨 아래 — 앞줄(CRS·BRG·SUSP)보다 아래에 있어야 한다
     const front = Math.max(a.crs.t, a.brg.t, a.susp.t);
     t.ok(a.sw.t > front, `${L} — 시계가 앞줄보다 아래다 (시계 ${Math.round(a.sw.t)} > 앞줄 ${Math.round(front)})`);
