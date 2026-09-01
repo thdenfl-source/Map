@@ -90,9 +90,76 @@ function stopGPS() {
 
 let _gpsPrev = null;   // 직전 GPS 위치(속도·방위각 산출용)
 
-// ── 기기 방향(나침반) — GPS 모드 저속(10kt 미만)용 헤딩 ──
+// ── 기기 방향(나침반·자이로) ──────────────────────────────────────
+// 헤딩은 저속에서만 나침반을 쓴다. 기준은 20km/h — 그보다 느리면 GPS 항적이
+// 방향을 못 잡는다(제자리에서 도는 동안에도 항적은 한 점이다).
+const HDG_DEV_KMH = 20;                          // 이보다 느리면 나침반 헤딩
+const KMH_PER_KT  = 1.852;
+const HDG_DEV_KT  = HDG_DEV_KMH / KMH_PER_KT;    // ≈ 10.8kt
 let _devHdg = null, _devHdgBound = false, _devHdgLastApply = 0;
+
+// ── 자세(AHRS) — 기기 기울기로 피치·롤을 보인다 ──────────────────
+// 우리에겐 자세 센서가 따로 없다. 기기 자체의 기울기를 쓰되, 거치 각도가
+// 저마다 다르므로 "지금이 수평" 을 사용자가 정해 줘야 한다(AHRS 버튼).
+// 그 순간의 기울기를 기준점으로 잡고, 그 뒤로는 거기서 얼마나 벗어났는지를
+// 피치·롤로 보인다. 기준을 잡기 전에는 계기를 수평으로 둔다 — 근거 없는
+// 자세를 그리느니 아무것도 그리지 않는다.
+let ahrsOn = false;              // 자세 시현 중인가
+let ahrsRef = null;              // { pitch, roll } — 수평으로 삼은 기울기
+let _devTilt = null;             // 지금 기기 기울기(화면 방향 보정 후)
+const AHRS_PIT_MAX = 30, AHRS_BNK_MAX = 60;
+
+// beta/gamma 는 기기를 세로로 들었을 때 기준이다. 가로로 눕히면 두 축이
+// 뒤바뀌므로 화면 회전각으로 풀어 준다.
+function _tiltFromEvent(e) {
+  if (e.beta === null || e.gamma === null || isNaN(e.beta) || isNaN(e.gamma)) return null;
+  let a = 0;
+  try {
+    a = (screen.orientation && typeof screen.orientation.angle === 'number')
+      ? screen.orientation.angle
+      : (typeof window.orientation === 'number' ? window.orientation : 0);
+  } catch (err) { _swallow(err); }
+  a = ((a % 360) + 360) % 360;
+  const b = e.beta, g = e.gamma;
+  if (a === 90)  return { pitch: -g, roll:  b };
+  if (a === 180) return { pitch: -b, roll: -g };
+  if (a === 270) return { pitch:  g, roll: -b };
+  return { pitch: b, roll: g };
+}
+
+// AHRS 버튼 — 누른 자세를 수평으로 삼는다. 켜져 있을 때 다시 누르면 끈다.
+function toggleAhrs() {
+  if (ahrsOn) { ahrsOn = false; ahrsRef = null; S.pit = 0; S.bnk = 0; updateAhrsBtn(); return; }
+  startDevOrientation();                 // 권한이 없으면 이 제스처에서 받는다
+  if (!_devTilt) {
+    // 아직 센서 값이 한 번도 안 들어왔다. 들어오는 대로 기준을 잡는다.
+    ahrsOn = true; ahrsRef = null; updateAhrsBtn();
+    return;
+  }
+  ahrsRef = { pitch: _devTilt.pitch, roll: _devTilt.roll };
+  ahrsOn = true;
+  updateAhrsBtn();
+}
+function updateAhrsBtn() {
+  const b = document.getElementById('ahrs-btn');
+  if (!b) return;
+  b.classList.toggle('on', ahrsOn);
+  b.title = ahrsOn ? '자세 시현 중 — 다시 누르면 끕니다(누른 자세가 수평 기준)'
+                   : '지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다';
+}
+
 function _onDevOrientation(e) {
+  // ── 자세 ──
+  const t = _tiltFromEvent(e);
+  if (t) {
+    _devTilt = t;
+    if (ahrsOn) {
+      if (!ahrsRef) ahrsRef = { pitch: t.pitch, roll: t.roll };   // 첫 값으로 기준을 잡는다
+      const cl = (v, m) => Math.max(-m, Math.min(m, v));
+      S.pit = cl(t.pitch - ahrsRef.pitch, AHRS_PIT_MAX);
+      S.bnk = cl(normAS(t.roll - ahrsRef.roll), AHRS_BNK_MAX);
+    }
+  }
   let h = null;
   if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
     h = e.webkitCompassHeading;                    // iOS: 진북 기준 시계방향
@@ -103,10 +170,11 @@ function _onDevOrientation(e) {
   _devHdg = normA(h);
   // 저속에서는 GPS 갱신(3초)과 무관하게 헤딩을 즉시 반영(0.2초 스로틀)
   const now = Date.now();
-  if (gpsMode && S.spd < 10 && now - _devHdgLastApply > 200) {
+  if (gpsMode && S.spd < HDG_DEV_KT && now - _devHdgLastApply > 200) {
     _devHdgLastApply = now;
     S.hdg = _devHdg;
-    bankTarget = 0; S.bnk = 0; _rollRate = 0; syncHdgBug();
+    bankTarget = 0; _rollRate = 0; syncHdgBug();
+    if (!ahrsOn) S.bnk = 0;              // 자세를 보이는 중이면 롤을 지우지 않는다
   }
 }
 function startDevOrientation() {
@@ -135,10 +203,11 @@ function stopDevOrientation() {
 // 저속(<8kt) 복귀 시 재바인딩(히스테리시스로 경계 떨림 방지)
 function _devHdgAuto(spdKt) {
   if (!gpsMode || spdKt === null) return;
-  if (spdKt >= 12 && _devHdgBound) {
+  if (ahrsOn) return;                    // 자세 시현 중에는 센서를 놓지 않는다
+  if (spdKt >= HDG_DEV_KT + 1 && _devHdgBound) {
     window.removeEventListener('deviceorientation', _onDevOrientation);
     _devHdgBound = false; _devHdg = null;
-  } else if (spdKt < 8 && !_devHdgBound) {
+  } else if (spdKt < HDG_DEV_KT - 1 && !_devHdgBound) {
     window.addEventListener('deviceorientation', _onDevOrientation);
     _devHdgBound = true;
   }
@@ -162,15 +231,18 @@ function applyGPS(pos) {
     // 자세계 — 우리에겐 자세 센서가 없다. 종전에는 속도에서 피치를 지어내
     // (pitchFromSpd) 인공수평선을 기울였는데, 시뮬레이터라면 몰라도 실제 위치를
     // 읽는 장치에서 그것은 없는 정보를 있는 척하는 것이다. 수평으로 둔다.
-    if (typeof simPanelOn !== 'undefined' && !simPanelOn) { S.pit = 0; S.bnk = 0; }
-    else S.pit = pitchFromSpd(S.spd);
+    if (typeof simPanelOn !== 'undefined' && !simPanelOn) {
+      // 자세는 AHRS(기기 자이로)가 맡는다. 꺼져 있으면 수평으로 둔다 —
+      // 속도에서 피치를 지어내던 종전 방식은 없는 정보를 있는 척하는 것이다.
+      if (!ahrsOn) { S.pit = 0; S.bnk = 0; }
+    } else S.pit = pitchFromSpd(S.spd);
   }
   _devHdgAuto(spdKt);   // 속도에 따라 나침반 이벤트 자동 on/off(발열 저감)
 
   // ── 방위각 ──
   // 10kt 미만: 기기 방향(나침반) 사용 / 10kt 이상: 항적(track) 기준
   let hdg = null;
-  if (spdKt !== null && spdKt < 10 && _devHdg !== null) {
+  if (spdKt !== null && spdKt < HDG_DEV_KT && _devHdg !== null) {
     hdg = _devHdg;
   } else if (c.heading !== null && !isNaN(c.heading) && (c.speed == null || c.speed > 0.5)) {
     hdg = c.heading;                                  // GPS 항적(track)
@@ -178,7 +250,7 @@ function applyGPS(pos) {
     const dNM = distance(_gpsPrev.lat, _gpsPrev.lon, lat, lon);
     if (dNM > 0.0027) hdg = bearing(_gpsPrev.lat, _gpsPrev.lon, lat, lon);  // ~5m 이상 이동
   }
-  if (hdg === null && _devHdg !== null && (spdKt === null || spdKt < 10)) hdg = _devHdg;
+  if (hdg === null && _devHdg !== null && (spdKt === null || spdKt < HDG_DEV_KT)) hdg = _devHdg;
   if (hdg !== null) {
     S.hdg = normA(hdg);
     bankTarget = 0; S.bnk = 0; _rollRate = 0; syncHdgBug();

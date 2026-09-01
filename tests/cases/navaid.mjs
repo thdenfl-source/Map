@@ -257,7 +257,7 @@ export async function run(page, t) {
       : 0;
     const pw = document.getElementById('pfd-wrap').getBoundingClientRect();
     // 항법용 조작부는 그대로 눌러 쓸 수 있어야 한다(줄이느라 없애지 않았는가)
-    const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'nav-fms', 'rnp-1', 'susp-btn']
+    const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'ahrs-btn', 'rnp-1', 'susp-btn']
       .filter(id => { const e = document.getElementById(id); return e && e.getBoundingClientRect().height > 0; });
     // '두 줄' 은 버튼 줄 이야기다. 맨 윗줄(#pfd-info)은 읽기만 하는 글자판이라
     // 따로 뺀다 — 섞어 재면 글자 크기를 바꿀 때마다 이 검사가 흔들린다.
@@ -267,7 +267,7 @@ export async function run(page, t) {
   });
   t.ok(bar.rows >= 1 && bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
   t.ok(bar.h > 20 && bar.h <= 90, `버튼 줄 높이가 90px 아래다 (${bar.h}px)`);
-  t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·FMS·RNP·SUSP)');
+  t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·AHRS·RNP·SUSP)');
   // 조작부 맨 윗줄(#pfd-info)이 계기 옆 글자판을 대신 짊어진다. NAV 소스 줄은
   // 비행 중 가장 자주 읽는 값이라 일부러 크게 뒀고(폰에서는 세 줄), 그만큼 자리를 쓴다.
   t.ok(bar.usable > bar.pfdH * 0.75,
@@ -432,6 +432,93 @@ export async function run(page, t) {
   t.eq(closed.lit, false, '그때 버튼 불도 꺼진다');
   t.eq(closed.branch, undefined, '가지 표시도 걷힌다');
   t.eq(closed.left, '', '붙였던 자리도 되돌린다');
+
+  // ── ⑫ 자세(AHRS) — 기기 기울기로 피치·롤을 보인다 ────────────
+  // 자세 센서가 따로 없으니 기기 기울기를 쓴다. 거치 각도가 저마다 다르므로
+  // "지금이 수평" 을 사용자가 정해 준다. 기준을 잡기 전에는 수평으로 둔다.
+  const ahrs = await phone.evaluate(() => {
+    const tilt = (beta, gamma) => _onDevOrientation({ beta, gamma, alpha: null, absolute: false });
+    ahrsOn = false; ahrsRef = null; _devTilt = null; S.pit = 0; S.bnk = 0;
+    tilt(20, 5);                            // 기울여도 아직 자세는 안 보인다
+    const before = { pit: S.pit, bnk: S.bnk };
+    toggleAhrs();                           // 이 자세가 수평이다
+    const ref = ahrsRef && { p: Math.round(ahrsRef.pitch), r: Math.round(ahrsRef.roll) };
+    const level = { pit: S.pit, bnk: S.bnk };
+    tilt(30, 5);                            // 기준에서 10° 기수 들림
+    const up = { pit: Math.round(S.pit), bnk: Math.round(S.bnk) };
+    tilt(20, -10);                          // 기준에서 15° 좌 뱅크
+    const left = { pit: Math.round(S.pit), bnk: Math.round(S.bnk) };
+    tilt(200, 5);                           // 한계를 넘겨도 계기는 안 넘어간다
+    const clamped = Math.round(S.pit);
+    toggleAhrs();                           // 다시 누르면 끄고 수평으로 되돌린다
+    const off = { on: ahrsOn, pit: S.pit, bnk: S.bnk };
+    return { before, ref, level, up, left, clamped, off };
+  });
+  t.eq(ahrs.before.pit, 0, '기준을 잡기 전에는 자세를 보이지 않는다');
+  t.eq(ahrs.ref && ahrs.ref.p, 20, `누른 순간의 기울기를 수평으로 삼는다 (${ahrs.ref && ahrs.ref.p}°)`);
+  t.eq(ahrs.level.pit, 0, '기준을 잡은 그 자세가 수평이다');
+  t.eq(ahrs.up.pit, 10, `기준보다 10° 들면 피치 10° 다 (${ahrs.up.pit}°)`);
+  t.eq(ahrs.left.bnk, -15, `기준보다 15° 기울면 롤 −15° 다 (${ahrs.left.bnk}°)`);
+  t.eq(ahrs.clamped, 30, `피치는 30° 에서 물린다 (${ahrs.clamped}°)`);
+  t.eq(ahrs.off.on, false, '다시 누르면 꺼진다');
+  t.eq(ahrs.off.pit === 0 && ahrs.off.bnk === 0, true, '끄면 계기가 수평으로 돌아간다');
+
+  // 헤딩 기준은 20km/h — 그보다 느리면 나침반, 빠르면 항적
+  const hdgRef = await phone.evaluate(() => ({ kmh: HDG_DEV_KMH, kt: HDG_DEV_KT }));
+  t.eq(hdgRef.kmh, 20, `헤딩이 나침반으로 넘어가는 기준이 20km/h 다 (${hdgRef.kmh})`);
+  t.ok(Math.abs(hdgRef.kt - 10.8) < 0.05, `kt 로는 약 10.8kt 다 (${hdgRef.kt.toFixed(2)})`);
+
+  // ── ⑬ NAV 소스 — 줄 앞 버튼으로 고르고 래디얼까지 보인다 ─────
+  const src = await phone.evaluate(() => {
+    S.lat = 38.0; S.lon = 128.6; S.alt = 3000; S.awp = -1;
+    setNavRadio('NAV1', '109.30', null);
+    setNavSrc('FMS'); _piLast = ''; updatePfdInfo();
+    const row = [...document.querySelectorAll('#pi-nav .pi-src')]
+      .find(e => e.querySelector('.pi-sel').textContent === 'NAV1');
+    const cells = [...row.children].map(e => e.className);
+    const txt = [...row.children].map(e => e.textContent.trim());
+    const before = navSrc;
+    row.querySelector('.pi-sel').click();     // 줄 앞 버튼이 곧 소스 선택이다
+    _piLast = ''; updatePfdInfo();
+    const after = navSrc;
+    const lit = [...document.querySelectorAll('#pi-nav .pi-sel.on')].map(e => e.textContent);
+    return { cells, txt, before, after, lit,
+             oldBtns: !document.getElementById('nav-fms') && !document.querySelector('.nav-src-btn') };
+  });
+  t.eq(src.cells.join(' '), 'pi-sel pi-id pi-brg pi-rad pi-dst',
+    `이름·방위·래디얼·거리 순이다 (${src.cells.join(' ')})`);
+  t.eq(src.oldBtns, true, '종전 NAV SRC 버튼은 없어졌다');
+  t.eq(src.before, 'FMS', '누르기 전에는 FMS 였다');
+  t.eq(src.after, 'NAV1', '줄 앞 버튼을 누르면 그 소스가 선택된다');
+  t.eq(src.lit.join(','), 'NAV1', `선택된 줄만 켜져 보인다 (${src.lit.join(',')})`);
+  t.ok(/^R\d{3}$/.test(src.txt[3]), `래디얼은 R 을 앞에 붙여 방위와 구분한다 (${src.txt[3]})`);
+  // 래디얼은 그 지점에서 항공기를 본 방향 — 방위의 반대편이다
+  const brgN = parseInt(src.txt[2], 10), radN = parseInt(src.txt[3].slice(1), 10);
+  t.ok(Math.abs(((radN - brgN + 360) % 360) - 180) < 3,
+    `래디얼이 방위의 반대편이다 (방위 ${brgN}° · 래디얼 ${radN}°)`);
+
+  // ── ⑭ #1BDP·#2BDP 가 지도 버튼으로 옮겨졌는가 ────────────────
+  await phone.evaluate(() => navGo('map'));
+  await phone.waitForTimeout(400);
+  const bdp = await phone.evaluate(() => {
+    const inMap = id => !!document.querySelector('#map-top-bar #' + id);
+    const cols = sel => { const L = [], R = []; document.querySelectorAll(sel + ' button').forEach(x => {
+      const r = x.getBoundingClientRect(); if (!r.width) return;
+      (r.left + r.width / 2 < window.innerWidth / 2 ? L : R).push(x.id); }); return [L.length, R.length]; };
+    return { bdp1: inMap('brg1-bdp'), bdp2: inMap('brg2-bdp'),
+             top: cols('#map-top-bar'), bottom: cols('#map-sim-bar'),
+             coordPx: parseFloat(getComputedStyle(document.getElementById('center-coord')).fontSize),
+             gpsPx: parseFloat(getComputedStyle(document.getElementById('gps-status')).fontSize),
+             simPe: getComputedStyle(document.getElementById('map-sim-bar')).pointerEvents };
+  });
+  t.eq(bdp.bdp1 && bdp.bdp2, true, '#1BDP·#2BDP 가 지도 버튼으로 옮겨졌다');
+  t.ok(Math.abs(bdp.top[0] - bdp.top[1]) <= 1,
+    `위쪽 버튼이 좌·우로 고르게 갈린다 (${bdp.top.join(':')})`);
+  t.ok(bdp.bottom[0] >= 4 && bdp.bottom[1] >= 4 && Math.abs(bdp.bottom[0] - bdp.bottom[1]) <= 1,
+    `아래쪽 버튼도 좌·우로 갈린다 (${bdp.bottom.join(':')})`);
+  t.eq(bdp.simPe, 'none', '아래 툴바 바탕도 지도 조작을 통과시킨다');
+  t.ok(bdp.coordPx >= 14, `십자 좌표 글씨가 커졌다 (${bdp.coordPx}px)`);
+  t.ok(bdp.gpsPx >= 14, `실제 위치 글씨도 커졌다 (${bdp.gpsPx}px)`);
 
   await pctx.close();
 }
