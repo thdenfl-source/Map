@@ -99,7 +99,11 @@ export async function run(page, t) {
 
   // ── 현재 비행상태 채우기 ──
   const here = await page.evaluate(() => {
-    S.alt = 5000; S.spd = 90; window._oatSurfaceC = 20;
+    S.alt = 5000; S.spd = 90;
+    // 계기가 보고 있는 것과 같은 기온을 넣는다. 받은 시각이 있어야 실제 자료로
+    // 친다 — 없으면 표준대기로 채운다(아래에서 따로 본다).
+    window._oatKma = null;
+    window._oatSurfaceC = 20; window._oatSurfaceAt = Date.now();
     CDU_ACT.utilTasHere();
     return { pa: __tas.read('기압고도 PA'), oat: __tas.read('외기온도 OAT'),
              ias: __tas.read('지시대기속도 IAS'), tas: __tas.read('진대기속도 TAS') };
@@ -107,6 +111,28 @@ export async function run(page, t) {
   t.ok(here.pa === 5000 && here.ias === 90,
     `현재 비행상태를 그대로 넣는다 (PA ${here.pa}ft · IAS ${here.ias}kt)`);
   t.eq(here.oat, 10, `고도 감률(-1.98°C/1000ft)로 외기온도를 잡는다 (지면 20°C → ${here.oat}°C)`);
+
+  // 기상청 격자 기온이 있으면 그쪽을 쓴다 — 그 격자의 표고에서부터 감률을 먹인다
+  const kma = await page.evaluate(() => {
+    S.alt = 5000; S.spd = 90;
+    window._oatSurfaceC = 20; window._oatSurfaceAt = Date.now();   // METAR 는 그대로 둔다
+    window._oatKma = { c: 12, elevFt: 1000, lat: S.lat, lon: S.lon, at: Date.now() };
+    CDU_ACT.utilTasHere();
+    const r = __tas.read('외기온도 OAT');
+    window._oatKma = null;
+    return r;
+  });
+  // 12°C(표고 1000ft) → 5000ft: 12 − 1.98×4 = 4.08 → 4
+  t.eq(kma, 4, `기상청 격자 기온이 METAR 보다 앞선다 (표고 1000ft 12°C → 5000ft ${kma}°C)`);
+
+  // 아무 자료도 없으면 계산기 칸을 비워 둘 수 없으니 표준대기로 채운다
+  const none = await page.evaluate(() => {
+    S.alt = 5000; S.spd = 90;
+    window._oatKma = null; window._oatSurfaceAt = 0;
+    CDU_ACT.utilTasHere();
+    return __tas.read('외기온도 OAT');
+  });
+  t.eq(none, 5, `자료가 없으면 표준대기로 채운다 (5000ft → ${none}°C)`);
   t.ok(Math.abs(here.tas - 90 * tasRatio(5000, 10)) < 0.2,
     `채운 값으로 TAS 까지 나와 있다 (${here.tas}kt)`);
 

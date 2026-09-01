@@ -106,6 +106,52 @@ async function _autoMetarTick() {
 }
 setInterval(() => { try { _autoMetarTick(); } catch(e) { _swallow(e); } }, 30000);
 
+// ── 현재 위치의 기온 — 기상청(KMA) 격자 예보 ───────────────────────
+// OAT 를 종전에는 가장 가까운 공항의 METAR 로만 채웠다. 60NM 안에 공항이
+// 없으면(산악·해상·저고도 비행에서는 흔하다) 값이 갱신되지 않았다.
+//
+// 기상청 모델(LDPS 1.5km · GDPS 12km)을 Open-Meteo 의 KMA 창구로 받는다.
+// 열쇠(API key)가 필요 없어 앱에 심어 둘 것이 없고, 바람 자료를 받는 곳과
+// 같은 출처라 새로 뚫을 문도 없다. 응답에는 그 격자의 표고(m)가 함께 오므로,
+// 지면 기온에서 지금 고도까지 감률을 정확히 먹일 수 있다.
+//
+// METAR 는 그대로 둔다 — 실측이라 근처 공항 상공에서는 이쪽이 낫다.
+// 다만 '지금 이 자리' 를 묻는 값이므로 기상청 격자를 먼저 쓴다(oatNow).
+const KMA_OAT_URL = 'https://api.open-meteo.com/v1/kma';
+const KMA_OAT_MS  = 10 * 60 * 1000;   // 10분마다
+const KMA_OAT_NM  = 5;                // 또는 5NM 넘게 움직였을 때
+let _kmaOatLast = 0, _kmaOatBusy = false;
+
+async function _kmaOatTick() {
+  if (_kmaOatBusy) return;
+  if (!(gpsMode || S.running)) return;              // 위치가 있어야 물어볼 수 있다
+  const k = window._oatKma;
+  const moved = k ? distance(S.lat, S.lon, k.lat, k.lon) : Infinity;
+  if (Date.now() - _kmaOatLast < KMA_OAT_MS && moved < KMA_OAT_NM) return;
+  _kmaOatBusy = true;
+  _kmaOatLast = Date.now();
+  try {
+    const ctl = new AbortController();
+    setTimeout(() => ctl.abort(), 8000);
+    const url = `${KMA_OAT_URL}?latitude=${S.lat.toFixed(4)}&longitude=${S.lon.toFixed(4)}`
+              + `&current=temperature_2m&timeformat=unixtime`;
+    const res = await fetch(url, { signal: ctl.signal });
+    if (!res.ok) throw new Error('KMA ' + res.status);
+    const d = await res.json();
+    const c = d && d.current ? d.current.temperature_2m : null;
+    if (typeof c !== 'number' || !isFinite(c)) throw new Error('기온 없음');
+    // 응답의 elevation 은 그 격자의 표고(m). 없으면 0 으로 두어도 감률 오차는
+    // 표고만큼(1000ft 당 2°C)이므로 값을 통째로 버리는 것보다 낫다.
+    const elevM = (typeof d.elevation === 'number' && isFinite(d.elevation)) ? d.elevation : 0;
+    window._oatKma = { c, elevFt: elevM / 0.3048, lat: S.lat, lon: S.lon, at: Date.now() };
+  } catch (e) {
+    _swallow(e);   // 못 받으면 METAR 로 물러난다(oatNow)
+  } finally {
+    _kmaOatBusy = false;
+  }
+}
+setInterval(() => { try { _kmaOatTick(); } catch(e) { _swallow(e); } }, 30000);
+
 // ── PWA 설치 프롬프트 ──
 let _deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); _deferredPrompt = e; });
@@ -690,8 +736,10 @@ function _parseMetar(raw) {
   if (tdm) {
     const toC = s => uTemp(parseInt(s.replace('M', '-'), 10));
     p.temp = `${toC(tdm[1])} / DP ${toC(tdm[2])}`;
-    // PFD OAT 계산용 지면 온도 갱신(가장 최근 조회한 METAR 기준)
+    // PFD OAT 계산용 지면 온도 갱신(가장 최근 조회한 METAR 기준).
+    // 받은 시각도 남긴다 — 자료가 아예 없는 것과 15°C 인 것을 구분해야 한다.
     _oatSurfaceC = parseInt(tdm[1].replace('M', '-'), 10);
+    _oatSurfaceAt = Date.now();
   }
 
   // QNH
@@ -1885,7 +1933,11 @@ function act(name, ...args) {
     function utilTasHere() {
       try {
         _UV.tasPA  = Math.round(S.alt);
-        _UV.tasOAT = Math.round(_oatSurfaceC - 1.98 * S.alt / 1000);
+        // 계기가 보고 있는 것과 같은 기온을 넣는다(기상청 격자 → METAR 순).
+        // 계산기 칸이라 빈 값을 둘 수 없으므로, 아무 자료도 없을 때만
+        // 표준대기로 채운다.
+        const _o = oatNow();
+        _UV.tasOAT = Math.round(_o.c !== null ? _o.c : 15 - 1.98 * S.alt / 1000);
         _UV.tasIAS = +S.spd.toFixed(1);
         _utilConvert('tasIAS', _UV.tasIAS);
       } catch (e) { _swallow(e); }
