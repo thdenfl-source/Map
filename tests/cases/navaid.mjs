@@ -363,8 +363,44 @@ export async function run(page, t) {
   t.eq(info.airPx, info.brgPx,
     `TAS·GS·OAT·ISA 가 방위 숫자와 같은 크기다 (${info.airPx}px vs ${info.brgPx}px)`);
   t.ok(info.airPx >= 18, `그 크기가 비행 중에 읽을 만하다 (${info.airPx}px)`);
-  t.ok(info.airLblPx >= 14 && info.airLblPx < info.airPx,
+  // 이름표는 값보다 작다. AHRS 버튼까지 한 줄에 세워야 해서 폭이 빠듯하다 —
+  // 읽는 것은 값이므로 이름표를 먼저 줄인다.
+  t.ok(info.airLblPx >= 12 && info.airLblPx < info.airPx,
     `이름표는 값보다 조금 작다 (${info.airLblPx}px vs ${info.airPx}px)`);
+
+  // ── AHRS 버튼이 TAS 왼쪽에 있는가 ────────────────────────────
+  // 자세를 잡는 버튼이라 계기를 보는 눈이 머무는 자리에 있어야 한다.
+  // 조작부 구석(OBS 옆)에 있을 때는 손이 가지 않았다.
+  const ahrsBtn = await phone.evaluate(() => {
+    const b = document.getElementById('ahrs-btn');
+    const tas = [...document.querySelectorAll('#pfd-info .pi i')].find(e => e.textContent === 'TAS');
+    const a = b.getBoundingClientRect(), r = tas.getBoundingClientRect();
+    const sel = document.querySelector('#pi-nav .pi-sel').getBoundingClientRect();
+    // 글자판은 updatePfdInfo() 가 innerHTML 로 갈아 끼운다 — 버튼이 살아남아야 한다
+    toggleAhrs(); _piLast = ''; updatePfdInfo();
+    const after = document.getElementById('ahrs-btn');
+    const lit = !!after && after.classList.contains('on');
+    toggleAhrs();
+    // 값 넉 줄이 한 줄에 서는가(줄이 넘어가면 계기가 그만큼 눌린다)
+    const tops = new Set([...document.querySelectorAll('#pi-air ~ *, #pfd-info .pi:not(.pi-src)')]
+      .map(e => Math.round(e.getBoundingClientRect().top)));
+    return { inInfo: !!b.closest('#pfd-info'), inCtrl: !!b.closest('.ctrl-sub-row'),
+             leftOfTas: a.right <= r.left + 1,
+             sameRow: Math.abs((a.top + a.height / 2) - (r.top + r.height / 2)) < 12,
+             w: Math.round(a.width), h: Math.round(a.height),
+             biggerThanSel: a.height >= sel.height,
+             alive: !!after, lit, airLines: tops.size };
+  });
+  t.eq(ahrsBtn.inInfo, true, 'AHRS 가 계기 글자판에 있다');
+  t.eq(ahrsBtn.inCtrl, false, '조작부에서는 빠졌다');
+  t.eq(ahrsBtn.leftOfTas, true, 'TAS 왼쪽에 선다');
+  t.eq(ahrsBtn.sameRow, true, 'TAS 와 같은 줄이다');
+  t.ok(ahrsBtn.h >= 28 && ahrsBtn.w >= 60,
+    `한 손으로 누를 크기다 (${ahrsBtn.w}×${ahrsBtn.h}px)`);
+  t.eq(ahrsBtn.biggerThanSel, true, 'NAV 소스 선택 버튼보다 작지 않다');
+  t.eq(ahrsBtn.alive, true, '글자판을 다시 그려도 버튼이 살아남는다');
+  t.eq(ahrsBtn.lit, true, '누르면 켜져 보인다');
+  t.eq(ahrsBtn.airLines, 1, `AHRS 와 네 값이 한 줄에 선다 (${ahrsBtn.airLines}줄)`);
 
   // ── ⑩ CRHT 가 없어졌는가 · 갈색이 줄었는가 ───────────────────
   const crht = await phone.evaluate(() => {
