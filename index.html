@@ -1741,7 +1741,9 @@ body.phone-mode #map-full-btn { min-width: 54px; }
   font-family: 'Helvetica Neue', Arial, sans-serif;
 }
 .pi-row {
-  display: flex; flex-wrap: wrap; justify-content: center;
+  /* 왼쪽부터 채운다 — 줄마다 시작점이 같아야 눈이 값을 바로 짚는다.
+     가운데 정렬이면 NAV 소스 세 줄의 이름·방위·거리가 줄마다 어긋난다. */
+  display: flex; flex-wrap: wrap; justify-content: flex-start;
   align-items: baseline; gap: 2px 10px;
   line-height: 1.25;
 }
@@ -1819,10 +1821,11 @@ body.phone-mode .ctrl-sub-row { display: contents; }
    자주 만지는 것(코스·시계·OBS·SUSP)을 앞줄에, 한 번 정해 두는 것(BRG·NAV SRC·RNP)을
    뒷줄에 오도록 순서를 다시 매긴다 — 그러면 두 줄에 맞아떨어진다. */
 body.phone-mode .ctrl-group    { order: 1; }   /* CRS · AP(OBS) */
-body.phone-mode .sw-group      { order: 2; }
+body.phone-mode .brg-tog-group { order: 2; }
 body.phone-mode .susp-group    { order: 3; }
-body.phone-mode .brg-tog-group { order: 4; }
-body.phone-mode .nav-src-group { order: 5; }
+/* .ctrl-break 가 order:4 — 여기서 줄이 갈린다 */
+body.phone-mode .sw-group      { order: 5; }
+body.phone-mode .nav-src-group { order: 6; }
 body.phone-mode .ctrl-group,
 body.phone-mode .sw-group,
 body.phone-mode .brg-tog-group,
@@ -1837,7 +1840,6 @@ body.phone-mode .sw-group { padding: 1px 4px; gap: 4px; }
 body.phone-mode .sw-display { font-size: 13px; letter-spacing: 1px; min-width: 66px; }
 body.phone-mode .sw-btn { font-size: 9px; padding: 2px 5px; }
 body.phone-mode .obs-btn { font-size: 10px; padding: 3px 7px; }
-body.phone-mode .susp-btn { font-size: 10px; min-width: 38px; padding: 3px 7px; }
 body.phone-mode .brg-tog-btn { font-size: 9px; padding: 2px 5px; }
 body.phone-mode .brg-tog-btn.brg-bdp { font-size: 8px; padding: 2px 4px; }
 body.phone-mode .brg-tog-btns { gap: 2px; }
@@ -1851,15 +1853,38 @@ body.phone-mode .nav-src-group .rnp-btns { margin: 0; }
 body.phone-mode .brg-tog-group > .ctrl-lbl,
 body.phone-mode .susp-group > .ctrl-lbl,
 body.phone-mode .ctrl-group > .ctrl-lbl:not(.ctrl-lbl-btn):not([id]) { display: none; }
-/* 여섯 무리(CRS·시계·OBS·BRG·RNP·SUSP)를 한 줄에 세운다. 줄이 나뉘면 그만큼
-   계기가 눌린다 — 폭이 모자라는 좁은 폰에서만 접히도록 크기를 조인다. */
-body.phone-mode .ctrl-bar { gap: 2px 4px; }
-body.phone-mode .ctrl-lbl-btn { padding: 0 4px; }
+/* 조작부 배치 — 왼쪽부터 채우고, 자주 만지는 것을 앞줄에 둔다.
+     윗줄  CRS · OBS · BRG · SUSP
+     아랫줄 시계 · RNP            (한 번 맞춰 두고 잘 안 건드리는 것들)
+   가운데 정렬이면 줄마다 시작점이 달라져 눈이 매번 그 줄의 왼쪽 끝을 찾아야
+   한다. 글자판(#pfd-info)과 같은 왼쪽 선에 맞춘다. */
+body.phone-mode .ctrl-bar { gap: 3px 4px; justify-content: flex-start; padding-left: 6px; }
+/* 글자판은 조작부의 flex 항목이기도 하다. 폭을 다 차지하게 못 박지 않으면
+   넓은 화면에서 조작부 버튼이 그 옆으로 붙어 올라간다 — 실제로 CRS 가
+   NAV 줄 오른쪽 끝에 가서 붙었다. */
+body.phone-mode #pfd-info { flex: 0 0 100%; }
+/* 글자판 줄들의 왼쪽 선을 맞춘다 — NAV 줄만 4px 안으로 들어가 있었다 */
+body.phone-mode .pi-src { padding: 0 4px 0 0; }
 body.phone-mode .sw-group { padding: 1px 3px; gap: 3px; }
-body.phone-mode .sw-display { min-width: 60px; letter-spacing: 0.5px; }
-body.phone-mode .rnp-btn { padding: 2px 3px; }
 body.phone-mode .nav-src-group { gap: 2px; }
-body.phone-mode .susp-btn { font-size: 10px; min-width: 0; padding: 3px 7px; }
+/* 줄바꿈 표식 — 이 항목이 한 줄을 다 차지해 뒤를 다음 줄로 넘긴다 */
+.ctrl-break { display: none; }
+body.phone-mode .ctrl-break { display: block; flex: 0 0 100%; height: 0; order: 4; }
+/* 조작부 버튼을 NAV 소스 선택 버튼(.pi-sel)과 같은 규격으로 — 위아래로 이어지는
+   같은 성격의 버튼이라 크기가 다르면 줄이 어긋나 보인다 */
+body.phone-mode .obs-btn,
+body.phone-mode .susp-btn,
+body.phone-mode .brg-tog-btn,
+body.phone-mode .rnp-btn,
+body.phone-mode .sw-btn {
+  font-size: 14px; min-width: 50px; padding: 3px 6px; border-radius: 4px;
+}
+/* RNP 는 글자가 한 자(4·2·1·0.3)다. 높이·글자 크기는 맞추되 폭까지 50px 로
+   잡으면 넷이 한 줄을 다 먹어 시계와 같은 줄에 서지 못한다. */
+body.phone-mode .rnp-btn { min-width: 34px; }
+body.phone-mode .cbtn { width: 40px; height: 28px; font-size: 15px; }
+body.phone-mode .ctrl-lbl-btn { font-size: 13px; padding: 0 5px; }
+body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 0.5px; }
 </style>
 </head>
 <body>
@@ -2405,6 +2430,12 @@ body.phone-mode .susp-btn { font-size: 10px; min-width: 0; padding: 3px 7px; }
         <!-- NAV 소스 선택 버튼은 여기 없다. 글자판(#pfd-info)의 각 줄 앞
              버튼이 그 일을 한다 — 이름·방위·래디얼·거리를 보면서 고르는 편이
              버튼만 따로 두는 것보다 낫다. -->
+
+        <!-- 줄바꿈 표식 — 폰·세로 배치에서 시계·RNP 를 마지막 줄로 내린다.
+             flex 는 한 줄을 통째로 차지하는 항목을 만나면 그 뒤를 다음 줄로
+             넘긴다. order 로 자리만 정해서는 줄이 갈린다는 보장이 없다. -->
+        <i class="ctrl-break" aria-hidden="true"></i>
+
         <div class="nav-src-group">
           <div class="ctrl-lbl rnp-lbl">RNP</div>
           <div class="rnp-btns">
