@@ -156,7 +156,6 @@ window.addEventListener('pagehide', saveSession);
 function init(){
   resizePFD();
   applyNightMode();   // 야간 모드 복원
-  showHelpOnLaunch();
   const _restored = restoreSession();   // 자동 리로드 복원(있으면 FPL 복원 생략)
   if (!_restored) _fplRestore();        // 저장된 비행계획 복원(새로고침 대비)
   fpRender();
