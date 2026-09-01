@@ -512,6 +512,25 @@ export async function run(page, t) {
   t.eq(info.srcCount, 3, 'NAV 소스 세 가지(FMS·NAV1·NAV2)가 모두 있다');
   t.ok(/FMS/.test(info.nav) && /NAV1/.test(info.nav) && /NAV2/.test(info.nav),
     '세 소스의 이름이 다 보인다');
+
+  // 세 소스는 폭이 어떻든 늘 한 줄씩, 언제나 세 줄이다.
+  // 종전에는 남는 폭에 따라 접혔다 — 좁은 폰에서는 세 줄, 조금 넓으면 두 줄,
+  // 패드·PC 에서는 한 줄. 그러면 화면 폭이 바뀔 때마다 FMS·NAV1·NAV2 가 서 있는
+  // 자리가 달라져, 늘 같은 자리를 짚던 눈이 매번 다시 찾아야 했다.
+  for (const w of [320, 390, 430, 540, 768, 810, 1180, 1400]) {
+    await phone.setViewportSize({ width: w, height: 844 });
+    await phone.waitForTimeout(220);
+    const r = await phone.evaluate(() => {
+      const src = [...document.querySelectorAll('#pi-nav .pi-src')];
+      const rows = new Set(src.map(e => Math.round(e.getBoundingClientRect().top)));
+      const lefts = new Set(src.map(e => Math.round(e.getBoundingClientRect().left)));
+      return { rows: rows.size, lefts: lefts.size, n: src.length };
+    });
+    t.eq(r.rows, 3, `${w}px — NAV 소스가 세 줄이다 (${r.rows}줄 / ${r.n}개)`);
+    t.eq(r.lefts, 1, `${w}px — 세 줄이 같은 왼쪽 선에서 시작한다 (${r.lefts}자리)`);
+  }
+  await phone.setViewportSize(PHONE);
+  await phone.waitForTimeout(300);
   t.ok(info.h > 10 && info.h < 170, `글자판이 지나치게 자라지 않았다 (${info.h}px)`);
   // 글자판의 값은 모두 같은 크기로 읽는다. 한 화면에 있는 값인데 하나만 작으면
   // 그것만 못 읽고 지나친다 — TAS·GS·OAT 를 NAV 줄의 방위 숫자에 맞춘다.
