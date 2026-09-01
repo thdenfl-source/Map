@@ -1515,6 +1515,9 @@ body.phone-mode #map-sim-bar .sim-btn { font-size: 10px; }
   line-height: 1.25;
 }
 .pi { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+/* OAT 는 눌러서 출처를 볼 수 있다 — 누를 수 있다는 것이 보여야 눌러 본다 */
+.pi-oat { cursor: pointer; touch-action: manipulation; border-radius: 3px; padding: 0 3px; }
+.pi-oat:active { background: rgba(255,255,255,0.12); }
 /* TAS·GS·OAT 도 아래 NAV 줄의 방위 숫자와 같은 크기로 읽는다.
    한 화면에 있는 값인데 하나만 작으면 그것만 못 읽고 지나친다. */
 .pi i { font-style: normal; color: #888; font-size: 18px; letter-spacing: 0.3px; }

@@ -106,51 +106,114 @@ async function _autoMetarTick() {
 }
 setInterval(() => { try { _autoMetarTick(); } catch(e) { _swallow(e); } }, 30000);
 
-// ── 현재 위치의 기온 — 기상청(KMA) 격자 예보 ───────────────────────
+// ── 현재 위치의 기온 — 공개 기상자료 ───────────────────────────────
 // OAT 를 종전에는 가장 가까운 공항의 METAR 로만 채웠다. 60NM 안에 공항이
 // 없으면(산악·해상·저고도 비행에서는 흔하다) 값이 갱신되지 않았다.
 //
-// 기상청 모델(LDPS 1.5km · GDPS 12km)을 Open-Meteo 의 KMA 창구로 받는다.
-// 열쇠(API key)가 필요 없어 앱에 심어 둘 것이 없고, 바람 자료를 받는 곳과
-// 같은 출처라 새로 뚫을 문도 없다. 응답에는 그 격자의 표고(m)가 함께 오므로,
-// 지면 기온에서 지금 고도까지 감률을 정확히 먹일 수 있다.
+// 열쇠(API key)가 필요 없는 창구 세 곳을 차례로 두드려, 먼저 답하는 것을 쓴다.
+// 기상청 자료를 앞에 두되, 그것이 막히면 어느 모델이든 기온만이라도 띄운다 —
+// 빈 칸보다는 출처가 다른 기온이 낫고, 어느 쪽에서 왔는지는 함께 적어 둔다.
+//   ① 기상청 전용 창구      LDPS 1.5km(한반도) · GDPS 10km(전 지구)
+//   ② 같은 자료를 일반 창구로 지도 바람을 받는 길과 같아 확실히 열려 있다
+//   ③ 모델을 가리지 않고     기상청이 안 되는 지역·시간의 마지막 수단
+// 응답에는 그 격자의 표고(m)가 함께 오므로, 지면 기온에서 지금 고도까지
+// 감률을 정확히 먹일 수 있다.
 //
 // METAR 는 그대로 둔다 — 실측이라 근처 공항 상공에서는 이쪽이 낫다.
-// 다만 '지금 이 자리' 를 묻는 값이므로 기상청 격자를 먼저 쓴다(oatNow).
-const KMA_OAT_URL = 'https://api.open-meteo.com/v1/kma';
-const KMA_OAT_MS  = 10 * 60 * 1000;   // 10분마다
-const KMA_OAT_NM  = 5;                // 또는 5NM 넘게 움직였을 때
-let _kmaOatLast = 0, _kmaOatBusy = false;
+// 다만 '지금 이 자리' 를 묻는 값이라 격자 기온을 먼저 쓴다(oatNow).
+const OAT_SOURCES = [
+  { src: 'KMA',   name: '기상청(LDPS·GDPS)',
+    url: 'https://api.open-meteo.com/v1/kma?%LL%&current=temperature_2m' },
+  { src: 'KMA',   name: '기상청(LDPS·GDPS)',
+    url: 'https://api.open-meteo.com/v1/forecast?%LL%&current=temperature_2m&models=kma_seamless' },
+  { src: 'MODEL', name: '전 지구 모델',
+    url: 'https://api.open-meteo.com/v1/forecast?%LL%&current=temperature_2m' },
+];
+const OAT_FETCH_MS   = 10 * 60 * 1000;   // 받았으면 10분 뒤에 다시
+const OAT_RETRY_MS   = 60 * 1000;        // 못 받았으면 1분 뒤에 다시
+const OAT_MOVE_NM    = 5;                // 또는 5NM 넘게 움직였을 때
+let _oatLast = 0, _oatBusy = false;
+window._oatErr = '';                     // 마지막 실패 사유(oatInfo 에서 보인다)
 
-async function _kmaOatTick() {
-  if (_kmaOatBusy) return;
-  if (!(gpsMode || S.running)) return;              // 위치가 있어야 물어볼 수 있다
-  const k = window._oatKma;
-  const moved = k ? distance(S.lat, S.lon, k.lat, k.lon) : Infinity;
-  if (Date.now() - _kmaOatLast < KMA_OAT_MS && moved < KMA_OAT_NM) return;
-  _kmaOatBusy = true;
-  _kmaOatLast = Date.now();
+async function _oatFetchOne(spec, ll) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 8000);
   try {
-    const ctl = new AbortController();
-    setTimeout(() => ctl.abort(), 8000);
-    const url = `${KMA_OAT_URL}?latitude=${S.lat.toFixed(4)}&longitude=${S.lon.toFixed(4)}`
-              + `&current=temperature_2m&timeformat=unixtime`;
-    const res = await fetch(url, { signal: ctl.signal });
-    if (!res.ok) throw new Error('KMA ' + res.status);
+    const res = await fetch(spec.url.replace('%LL%', ll), { signal: ctl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const d = await res.json();
     const c = d && d.current ? d.current.temperature_2m : null;
     if (typeof c !== 'number' || !isFinite(c)) throw new Error('기온 없음');
-    // 응답의 elevation 은 그 격자의 표고(m). 없으면 0 으로 두어도 감률 오차는
-    // 표고만큼(1000ft 당 2°C)이므로 값을 통째로 버리는 것보다 낫다.
+    // elevation 은 그 격자의 표고(m). 없으면 0 으로 두어도 감률 오차는 그
+    // 표고만큼(1000ft 당 2°C)이라, 값을 통째로 버리는 것보다 낫다.
     const elevM = (typeof d.elevation === 'number' && isFinite(d.elevation)) ? d.elevation : 0;
-    window._oatKma = { c, elevFt: elevM / 0.3048, lat: S.lat, lon: S.lon, at: Date.now() };
-  } catch (e) {
-    _swallow(e);   // 못 받으면 METAR 로 물러난다(oatNow)
+    return { c, elevFt: elevM / 0.3048, src: spec.src, name: spec.name };
+  } finally { clearTimeout(timer); }
+}
+
+async function _oatTick() {
+  if (_oatBusy) return;
+  // 위치가 있어야 물어볼 수 있다. GPS 가 붙었는지는 따지지 않는다 —
+  // 화면의 다른 값들도 모두 S.lat/S.lon 을 기준으로 그리므로 여기만 달리
+  // 굴 이유가 없고, 종전에는 이 조건 때문에 실내·권한 거부 상태에서
+  // 기온이 영영 뜨지 않았다.
+  if (!isFinite(S.lat) || !isFinite(S.lon)) return;
+  const k = window._oatKma;
+  const moved = k ? distance(S.lat, S.lon, k.lat, k.lon) : Infinity;
+  const wait = k ? OAT_FETCH_MS : OAT_RETRY_MS;
+  if (Date.now() - _oatLast < wait && moved < OAT_MOVE_NM) return;
+  _oatBusy = true;
+  _oatLast = Date.now();
+  const ll = `latitude=${S.lat.toFixed(4)}&longitude=${S.lon.toFixed(4)}`;
+  const errs = [];
+  try {
+    for (const spec of OAT_SOURCES) {
+      try {
+        const r = await _oatFetchOne(spec, ll);
+        window._oatKma = { ...r, lat: S.lat, lon: S.lon, at: Date.now() };
+        window._oatErr = '';
+        return;
+      } catch (e) { errs.push(`${spec.name}: ${e && e.message ? e.message : e}`); }
+    }
+    // 셋 다 실패 — METAR 로 물러난다(oatNow). 왜 못 받았는지는 남겨 둔다.
+    window._oatErr = errs.join('\n');
   } finally {
-    _kmaOatBusy = false;
+    _oatBusy = false;
   }
 }
-setInterval(() => { try { _kmaOatTick(); } catch(e) { _swallow(e); } }, 30000);
+// 켜자마자 한 번(위치가 잡히기 전이라도 마지막으로 보던 자리 기준으로 받아 둔다),
+// 그다음부터는 30초마다 살핀다. 실제로 요청이 나가는 간격은 _oatTick 이 정한다.
+setTimeout(() => { try { _oatTick(); } catch(e) { _swallow(e); } }, 1500);
+setInterval(() => { try { _oatTick(); } catch(e) { _swallow(e); } }, 30000);
+
+// 계기의 OAT 를 누르면 이 값이 어디서 왔는지 알려 준다.
+// 빈 칸('---')을 보고도 왜 그런지 알 길이 없으면 고칠 수도, 믿을 수도 없다.
+function oatInfo() {
+  const o = oatNow();
+  const k = window._oatKma;
+  const min = t => Math.round((Date.now() - t) / 60000);
+  let m = 'OAT — 외기온도\n\n';
+  if (o.c === null) {
+    m += '지금은 받아 둔 기상자료가 없습니다.\n';
+    m += '값을 지어내지 않고 비워 둡니다.\n\n';
+    if (window._oatErr) m += '마지막 시도:\n' + window._oatErr + '\n\n';
+    m += '· 인터넷이 끊겨 있으면 뜨지 않습니다.\n';
+    m += '· 잠시 뒤 저절로 다시 받아 옵니다(1분 간격).';
+  } else if (o.src === 'KMA' || o.src === 'MODEL') {
+    m += `${uTemp(o.c)} (고도 ${uAlt(S.alt)})\n\n`;
+    m += `출처: ${k.name}\n`;
+    m += `격자 기온: ${uTemp(k.c)} (표고 ${uAlt(k.elevFt)})\n`;
+    m += `받은 지: ${min(k.at)}분 전\n\n`;
+    m += '격자 표고의 기온에 표준 감률(1000ft 당 1.98°C)을 먹여\n지금 고도의 기온을 냅니다.';
+  } else {
+    m += `${uTemp(o.c)} (고도 ${uAlt(S.alt)})\n\n`;
+    m += `출처: ${_autoMetarIcao || '근처 공항'} METAR (실측)\n`;
+    m += `지면 기온: ${uTemp(_oatSurfaceC)}\n`;
+    m += `받은 지: ${min(window._oatSurfaceAt)}분 전\n\n`;
+    m += '기상자료를 못 받아 가장 가까운 공항의 실측값을 씁니다.';
+  }
+  uiAlert(m);
+}
 
 // ── PWA 설치 프롬프트 ──
 let _deferredPrompt = null;

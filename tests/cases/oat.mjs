@@ -11,6 +11,11 @@ export const name = '외기온도(OAT)';
 export async function run(page, t) {
   const LAPSE = 1.98;   // °C / 1000ft
 
+  // 검사 중에는 바깥 망을 쓰지 않는다. 앱은 켜지고 1.5초 뒤 스스로 기온을
+  // 받으러 나가는데, 그 요청이 검사 도중에 끝나면 여기서 세워 둔 상태를
+  // 덮어쓴다. 기본은 전부 막아 두고, ⑨ 에서 창구별로 다시 연다.
+  await page.route('**://api.open-meteo.com/**', r => r.abort());
+
   // 셋을 원하는 상태로 놓고 oatNow() 를 읽는다
   const ask = (kma, metarAt, alt) => page.evaluate(([kma, metarAt, alt]) => {
     S.alt = alt;
@@ -90,20 +95,93 @@ export async function run(page, t) {
   // 숫자가 나란히 서서 어느 쪽이 실제인지 헷갈렸다.
   t.ok(!/\bISA\b/.test(shown.withData), `글자판에 ISA 가 없다 (${shown.withData})`);
 
-  // ── ⑦ 받아 오는 곳이 기상청인가 ──────────────────────────────
-  // 열쇠(API key)가 필요 없는 창구라야 앱에 심어 둘 것이 없다.
+  // ── ⑦ 받아 오는 곳 ───────────────────────────────────────────
+  // 한 곳만 두면 그 창구가 막히는 순간 기온이 통째로 사라진다(실제로 그랬다).
+  // 기상청을 앞에 두되, 막히면 다른 모델에서라도 기온을 받아 온다.
+  // 어느 창구든 열쇠(API key)가 필요 없어야 앱에 심어 둘 것이 없다.
   const src = await page.evaluate(() => ({
-    url: typeof KMA_OAT_URL === 'string' ? KMA_OAT_URL : null,
-    tick: typeof _kmaOatTick === 'function',
+    list: (typeof OAT_SOURCES !== 'undefined' ? OAT_SOURCES : []).map(x => ({ src: x.src, url: x.url })),
+    tick: typeof _oatTick === 'function',
+    info: typeof oatInfo === 'function' && typeof APP_ACT.oatInfo === 'function',
   }));
-  t.ok(src.url && /open-meteo\.com\/v1\/kma/.test(src.url),
-    `기상청(KMA) 창구를 본다 (${src.url})`);
-  t.ok(!/key=|appid=|serviceKey/i.test(src.url || ''), '열쇠를 심어 두지 않았다');
+  t.ok(src.list.length >= 2, `창구를 여럿 둔다 (${src.list.length}곳)`);
+  t.eq(src.list[0].src, 'KMA', `기상청을 먼저 두드린다 (${src.list[0].src})`);
+  t.ok(/open-meteo\.com\/v1\/kma/.test(src.list[0].url), `기상청 창구다 (${src.list[0].url})`);
+  t.ok(src.list.some(x => /models=kma_seamless/.test(x.url)),
+    '기상청 자료를 일반 창구로도 한 번 더 시도한다');
+  t.ok(src.list.some(x => x.src !== 'KMA'),
+    '기상청이 막히면 다른 모델에서라도 기온을 받는다');
+  t.ok(src.list.every(x => /latitude=%LL%|%LL%/.test(x.url)), '모두 현재 위치를 넣어 묻는다');
+  t.eq(src.list.filter(x => /key=|appid=|serviceKey/i.test(x.url)).length, 0,
+    '어느 창구에도 열쇠를 심어 두지 않았다');
   t.eq(src.tick, true, '자리를 옮기거나 시간이 지나면 다시 받는 일꾼이 있다');
+
+  // ── ⑧ 왜 안 뜨는지 볼 수 있는가 ──────────────────────────────
+  // 빈 칸을 보고도 까닭을 알 길이 없으면 고칠 수도, 믿을 수도 없다.
+  t.eq(src.info, true, 'OAT 를 누르면 출처를 알려 주는 자리가 등록돼 있다');
+  const tap = await page.evaluate(() => {
+    const e = document.querySelector('#pi-air .pi-oat');
+    return { has: !!e, act: e ? e.dataset.act : null,
+             cur: e ? getComputedStyle(e).cursor : null };
+  });
+  t.eq(tap.has, true, 'OAT 자리가 누를 수 있게 돼 있다');
+  t.eq(tap.act, 'oatInfo', `누르면 출처를 연다 (${tap.act})`);
+  t.eq(tap.cur, 'pointer', '누를 수 있다는 것이 보인다');
+
+  // ── ⑨ 창구가 막혀도 기온이 뜨는가 ────────────────────────────
+  // 실제로 겪은 일이다: 창구 한 곳만 두었더니 그것이 답하지 않는 동안
+  // OAT 가 통째로 비었다. 앞의 창구를 하나씩 막아 가며, 뒤의 것이 받아
+  // 오는지 그물망을 직접 두드려 본다.
+  const reply = (temp, elev) => ({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ latitude: 37.5, longitude: 127, elevation: elev,
+                           current: { time: 0, temperature_2m: temp } }),
+  });
+  // openWhich: 이 조각이 들어간 주소만 응답하고 나머지는 막는다(null = 전부 막기)
+  const tryChain = async openWhich => {
+    await page.unroute('**://api.open-meteo.com/**').catch(() => {});
+    await page.route('**://api.open-meteo.com/**', route => {
+      const u = route.request().url();
+      if (openWhich && u.includes(openWhich)) route.fulfill(reply(8, 300));
+      else route.abort();
+    });
+    // 켜질 때 나간 요청이 아직 돌아오지 않았으면 기다린다 — 한 번에 하나만
+    // 나가도록 막아 두었으므로(_oatBusy), 그 사이에 부르면 그냥 되돌아온다.
+    await page.waitForFunction(() => !_oatBusy, null, { timeout: 20000 });
+    return page.evaluate(async () => {
+      window._oatKma = null; window._oatSurfaceAt = 0; window._oatErr = '';
+      _oatLast = 0;
+      await _oatTick();
+      S.alt = 300 / 0.3048;                       // 격자 표고에 세워 감률을 뺀다
+      const o = oatNow();
+      return { c: o.c === null ? null : Math.round(o.c), src: o.src,
+               name: window._oatKma ? window._oatKma.name : null,
+               err: window._oatErr };
+    });
+  };
+
+  const viaKma = await tryChain('/v1/kma');
+  t.eq(viaKma.src, 'KMA', `기상청 창구가 답하면 그 값을 쓴다 (${viaKma.src})`);
+  t.eq(viaKma.c, 8, `받은 기온이 그대로 들어온다 (${viaKma.c}°C)`);
+
+  const viaSeamless = await tryChain('models=kma_seamless');
+  t.eq(viaSeamless.src, 'KMA',
+    `기상청 전용 창구가 막혀도 일반 창구로 기상청 값을 받는다 (${viaSeamless.src})`);
+  t.eq(viaSeamless.c, 8, `그때도 기온이 뜬다 (${viaSeamless.c}°C)`);
+
+  const viaAny = await tryChain('current=temperature_2m');
+  t.eq(viaAny.c, 8, `기상청이 둘 다 막혀도 기온은 뜬다 (${viaAny.c}°C)`);
+  t.ok(viaAny.name, `어디서 온 값인지 함께 적어 둔다 (${viaAny.name})`);
+
+  const allDown = await tryChain(null);
+  t.eq(allDown.c, null, `아무 데도 답하지 않으면 지어내지 않는다 (${allDown.c})`);
+  t.ok(allDown.err && allDown.err.split('\n').length >= 3,
+    `왜 못 받았는지 창구별로 남는다 (${(allDown.err || '').split('\n')[0]})`);
 
   // 뒷정리 — 다음 검사가 이 상태를 물려받지 않게 한다
   await page.evaluate(() => {
     window._oatKma = null; window._oatSurfaceC = 15; window._oatSurfaceAt = 0;
+    window._oatErr = ''; _oatLast = Date.now();
     setSolo('map');
   });
 }

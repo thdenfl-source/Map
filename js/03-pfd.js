@@ -1257,8 +1257,10 @@ function updatePfdInfo() {
       `<span class="pi"><i>TAS</i><b style="color:#88ccff">${Math.round(tas * S_CV())}${sl}</b></span>`
     + `<span class="pi"><i>GS</i><b style="color:#00cc44">${Math.round(gs * S_CV())}${sl}</b></span>`
     // 자료가 없으면 '---' 로 비운다 — 없는 값을 표준대기로 채워 내보이면
-    // 조종사는 그것을 잰 값으로 읽는다
-    + `<span class="pi"><i>OAT</i><b style="color:${oat.c === null ? '#777' : '#ffd54f'}">`
+    // 조종사는 그것을 잰 값으로 읽는다. 누르면 어디서 온 값인지(혹은 왜 비었는지)
+    // 알려 준다 — 출처를 모르는 기온은 믿고 쓸 수가 없다.
+    + `<span class="pi pi-oat" data-act="oatInfo" title="이 기온이 어디서 왔는지 보기">`
+    + `<i>OAT</i><b style="color:${oat.c === null ? '#777' : '#ffd54f'}">`
     + `${uTemp(oat.c)}</b></span>`;
 
   const navHtml = rows.map(rw => {
