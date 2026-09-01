@@ -265,6 +265,8 @@ function updateSimSpeedBtns() {
 function resetSim(){
   S.running=false;
   setSimSpeed(1);            // 리셋하면 실시간으로 돌아온다
+  suspOn = false; try { updateSuspBtn(); } catch(e) { _swallow(e); }
+  gsArmed = false; gsOn = false; try { updateGsBtn(); } catch(e) { _swallow(e); }
   updateFlyBtns();
   S.trail=[];trailLine.setLatLngs([]);_update3dTrail();S.lastT=null;
   updateAcOnMap();
@@ -364,7 +366,21 @@ function simStep(ts){
         S.lat += gsN * sc;
         S.lon += gsE * sc / Math.cos(S.lat * D2R);
         // Altitude update — hold modes override manual VS while engaged
-        if (altHoldOn) {
+        // G/S 를 잡고 있으면 고도는 강하선이 정한다(ALT·CRHT 보다 앞선다).
+        try { gsCaptureCheck(); } catch(e) { _swallow(e); }
+        const _gs = gsOn ? gsDeviation() : null;
+        if (_gs) {
+          // 강하선 고도로 수렴시킨다. 기본 강하율은 지상속도와 강하각으로 정해지고
+          // (3°·120kt ≈ 640fpm), 벗어난 만큼만 더 얹어 부드럽게 되돌아온다.
+          const gsKt = Math.max(20, groundSpdKt());
+          const base = gsKt * Math.tan(_gs.angle * D2R) * FT_PER_NM / 60;   // fpm
+          const diff = _gs.path - S.alt;                                    // + = 더 올라야
+          const corr = Math.max(-400, Math.min(400, diff * 0.5));           // fpm
+          const vs = Math.max(-2000, Math.min(500, -base + corr));
+          const step = vs / 60 * dt;
+          S.alt = Math.max(0, Math.min(45000, S.alt + step));
+          S.vs = vs;
+        } else if (altHoldOn) {
           // ALT hold: converge S.alt → selAlt at the pilot-set selVS rate.
           // Sign of climb/descent is determined automatically from the
           // current altitude relative to the target.
@@ -421,7 +437,8 @@ function simStep(ts){
       // 활성 웨이포인트에 홀딩이 걸려 있으면(아직 진입 전이라도) 시퀀싱하지 않는다.
       // TOFIX 상태만 제외하면, 픽스 통과 프레임에서 진입 판정보다 시퀀싱이 먼저
       // 돌아 "마지막 WP 통과" 로 NAV 가 해제되고 HDG 모드로 떨어진다.
-      if (S.awp >= 0 && !obsOn && !holdOn) {
+      // SUSP 가 걸려 있으면 지나가도 넘어가지 않는다(홀딩이면 저절로 걸린다).
+      if (S.awp >= 0 && !obsOn && !navSuspended()) {
         if (navApOn && navSrc === 'FMS' && S.awp + 1 < S.wps.length) {
           // Fly-by: anticipate turn toward next leg before reaching WP
           const nextLegCrs = bearing(S.wps[S.awp].lat, S.wps[S.awp].lon,
@@ -506,6 +523,8 @@ function simStep(ts){
   }
   S.lastT=ts;
   updateHoverBtns();
+  try { updateSuspBtn(); } catch(e) { _swallow(e); }
+  try { updateGsBtn(); } catch(e) { _swallow(e); }
   try { fpWptLiveTick(ts); } catch(e) { _swallow(e); }
   // 스톱워치에 흘려 넣을 시간 — 기체가 겪는 시간과 같아야 한다.
   // 배속이 걸리면 그만큼 빨리, 시뮬이 멈춰 있으면 함께 멈춘다.
@@ -588,8 +607,14 @@ function scaleCdu() {
 // 양쪽에 같은 창은 불가(사용자 클릭은 거부 피드백, 프로그램 호출은 스왑).
 let leftSel = 'pfd', rightSel = 'map';   // 'pfd' | 'map' | 'cdu' | (우측 한정 'plan')
 let midSel  = 'map';                    // 3분할일 때만 사용하는 중앙 패널
-let tripleMode = false;                 // 3분할(PFD·MAP·CDU) 여부
-try { tripleMode = localStorage.getItem('tripleMode') === '1'; } catch(e) { _swallow(e); }
+// 처음 켜면 3분할 — 좌 PFD · 중 MAP · 우 CDU 가 기본 구성이다.
+// 사용자가 2분할을 골라 뒀으면(저장값 '0') 그 뜻을 따른다.
+let tripleMode = true;                  // 3분할(PFD·MAP·CDU) 여부
+try {
+  const v = localStorage.getItem('tripleMode');
+  if (v !== null) tripleMode = (v === '1');
+} catch(e) { _swallow(e); }
+if (tripleMode) { leftSel = 'pfd'; midSel = 'map'; rightSel = 'cdu'; }
 
 // 3분할 분할 비율 [좌%, 중%] — null 이면 기본 배분(PFD 호스트 1.4배)
 const TRI_MIN = 12;                     // 한 창의 최소 비율(%)
@@ -687,6 +712,11 @@ function applyPanels() {
     scaleCdu();
   }, 60);
 }
+
+// 처음 켤 때 한 번 맞춘다. 마크업의 초기 배치는 2분할(PFD|MAP)이라,
+// 위에서 정한 기본값(3분할 · 좌 PFD · 중 MAP · 우 CDU)을 여기서 화면에 반영한다.
+// 저장된 세션을 복원하면 그쪽에서 다시 applyPanels 를 부르므로 그 뜻이 이긴다.
+try { applyPanels(); } catch(e) { _swallow(e); }
 
 // 레거시 래퍼 — 기존 호출부(CDU 버튼·솔로 모드 등) 호환
 function setLeftPage(n) { selectPanel('left', n === 0 ? 'pfd' : 'map', true); }
@@ -926,12 +956,39 @@ function _rulerRender() {
   el.style.display = 'block';
 }
 
+// ── 단독(전체화면) 진입 ──
+// 들어가기 전 창 배치를 적어 둔다. 나올 때 그대로 되돌리기 위해서다
+// (종전에는 나오면 무조건 2분할 PFD|MAP 이 되어 3분할 배치가 흐트러졌다).
+function enterSolo(screen) {
+  if (!_soloActive) _soloSaved = { l: leftSel, m: midSel, r: rightSel, tri: tripleMode };
+  _soloActive = true;
+  document.getElementById('solo-bar').style.display = 'flex';
+  setSolo(screen);
+}
+
+// 단독 버튼 — 각 창 탭 줄의 오른쪽 끝. 한 번 더 누르면 원래 배치로 돌아온다.
+function panelSolo(screen) {
+  if (_soloActive && _soloCurrent === screen) { exitSolo(); return; }
+  enterSolo(screen);
+}
+function pfdSolo() { panelSolo('pfd'); }        // 종전 이름(좌측 상단 버튼)
+
+// 단독 버튼 라벨(단독 ⇄ 분할) — 지금 단독으로 떠 있는 창의 버튼만 되돌리기가 된다
+const SOLO_BTNS = { pfd: 'pfd-solo-btn', map: 'map-solo-btn', cdu: 'cdu-solo-btn' };
+function updateSoloBtn() {
+  Object.keys(SOLO_BTNS).forEach(k => {
+    const b = document.getElementById(SOLO_BTNS[k]);
+    if (!b) return;
+    const on = (_soloActive && _soloCurrent === k);
+    b.textContent = on ? '✥ 분할' : `⛶ ${k.toUpperCase()} 단독`;
+    b.classList.toggle('active', on);
+  });
+}
+
 // MAP 상단 툴바의 FULL/HALF 토글 — 상황에 맞게 전체화면 진입/분할 복귀
 function toggleMapFull() {
   if (_soloActive) { exitSolo(); return; }
-  _soloActive = true;
-  document.getElementById('solo-bar').style.display = 'flex';
-  setSolo('map');
+  enterSolo('map');
 }
 
 // Flight Plan 하단 Home 버튼 — CDU 홈 화면으로 전환
@@ -942,11 +999,7 @@ function fpGoCduHome() {
 }
 
 // CDU 하단 Full 버튼 — 상단 Full Screen 탭과 동일하게 CDU 전체화면 진입
-function cduFullScreen() {
-  _soloActive = true;
-  document.getElementById('solo-bar').style.display = 'flex';
-  setSolo('cdu');
-}
+function cduFullScreen() { enterSolo('cdu'); }
 
 // ── CDU 하단 푸터 표준화 ──
 // 전체화면(solo)일 땐 FULL → HALF(우측 상단 ✕와 동일: exitSolo)
@@ -962,11 +1015,7 @@ function openFlightPlan() {
   if (_soloActive) setSolo('plan'); else setPage(1);
 }
 // Flight Plan 화면의 FULL — 플랜을 전체화면으로
-function planFullScreen() {
-  _soloActive = true;
-  document.getElementById('solo-bar').style.display = 'flex';
-  setSolo('plan');
-}
+function planFullScreen() { enterSolo('plan'); }
 // Flight Plan 푸터용 FULL/HALF 버튼(solo 상태 반영)
 function fpFullBtn() {
   return _soloActive
@@ -1003,6 +1052,7 @@ function cduFooter(back, extra) {
 // SOLO (단일화면) 모드
 // ══════════════════════════════════════════════════════
 let _soloActive = false;
+let _soloSaved = null;          // 단독 진입 전 창 배치
 let _soloCurrent = null;
 
 function setSolo(screen) {
@@ -1010,13 +1060,15 @@ function setSolo(screen) {
   const leftPanel  = document.getElementById('left-panel');
   const rightPanel = document.getElementById('right-panel');
   const divider    = document.getElementById('panel-divider');
+  const midPanel   = document.getElementById('mid-panel');
 
-  // 모든 패널 숨기기
+  // 모든 패널 숨기기 — 3분할이면 가운데 창도 함께 접는다
   leftPanel.classList.remove('solo-panel-visible');
   rightPanel.classList.remove('solo-panel-visible');
   leftPanel.style.display  = 'none';
   rightPanel.style.display = 'none';
   divider.style.display = 'none';
+  if (midPanel) { midPanel.classList.remove('solo-panel-visible'); midPanel.style.display = 'none'; }
   document.body.classList.add('solo-mode');
 
   // solo-bar 버튼 강조
@@ -1055,6 +1107,7 @@ function setSolo(screen) {
   // MAP 상단 툴바 버튼 라벨: 전체화면(map)일 때 HALF, 그 외 FULL
   const mapFullBtn = document.getElementById('map-full-btn');
   if (mapFullBtn) mapFullBtn.textContent = (screen === 'map') ? 'HALF' : 'FULL';
+  updateSoloBtn();
   _refreshCduFooters();   // FULL⇄HALF 라벨 갱신
 }
 
@@ -1083,10 +1136,17 @@ function exitSolo() {
   leftPanel.style.display  = '';
   rightPanel.style.display = '';
   divider.style.display = '';
+  const midPanel = document.getElementById('mid-panel');
+  if (midPanel) { midPanel.classList.remove('solo-panel-visible'); midPanel.style.display = ''; }
 
-  // 분할 화면 복귀 시 기본 배치: 좌측 PFD, 우측 MAP
-  setLeftPage(0);
-  setPage(0);
+  // 들어가기 전 배치로 되돌린다(없으면 종전대로 좌 PFD · 우 MAP)
+  if (_soloSaved) {
+    tripleMode = _soloSaved.tri; leftSel = _soloSaved.l;
+    midSel = _soloSaved.m; rightSel = _soloSaved.r;
+    _soloSaved = null;
+    applyPanels();
+  } else { setLeftPage(0); setPage(0); }
+  updateSoloBtn();
   _refreshCduFooters();   // FULL⇄HALF 라벨 갱신
   setTimeout(() => {
     leafMap.invalidateSize();

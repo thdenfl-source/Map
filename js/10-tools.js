@@ -621,11 +621,11 @@ try { _fixUpdateBtn(); } catch(e) { _swallow(e); }
 
 let _awyLayers = [];
 // 카테고리별 표시 상태: Conventional 항로 / RNAV 항로 / VOR 표지소
-let awyCat = { conv: false, rnav: false, vor: false, aptvor: false };
+let awyCat = { conv: false, rnav: false, vor: false, aptvor: false, loc: false };
 try {
   const s = JSON.parse(localStorage.getItem('awyCat') || 'null');
   // 이전 버전은 VOR이 한 항목이었으므로, 저장값에 aptvor가 없으면 vor 상태를 물려받는다
-  if (s) awyCat = { conv: !!s.conv, rnav: !!s.rnav, vor: !!s.vor,
+  if (s) awyCat = { conv: !!s.conv, rnav: !!s.rnav, vor: !!s.vor, loc: !!s.loc,
                     aptvor: s.aptvor === undefined ? !!s.vor : !!s.aptvor };
 } catch(e) { _swallow(e); }
 
@@ -686,6 +686,46 @@ function _drawAwyLayer() {
   // VOR 표지소 — 항로(ENR 4.1) VOR과 비행장 VOR을 각각 제어
   _drawVorGroup(enrVorList(),  '#8bc34a', '#aed581');   // 항로 VOR (연두)
   _drawVorGroup(aptVorList(),  '#ffb74d', '#ffcc80');   // 비행장 VOR (호박색)
+  _drawLocGroup(locList());                             // 로컬라이저 (분홍)
+}
+function locList() { return awyCat.loc ? (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS : []) : []; }
+// 로컬라이저 — VOR 처럼 심볼 + 식별부호를 띄운다. 다만 LOC 는 '방향을 가진'
+// 시설이라 접근 코스 쪽으로 뾰족한 삼각형으로 그려 VOR 육각형과 구별한다.
+// 안테나는 접근하는 쪽의 반대편 끝(활주로 너머)에 있다 — 그림에서 그렇게 보인다.
+function _drawLocGroup(list) {
+  const col = '#f06292', lblCol = '#f8bbd0';
+  list.forEach(v => {
+    // 삼각형이 '항공기가 들어오는 쪽' 을 가리키도록 코스의 반대로 돌린다
+    const rot = normA(toTrue(v.crs) + 180);
+    const icon = L.divIcon({
+      html: `<div style="position:relative;">
+        <div style="width:12px;height:12px;background:${col};filter:drop-shadow(0 0 1.5px #000);
+                    clip-path:polygon(50% 0,100% 100%,0 100%);transform:rotate(${rot}deg);"></div>
+        <div style="position:absolute;left:15px;top:-1px;color:${lblCol};font-size:8px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;font-weight:bold;white-space:nowrap;text-shadow:1px 1px 2px #000;">${v.id} ${v.freq}</div>
+      </div>`,
+      iconSize: [12, 12], iconAnchor: [6, 6], className: ''
+    });
+    const mk = L.marker([v.lat, v.lon], { icon });
+    mk.bindTooltip(`${v.name} RWY ${v.rwy} LOC (${v.id})<br>${v.freq} MHz · 접근 ` +
+                   `${String(v.crs).padStart(3,'0')}°M${v.crsSrc ? '(산출)' : ''}`, { sticky: true });
+    const dmeTxt = v.dme ? ` · DME CH ${v.dme.ch}` : '';
+    // 접근 코스가 AIP 게재값이 아니면 어디서 낸 값인지 밝힌다
+    const SRC = { pair: '반대편 LOC 안테나로 산출(±1°)',
+                  gp:   'GP 안테나로 산출(±3°)',
+                  rwy:  '활주로 표기값' };
+    const crsNote = v.crsSrc ? ` · 접근 코스는 ${SRC[v.crsSrc] || '산출값'}` : '';
+    mk.bindPopup(_mapSymPopup({
+      title: `◮ ${v.id}`, color: col, name: v.id, lat: v.lat, lon: v.lon,
+      sub: `${v.name} RWY ${v.rwy} LOC · ${v.freq} MHz · 접근 ${String(v.crs).padStart(3,'0')}°M` +
+           (v.crsSrc ? '(산출)' : '') + (v.cat ? ` · ILS CAT ${v.cat}` : '') + dmeTxt,
+      note: '※ 안테나는 활주로 반대편 끝에 있습니다' + crsNote,
+      extra: [
+        { label: 'NAV1 튜닝', onclick: `mapTuneNav('NAV1','${v.freq}','${v.id}')`, fg: '#3b5a70', bg: '#eef3f7' },
+        { label: 'NAV2 튜닝', onclick: `mapTuneNav('NAV2','${v.freq}','${v.id}')`, fg: '#3b5a70', bg: '#eef3f7' },
+      ]
+    }), { maxWidth: 280 });
+    mk.addTo(leafMap); _awyLayers.push(mk);
+  });
 }
 // AWY 패널 분류용 목록
 function enrVorList() { return awyCat.vor    ? ENR_VORS.filter(v => !v.apt) : []; }
@@ -727,7 +767,7 @@ function _clearAwyLayer() {
 }
 function _awySave() { try { localStorage.setItem('awyCat', JSON.stringify(awyCat)); } catch(e) { _swallow(e); } }
 function _awyUpdateBtn() {
-  const any = awyCat.conv || awyCat.rnav || awyCat.vor || awyCat.aptvor;
+  const any = awyCat.conv || awyCat.rnav || awyCat.vor || awyCat.aptvor || awyCat.loc;
   const p = document.getElementById('awy-panel');
   document.getElementById('awy-btn').classList.toggle('active', any || (p && p.classList.contains('open')));
 }
@@ -736,7 +776,7 @@ function toggleAwyCat(k) {
   _drawAwyLayer(); _awySave(); _awyUpdateBtn(); _awyRenderPanel();
 }
 function _awySetAll(on) {
-  awyCat = { conv: on, rnav: on, vor: on, aptvor: on };
+  awyCat = { conv: on, rnav: on, vor: on, aptvor: on, loc: on };
   _drawAwyLayer(); _awySave(); _awyUpdateBtn(); _awyRenderPanel();
 }
 function _awyRenderPanel() {
@@ -746,6 +786,8 @@ function _awyRenderPanel() {
     ['rnav', 'RNAV(Area) 항로',   '#4dd0e1', ENR_ROUTES.filter(r=>r.type==='RNAV').length + '개'],
     ['vor',    '항로(ENR) VOR', '#aed581', ENR_VORS.filter(v=>!v.apt).length + '개소'],
     ['aptvor', '비행장 VOR',    '#ffb74d', ENR_VORS.filter(_aptVorVisible).length + '개소'],
+    ['loc',    '로컬라이저(LOC)', '#f06292',
+      (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS.length : 0) + '개소'],
   ];
   p.innerHTML = `<div class="aspc-grp" style="color:#8bc34a;">항로(AWY) 표시
       <div style="flex-shrink:0;"><span onclick="_awySetAll(true)">모두</span><span onclick="_awySetAll(false)">해제</span></div></div>` +
@@ -1608,3 +1650,108 @@ function fdrSetSpeed(val) {
   if (wasPlaying) fdrPlay();
 }
 
+
+// ══════════════════════════════════════════════════════════════
+//  주소 · 지명 검색 (지도 ＋ 메뉴)
+//  찾은 자리를 그대로 웨이포인트로 넣는다.
+//  자료는 OpenStreetMap Nominatim — 사용자가 검색을 누를 때만 한 번 부른다
+//  (자동 완성처럼 글자마다 부르지 않는다). 같은 말은 다시 묻지 않게 담아 둔다.
+//  ※ 항법용 자료가 아니다. 안내 문구를 패널에 함께 적어 둔다.
+// ══════════════════════════════════════════════════════════════
+const GEO_URL = 'https://nominatim.openstreetmap.org/search';
+const _geoCache = new Map();
+
+// "37.5665, 126.978" 처럼 좌표를 그대로 넣은 경우 — 검색 없이 그 자리로 간다
+function geoParseLatLon(q) {
+  const m = String(q || '').trim()
+    .match(/^(-?\d{1,2}(?:\.\d+)?)\s*[,\s]\s*(-?\d{1,3}(?:\.\d+)?)$/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return null;
+  return { name: `${lat.toFixed(4)}, ${lon.toFixed(4)}`, detail: '좌표 입력', lat, lon };
+}
+
+// 검색 한 번. 결과는 [{name, detail, lat, lon}] 로 다듬어 돌려준다.
+async function geoSearch(q) {
+  const key = String(q || '').trim();
+  if (!key) return [];
+  const direct = geoParseLatLon(key);
+  if (direct) return [direct];
+  if (_geoCache.has(key)) return _geoCache.get(key);
+  const url = `${GEO_URL}?format=jsonv2&limit=8&accept-language=ko&q=${encodeURIComponent(key)}`;
+  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const raw = await res.json();
+  const list = (Array.isArray(raw) ? raw : []).map(r => {
+    const full = String(r.display_name || '');
+    return { name: (r.name && r.name.trim()) || full.split(',')[0] || full,
+             detail: full, lat: parseFloat(r.lat), lon: parseFloat(r.lon) };
+  }).filter(x => Number.isFinite(x.lat) && Number.isFinite(x.lon));
+  _geoCache.set(key, list);
+  return list;
+}
+
+let _geoResults = [];
+function openGeoSearch() {
+  const p = document.getElementById('geo-panel');
+  if (!p) return;
+  p.classList.add('open');
+  const q = document.getElementById('geo-q');
+  if (q) { try { q.focus(); q.select(); } catch (e) { _swallow(e); } }
+}
+function closeGeoSearch() {
+  const p = document.getElementById('geo-panel');
+  if (p) p.classList.remove('open');
+}
+function _geoMsg(txt, col) {
+  const el = document.getElementById('geo-list');
+  if (el) el.innerHTML = `<div id="geo-msg" style="color:${col || '#8a97a5'};">${txt}</div>`;
+}
+function _geoRender() {
+  const el = document.getElementById('geo-list');
+  if (!el) return;
+  if (!_geoResults.length) { _geoMsg('찾은 곳이 없습니다. 다른 말로 찾아보십시오.'); return; }
+  el.innerHTML = _geoResults.map((r, i) =>
+    `<div class="geo-item" data-act="geoPick" data-arg='[${i}]'>` +
+    `<b>${_geoEsc(r.name)}</b><span>${_geoEsc(r.detail)}</span>` +
+    `<span style="color:#4a7a8a;">${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}</span></div>`).join('');
+}
+function _geoEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+async function runGeoSearch() {
+  const q = (document.getElementById('geo-q') || {}).value || '';
+  if (!q.trim()) { _geoMsg('찾을 주소나 지명을 넣으십시오.'); return; }
+  _geoMsg('찾는 중…');
+  try {
+    _geoResults = await geoSearch(q);
+    _geoRender();
+  } catch (e) {
+    _geoResults = [];
+    _geoMsg('찾지 못했습니다 — 연결을 확인하십시오(오프라인에서는 검색이 안 됩니다).', '#ff8877');
+  }
+}
+// 결과를 고르면 그 자리에 웨이포인트를 넣고 지도를 옮긴다
+function geoPick(i) {
+  const r = _geoResults[i];
+  if (!r) return;
+  const n = S.wps.filter(w => /^AD\d*$/.test(w.ident)).length + 1;
+  pushWP({ ident: 'AD' + n, name: r.name, lat: r.lat, lon: r.lon });
+  try { leafMap.setView([r.lat, r.lon], Math.max(leafMap.getZoom(), 12)); } catch (e) { _swallow(e); }
+  closeGeoSearch();
+  const btn = document.getElementById('pp-btn');
+  if (btn) {
+    btn.style.background = 'rgba(0,50,10,0.95)'; btn.style.borderColor = '#00ff88'; btn.style.color = '#00ff88';
+    setTimeout(() => { btn.style.background = ''; btn.style.borderColor = ''; btn.style.color = ''; }, 700);
+  }
+}
+// 입력창에서 엔터로도 찾는다
+(function initGeoSearch() {
+  const q = document.getElementById('geo-q');
+  if (!q) return;
+  q.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); runGeoSearch(); }
+  });
+})();

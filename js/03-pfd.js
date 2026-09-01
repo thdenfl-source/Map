@@ -108,13 +108,24 @@ function drawFMA(x, y, w) {
     rightOn = true;
   }
 
+  // ── G/S (ILS 강하선) ──
+  // 세로축을 잡으면 그 칸의 주 모드가 G/S 가 된다(승강계 마름모·버튼과 같은 자홍색).
+  // 아직 무장만 한 상태는 실제 FMA 처럼 '흰 글씨로 옆에' 적어 둔다 —
+  // 지금 잡고 있는 모드와 곧 잡을 모드를 한눈에 갈라 보기 위해서다.
+  let leftArm = '';
+  if (typeof gsOn !== 'undefined' && gsOn) { left = 'G/S'; leftOn = true; }
+  else if (typeof gsArmed !== 'undefined' && gsArmed) { leftArm = 'G/S'; }
+
   const modes  = [left,   mid,    right  ];
   const active = [leftOn, midOn,  rightOn];
+  const armed  = [leftArm, '',    ''      ];
 
   const modeColor = (lbl, on) => {
     if (!on) return '#3a3a3a';
     // GS/NAV · GS/HDG = GSPD 가 축을 잡고 있어 NAV·HDG 가 조향하지 못하는 대기 상태.
     // 초록(정상 작동)과 구분되게 호박색으로 표시한다.
+    // G/S 도 빗금이 있으므로 대기 상태(GS/NAV)보다 먼저 가려낸다.
+    if (lbl === 'G/S') return '#ff66ff';   // 강하선을 잡은 상태 — 승강계 마름모와 같은 색
     if (lbl.indexOf('/') >= 0) return '#ffb74d';
     return '#00ff88';  // all active AFCS modes in green
   };
@@ -133,8 +144,27 @@ function drawFMA(x, y, w) {
       ctx.fillStyle = 'rgba(0,25,50,0.85)';
       ctx.fillRect(bx + 1, Y0 + 1, cellW - 2, BOX_H - 2);
     }
-    ctx.fillStyle = modeColor(modes[i], on);
-    ctx.fillText(modes[i], bx + cellW / 2, Y0 + BOX_H / 2 + 0.5);
+    const ty = Y0 + BOX_H / 2 + 0.5;
+    if (armed[i]) {
+      // 주 모드 + 무장 모드를 한 칸에 나란히. 둘을 합친 폭을 재어 가운데 맞춘다.
+      const mainF = ctx.font;
+      const smallF = `bold ${Math.max(7, Math.min(9, w * 0.024))}px 'Helvetica Neue', 'Arial', sans-serif`;
+      ctx.font = mainF;  const w1 = ctx.measureText(modes[i]).width;
+      ctx.font = smallF; const w2 = ctx.measureText(armed[i]).width;
+      const gap2 = 4, total = w1 + gap2 + w2;
+      let px = bx + (cellW - total) / 2;
+      ctx.textAlign = 'left';
+      ctx.font = mainF;  ctx.fillStyle = modeColor(modes[i], on);
+      ctx.fillText(modes[i], px, ty);
+      px += w1 + gap2;
+      // 무장은 흰색 — 아직 잡지 않았다는 뜻이다
+      ctx.font = smallF; ctx.fillStyle = '#ffffff';
+      ctx.fillText(armed[i], px, ty);
+      ctx.font = mainF; ctx.textAlign = 'center';
+    } else {
+      ctx.fillStyle = modeColor(modes[i], on);
+      ctx.fillText(modes[i], bx + cellW / 2, ty);
+    }
   }
   ctx.restore();
 }
@@ -583,6 +613,41 @@ function drawVSI(x, y, w, h) {
   // label at top
   ctx.fillStyle='#aaa'; ctx.font='bold 7px Helvetica Neue, Arial, sans-serif';
   ctx.fillText(met?'M/S':'FPM',x+w/2,y+9);
+
+  // ── 글라이드 패스 지시(ILS) ──
+  // ILS 를 잡았을 때만 승강계 왼편에 눈금과 마름모가 뜬다. 마름모가 가운데
+  // 기준선 위에 있으면 강하선보다 높다는 뜻이다(계기와 같은 읽기).
+  // 승강계 지시침은 오른쪽 끝을 쓰므로 왼쪽 끝에 두어 서로 가리지 않는다.
+  let gsv = null;
+  try { gsv = (typeof gsDeviation === 'function') ? gsDeviation() : null; } catch(e) { _swallow(e); }
+  if (gsv) {
+    const gx = x + 3.5;                    // 눈금 중심선
+    const span = h * 0.30;                 // 최대편위(2점)까지의 길이
+    const capt = (typeof gsOn !== 'undefined' && gsOn);
+    // 눈금: 가운데 기준선 + 위아래 1·2점
+    ctx.strokeStyle = '#7a7a7a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(gx - 3, cy); ctx.lineTo(gx + 3, cy); ctx.stroke();
+    ctx.fillStyle = '#9a9a9a';
+    [-2, -1, 1, 2].forEach(n => {
+      const dy = cy - n * span / 2;
+      if (dy < y + 12 || dy > y + h - 22) return;
+      ctx.beginPath(); ctx.arc(gx, dy, 1.6, 0, Math.PI * 2); ctx.fill();
+    });
+    // 마름모 — 최대편위를 넘으면 끝에 붙이고 속을 비운다(신뢰 구간 밖)
+    const dots = Math.max(-2.4, Math.min(2.4, gsv.dots));
+    const py2 = Math.max(y + 12, Math.min(y + h - 22, cy - dots * span / 2));
+    const col = capt ? '#ff44ff' : '#dd88ff';
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.6;
+    const r2 = 4.5;
+    ctx.beginPath();
+    ctx.moveTo(gx, py2 - r2); ctx.lineTo(gx + r2, py2);
+    ctx.lineTo(gx, py2 + r2); ctx.lineTo(gx - r2, py2); ctx.closePath();
+    if (Math.abs(gsv.dots) > 2) ctx.stroke(); else ctx.fill();
+    // 머리글 G/S — 붙잡았으면 밝게
+    ctx.fillStyle = capt ? '#ff88ff' : '#996699';
+    ctx.font = 'bold 7px Helvetica Neue, Arial, sans-serif';
+    ctx.textAlign = 'left'; ctx.fillText('G/S', x + 1, y + 18);
+  }
   ctx.restore();
 }
 

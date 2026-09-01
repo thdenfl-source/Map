@@ -119,6 +119,92 @@ function toggleBrg2Lbl() {
   if (btn) btn.classList.toggle('brg2-on', brg2LblOn);
   if (typeof updateBrgLines === 'function') updateBrgLines();
 }
+// ── G/S (글라이드 패스 추종) ──────────────────────────────────────
+// 무장(armed)해 두면 강하선에 닿는 순간 스스로 붙잡아(captured) 고도를 맡는다.
+// 실제 오토파일럿과 같은 순서다 — 아래에서 접근하다 강하선을 만나면 잡는다.
+// 잡고 나면 ALT·CRHT 유지는 물러난다(고도를 두 곳에서 몰면 싸운다).
+let gsArmed = false, gsOn = false;
+function gsAvailable() { return !!gsDeviation(); }
+function updateGsBtn() {
+  const b = document.getElementById('gs-btn');
+  if (!b) return;
+  b.classList.toggle('on', gsOn);
+  b.classList.toggle('armed', gsArmed && !gsOn);
+  const want = gsOn ? 'G/S<span class="gs-sub">CAPT</span>'
+             : gsArmed ? 'G/S<span class="gs-sub">ARM</span>' : 'G/S';
+  if (b.innerHTML !== want) b.innerHTML = want;
+}
+function toggleGs() {
+  if (gsArmed || gsOn) { gsArmed = false; gsOn = false; }
+  else {
+    gsArmed = true;
+    // 이미 강하선 위에 있으면 곧바로 잡는다
+    const g = gsDeviation();
+    if (g && Math.abs(g.dev) < 0.15) { gsOn = true; gsArmed = false; }
+  }
+  updateGsBtn();
+}
+// 매 프레임 — 무장 상태에서 강하선에 닿았는지 본다.
+// 위에서 내려오다 만나는 경우가 대부분이므로 '편차가 0 에 가까워졌을 때' 잡는다.
+function gsCaptureCheck() {
+  if (gsOn) {
+    // 신호를 잃으면(멀어짐·안테나 뒤로 지나감) 놓는다
+    if (!gsDeviation()) { gsOn = false; updateGsBtn(); }
+    return;
+  }
+  if (!gsArmed) return;
+  const g = gsDeviation();
+  if (g && Math.abs(g.dev) < 0.15) { gsOn = true; gsArmed = false; updateGsBtn(); }
+}
+
+// ── SUSP (시퀀싱 보류) ────────────────────────────────────────────
+// 켜져 있으면 활성 웨이포인트를 지나도 다음으로 넘어가지 않고, 그 구간의
+// 코스를 계속 따라간다. 마지막 지점이어도 NAV 가 풀리지 않는다.
+// 홀딩이 걸려 있으면 저절로 켜진 것으로 본다(홀딩 자체가 그 자리를 도는 일이다).
+// 실제 FMS 의 SUSP 와 같은 뜻이다 — 홀딩·미스드어프로치에서 켜지고, 조종사가
+// 눌러서 풀면 다음 절차로 넘어간다.
+let suspOn = false;
+function navSuspAuto() { return !!(typeof holdOn !== 'undefined' && holdOn); }
+function navSuspended() { return suspOn || navSuspAuto(); }
+function updateSuspBtn() {
+  const b = document.getElementById('susp-btn');
+  if (!b) return;
+  const auto = navSuspAuto() && !suspOn;
+  b.classList.toggle('auto', auto);
+  b.classList.toggle('on', suspOn);
+  // 글자는 늘 'On' — 켜졌는지는 AP 의 NAV 버튼처럼 색으로 보인다(녹색).
+  // 저절로 걸린 경우에만 '자동' 을 덧붙인다.
+  const want = auto ? 'On<span class="susp-auto">자동</span>' : 'On';
+  if (b.innerHTML !== want) b.innerHTML = want;
+}
+function toggleSusp() {
+  const wasHold = navSuspAuto();
+  if (wasHold) {
+    // 홀딩으로 저절로 걸린 상태에서 누르면 '그만하고 다음으로' 다.
+    // 그 지점을 기억해 두지 않으면 매 프레임 다시 홀딩이 걸린다.
+    if (S.awp >= 0 && S.awp < S.wps.length) _holdDoneWp = S.wps[S.awp];
+    try { holdExit(); } catch(e) { _swallow(e); }
+    suspOn = false;
+  } else {
+    suspOn = !suspOn;
+  }
+  // 풀고 나면 다음 지점으로 넘긴다.
+  // 시퀀싱은 '지점에 다가갈 때' 일어나므로, 홀딩 패턴 안이나 지나친 자리에서는
+  // 저절로 넘어가지 않는다 — 그대로 두면 옛 코스를 따라 하염없이 멀어진다.
+  //   · 홀딩을 그만둔 경우: 그 픽스는 이미 볼일이 끝났으니 곧장 다음 지점으로.
+  //   · 손으로 걸어 둔 경우: 아직 지점 앞이면 그대로 두고, 지나쳤을 때만 넘긴다.
+  if (!navSuspended() && S.awp >= 0 && S.awp + 1 < S.wps.length) {
+    let go = wasHold;
+    if (!go) {
+      const wp = S.wps[S.awp];
+      go = Math.abs(normAS(bearing(S.lat, S.lon, wp.lat, wp.lon) - S.hdg)) > 90;
+    }
+    if (go) { try { selectWP(S.awp + 1); } catch(e) { _swallow(e); } }
+  }
+  updateSuspBtn();
+  try { updateNav(); } catch(e) { _swallow(e); }
+}
+
 function toggleBrg1() {
   brg1Visible = !brg1Visible;
   const btn = document.getElementById('brg1-tog');
@@ -586,11 +672,15 @@ const HOLD_PASS_NEAR = 0.8;      // 이 거리 안까지 접근했어야 '통과
 // 웨이포인트에 정의된 홀딩을 NAV 와 연동한다.
 // FMS 소스이고 활성 웨이포인트에 hold 가 있으면 자동 무장되고,
 // 비행계획에서 홀딩을 지우면 자동 해제된다.
+// SUSP 로 홀딩을 그만둔 웨이포인트 — 이걸 기억하지 않으면 홀딩이 걸린 지점에
+// 머무는 동안 holdSyncFromWp 가 매 프레임 다시 걸어 버려 빠져나올 수가 없다.
+let _holdDoneWp = null;
 function holdSyncFromWp() {
   const wp = (navSrc === 'FMS' && !obsOn && S.awp >= 0 && S.awp < S.wps.length)
     ? S.wps[S.awp] : null;
   const h = wp && wp.hold;
-  if (!h) { if (holdOn) holdExit(); return; }
+  if (wp && _holdDoneWp && _holdDoneWp !== wp) _holdDoneWp = null;   // 다른 지점이면 잊는다
+  if (!h || wp === _holdDoneWp) { if (holdOn) holdExit(); return; }
   const fresh = !holdOn || _holdWpRef !== wp;
   _holdWpRef = wp;
   holdFix = { lat: wp.lat, lon: wp.lon, ident: wp.ident || 'WPT' };
@@ -888,15 +978,44 @@ let navRadios = {
   NAV1: { freq: '115.50', id: 'SEL', lat: null, lon: null },   // 안양 VORTAC
   NAV2: { freq: '116.10', id: 'CJU', lat: null, lon: null }    // 제주 VORTAC
 };
-// 주파수 또는 ident로 ENR_VORS에서 VOR 찾기(freq 매칭 오차 허용)
+// 주파수 또는 ident 로 항행표지 찾기(freq 매칭 오차 허용).
+// VOR 목록에서 먼저 찾고, 없으면 로컬라이저 목록에서 찾는다 — ILS 주파수를
+// 넣었는데 국을 못 찾아 NAV 가 조용히 아무 일도 하지 않는 일이 없도록.
+// LOC 는 방향을 가진 시설이라 접근 코스(crs)를 함께 돌려준다.
 function _resolveVor(freq, id) {
-  let list;
-  try { list = ENR_VORS; } catch(e) { return null; }   // 로드 중 TDZ 대비
-  if (!list) return null;
-  let v = null;
-  if (id)   v = list.find(x => x.id === id && x.freq);
-  if (!v && freq) v = list.find(x => x.freq && Math.abs(parseFloat(x.freq) - parseFloat(freq)) < 0.001);
-  return v || null;
+  const vors = () => { try { return ENR_VORS || []; } catch(e) { return []; } };   // 로드 중 TDZ 대비
+  const locs = () => { try { return (typeof LOC_STATIONS !== 'undefined' && LOC_STATIONS) || []; }
+                       catch(e) { return []; } };
+  const asLoc = L => L && { id: L.id, name: `${L.name} RWY ${L.rwy} LOC`, freq: L.freq,
+                            lat: L.lat, lon: L.lon, loc: true, crs: L.crs,
+                            elev: L.dme && L.dme.elev };
+  const sameF = (a, b) => a && b && Math.abs(parseFloat(a) - parseFloat(b)) < 0.001;
+  // 식별부호를 먼저 본다 — 이름을 대고 부른 것이므로 주파수보다 앞선다.
+  // 각 단계 안에서는 VOR 이 먼저다(같은 주파수대라도 VOR 을 밀어내지 않는다).
+  if (id) {
+    const v = vors().find(x => x.id === id && x.freq);
+    if (v) return v;
+    const L = asLoc(locs().find(x => x.id === id));
+    if (L) return L;
+  }
+  if (freq) {
+    const v = vors().find(x => sameF(x.freq, freq));
+    if (v) return v;
+    // 로컬라이저 주파수는 공항끼리 겹친다 — 108.70 하나만 해도 김포·대구 세 곳이
+    // 쓴다. 출력이 약해 가까이서만 잡히는 시설이니, 여러 곳이 걸리면 지금 자리에서
+    // 가장 가까운 국을 잡는다(목록 앞쪽을 무조건 잡으면 엉뚱한 공항이 걸린다).
+    const cand = locs().filter(x => sameF(x.freq, freq));
+    if (cand.length === 1) return asLoc(cand[0]);
+    if (cand.length > 1) {
+      let best = cand[0], bd = Infinity;
+      cand.forEach(x => {
+        const d = distance(S.lat, S.lon, x.lat, x.lon);
+        if (d < bd) { bd = d; best = x; }
+      });
+      return asLoc(best);
+    }
+  }
+  return null;
 }
 // CDU에서 NAV1/NAV2 튜닝 시 호출 — 무선 상태 갱신 + 현재 소스면 PFD 반영
 function setNavRadio(navId, freq, id) {
@@ -912,8 +1031,9 @@ function setNavRadio(navId, freq, id) {
     if (!byId || Math.abs(parseFloat(byId.freq) - parseFloat(r.freq)) >= 0.001) r.id = '';
   }
   const v = _resolveVor(r.freq, r.id);
-  if (v) { r.lat = v.lat; r.lon = v.lon; r.id = v.id; r.freq = v.freq; r.elev = v.elev || 0; }
-  else   { r.lat = null; r.lon = null; r.elev = 0; }
+  if (v) { r.lat = v.lat; r.lon = v.lon; r.id = v.id; r.freq = v.freq; r.elev = v.elev || 0;
+           r.loc = !!v.loc; r.crs = v.crs; }
+  else   { r.lat = null; r.lon = null; r.elev = 0; r.loc = false; r.crs = undefined; }
   if (navSrc === navId) applyNavRadioToPfd();
 }
 // 현재 navSrc(NAV1/NAV2)의 튜닝 VOR를 PFD 항법 상태로 반영
@@ -922,6 +1042,14 @@ function applyNavRadioToPfd() {
   if (!r) { navLat = navLon = null; navIcao = ''; return; }
   if (r.lat === null) { const v = _resolveVor(r.freq, r.id); if (v) { r.lat = v.lat; r.lon = v.lon; r.id = v.id; r.elev = v.elev || 0; } }
   navLat = r.lat; navLon = r.lon; navIcao = r.id || '';
+  // 로컬라이저는 코스가 시설에 붙어 있다 — 조종사가 OBS 로 돌려 정하는 것이
+  // 아니라 접근 코스가 정해져 있다. 튜닝하거나 그 소스로 바꾸는 순간 맞춰 준다.
+  // (그 뒤 CRS 손잡이로 미세조정하는 것은 그대로 살아 있다 — 이 함수는 튜닝·
+  //  소스 전환 때만 불린다)
+  if (r.loc && Number.isFinite(r.crs)) {
+    vorObsCrs = toTrue(r.crs);
+    try { updateNav(); } catch(e) { _swallow(e); }
+  }
   const lbl = document.getElementById('nav-icao-lbl');
   if (lbl) { lbl.style.visibility = 'visible'; lbl.textContent = (r.id || '----') + (r.freq ? ' ' + r.freq : ''); }
 }
@@ -945,6 +1073,62 @@ function brg1Station() {
       return { lat: r.lat, lon: r.lon, id: r.id, src: k, elev: r.elev || 0 };
   }
   return null;
+}
+
+// ── ILS 글라이드 패스 ────────────────────────────────────────────────
+// 튜닝한 로컬라이저에 GP(활공각 송신기)가 있으면, 그 활주로의 강하선을 따라
+// 지금 있어야 할 고도를 낸다.
+//
+// 강하선은 'GP 안테나 자리에서 비행장 표고, 거기서부터 접근 방향으로 강하각
+// 만큼 올라가는 면' 으로 본다. GP 안테나는 접지대 옆에 서 있으므로 이 기준이
+// 실제 강하선과 거의 겹친다(문턱 통과 높이 50ft 안팎의 차이).
+//
+// 편차는 계기와 같이 '각도' 로 잰다. ILS 규격상 최대편위가 0.7° 이므로
+// 한 점(dot)이 0.35° 다.
+const GS_FULL_DEG = 0.7;        // 최대편위(°)
+const GS_MAX_NM   = 25;         // 이보다 멀면 신호를 잡지 못한 것으로 본다
+// 지금 튜닝된 국이 GP 를 가진 로컬라이저면 그 정보를 돌려준다.
+function gsStation() {
+  for (const k of ['NAV1', 'NAV2']) {
+    if (navSrc !== k) continue;
+    const r = navRadios[k];
+    if (!r || !r.loc || !r.id) return null;
+    try {
+      const L = (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS : []).find(x => x.id === r.id);
+      if (L && L.gp) return L;
+    } catch(e) { _swallow(e); }
+    return null;
+  }
+  return null;
+}
+// 그 비행장의 표고(ft) — 강하선의 밑동이다.
+function _gsFieldElev(L) {
+  try {
+    const code = (L.apt || '').slice(2);
+    const a = AIRFIELD_INFO.find(x => x.code === code);
+    if (a && Number.isFinite(a.elev)) return a.elev;
+  } catch(e) { _swallow(e); }
+  return 0;
+}
+// 글라이드 패스 편차. 잡히지 않으면 null.
+//   dev  : 각도 편차(°). + = 강하선 위(높다)
+//   dots : 계기 점(dot). + = 위. 최대편위 2점
+//   path : 지금 자리에서의 강하선 고도(ft)
+//   d    : GP 안테나까지 거리(NM)
+function gsDeviation() {
+  const L = gsStation();
+  if (!L) return null;
+  const g = L.gp;
+  const d = distance(S.lat, S.lon, g.lat, g.lon);
+  if (!(d > 0.15) || d > GS_MAX_NM) return null;          // 너무 가깝거나 멀다
+  // 접근하는 쪽에 있어야 한다 — 안테나 뒤쪽(활주로 너머)에서는 잡히지 않는다.
+  const brgToAc = bearing(g.lat, g.lon, S.lat, S.lon);
+  if (Math.abs(normAS(brgToAc - toTrue(normA(L.crs + 180)))) > 90) return null;
+  const ang = Number.isFinite(g.angle) ? g.angle : 3;
+  const dFt = d * FT_PER_NM;
+  const path = _gsFieldElev(L) + dFt * Math.tan(ang * D2R);
+  const dev  = Math.atan2(S.alt - path, dFt) / D2R;
+  return { dev, dots: dev / (GS_FULL_DEG / 2), path, d, angle: ang, id: L.id };
 }
 
 // ── DME 경사거리(slant range) ────────────────────────────────────────

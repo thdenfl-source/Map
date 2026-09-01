@@ -1187,6 +1187,7 @@ function selectWP(i){
 }
 function clearFP(){
   S.wps=[];S.awp=-1;S.fwp=-1;S.dtoLive=false;
+  suspOn=false; try { updateSuspBtn(); } catch(e) { _swallow(e); }
   fpMode='LIST';
   updateWpMarkers();fpRender();updateNav();
 }

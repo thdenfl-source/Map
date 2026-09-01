@@ -1045,13 +1045,19 @@ stars: [
       ]},
     ],
     approaches: [
+      // AIP RKNY AD CHART 2-14-1 (9 MAR 2023) 「ILS Z or LOC Z RWY 33」
+      // AERONAUTICAL DATA TABULATION — DUBUN 에서 들어오는 직선 진입이다.
+      // NY015=SDF · NY010=IF, 그 뒤는 IYAN DME 거리로 표기된 최종 구간
+      // (D4.6=FAF · D3.1=SDF · D1.0=MAPt — 표에 'LOC ONLY' 로 적힌 점들).
+      // 아크 전이는 이 절차가 아니라 ILS Y 쪽에 붙는다.
       { name:'ILS Z RWY 33', wps:[
-        {ident:'DUBUN', lat:38.0874,lon:128.8705},
-        {ident:'NY015', lat:37.9753,lon:128.8927, arc:{clat:38.0188,clon:128.7798,dir:'R'}},
-        {ident:'NY010', lat:37.9228,lon:128.8108, arc:{clat:38.0188,clon:128.7798,dir:'R'}},
-        {ident:'NY004', lat:37.9947,lon:128.7375},
-        {ident:'NY003', lat:38.0025,lon:128.7431},
-        {ident:'RW33',  lat:38.0526,lon:128.6781},
+        {ident:'DUBUN',     lat:38.087361,lon:128.8705},
+        {ident:'NY015',     lat:37.975333,lon:128.892667},
+        {ident:'NY010',     lat:37.922861,lon:128.810778},
+        {ident:'IYAN D4.6', lat:37.995528,lon:128.736528},
+        {ident:'IYAN D3.1', lat:38.014361,lon:128.71725},
+        {ident:'IYAN D1.0', lat:38.041583,lon:128.689389},
+        {ident:'RW33',      lat:38.052558,lon:128.678125},
       ]},
       { name:'ILS Y RWY 33', wps:[
         {ident:'DUBUN',   lat:38.0874,lon:128.8705},

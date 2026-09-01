@@ -123,6 +123,12 @@ export async function runRealPdf(page, t) {
   t.eq(await page.evaluate(() => typeof pdfjsLib), 'object', 'pdf.js 가 오프라인에서 로드됨');
 
   await page.setViewportSize({ width: 1400, height: 900 });
+  // 차트는 넓게 놓고 읽는다 — 2분할로 바꿔 CDU 를 넓은 쪽에 둔다.
+  // 기본 배치(3분할)에 기대면 패널이 3분의 1로 좁아져, 보정점을 찍는 자리가
+  // 달라지고 대화상자 흐름까지 바뀐다. 이 검사는 뷰어 배치를 보는 것이지
+  // 그때그때의 기본 배치를 보는 것이 아니므로, 제 환경을 스스로 정한다.
+  await page.evaluate(() => { try { toggleTriple(false); } catch (e) {} });
+  await page.waitForTimeout(200);
   await page.evaluate(() => { try { selectPanel('left', 'cdu'); } catch (e) { setPage(2); } });
   await page.waitForTimeout(300);
   await page.evaluate(() => switchMode('CHARTS'));
@@ -190,6 +196,10 @@ export async function runRealPdf(page, t) {
   await page.waitForTimeout(300);
   t.ok(await page.evaluate(() => !document.getElementById('pdfViewerOverlay') && !!document.querySelector('.page-tab')),
     '닫으면 목록으로 돌아오고 앱은 그대로');
+
+  // 뒷정리 — 기본 배치(3분할)로 되돌려 다음 검사가 물려받지 않게 한다
+  await page.evaluate(() => { try { toggleTriple(true); } catch (e) {} });
+  await page.waitForTimeout(200);
 }
 
 // 서비스워커는 남의 출처를 건드리면 안 된다.

@@ -167,7 +167,10 @@ function init(){
     try { ['NAV1','NAV2'].forEach(k => setNavRadio(k, navRadios[k].freq, navRadios[k].id)); } catch(e) { _swallow(e); }
     try { setNavSrc(navSrc); } catch(e) { _swallow(e); }   // 현재 소스 라벨/CDI 반영
   }, 0);
-  if (!_restored) setPage(0);   // 복원 시엔 restoreSession의 applyPanels로 배치 유지
+  // 처음 켤 때의 우측 창 — 3분할이면 CDU(좌 PFD · 중 MAP · 우 CDU), 2분할이면 MAP.
+  // 종전에는 늘 setPage(0) 이라 3분할에서도 우측이 MAP 이 되고, 그 바람에
+  // 중앙에 있던 MAP 과 자리가 맞바뀌어 CDU 가 가운데로 밀려났다.
+  if (!_restored) setPage(tripleMode ? 2 : 0);   // 복원 시엔 restoreSession의 applyPanels로 배치 유지
   window.addEventListener('resize', () => { resizePFD(); try { leafMap.invalidateSize(); } catch(e) { _swallow(e); } scaleCdu(); });
   setTimeout(() => leafMap.invalidateSize(), 100);
   // 저장된 표시 포인트를 지도에 복원.
@@ -2824,7 +2827,133 @@ function act(name, ...args) {
       else if (which === 'aspc') toggleInhib('aspc');
       else if (which === 'taws') toggleInhib('taws');
       else if (which === 'kbd') toggleKbdShortcuts();
+      else if (which === 'joy') toggleJoy();
       switchMode('SETTINGS');
+    }
+
+    // ── 조종 장치(조이스틱 · 게임패드) 배정 화면 ──
+    // 동작 행을 누르면 '입력 대기' 가 되고, 그때 누른 버튼이 그 자리에서 잡힌다.
+    // 대기 중에는 화면을 주기적으로 다시 그려 잡힌 결과가 바로 보이게 한다.
+    let _joyTick = null, _joyCapWas = false;
+    function joyPick(actId) {
+      if (joyCapture === actId) { joyCancelCapture(); }
+      else joyBeginCapture(actId);
+      switchMode('JOYSTICK');
+    }
+    function joyUnbind(actId) { joyClearBind(actId); switchMode('JOYSTICK'); }
+    // 브라우저가 장치를 게임패드로 안 보여 줄 때(맥에서 흔하다) 직접 연다
+    function joyHidPick() {
+      const st = joyHidStatus();
+      if (!st.supported) { uiAlert(st.msg.replace(/<\/?b>/g, '')); return; }
+      joyHidConnect().then(ok => { if (currentMode === 'JOYSTICK') switchMode('JOYSTICK'); });
+    }
+    function joyHidDrop() { joyHidDisconnect(); switchMode('JOYSTICK'); }
+    function joyResetBinds() {
+      joyBinds = {}; joySave(); joyCancelCapture(); switchMode('JOYSTICK');
+    }
+    function renderJoystickScreen(container, footer, title) {
+      title.innerText = 'Joystick';
+      if (_joyTick) { clearInterval(_joyTick); _joyTick = null; }
+      const back = `<div data-act="switchMode" data-arg='["SETTINGS"]' style="display:inline-flex;align-items:center;gap:4px;` +
+        `padding:5px 10px;margin-bottom:8px;border:1px solid #2a4a5a;border-radius:4px;background:#0a1620;color:#00cfff;` +
+        `font-size:10px;font-weight:bold;cursor:pointer;">‹ 설정</div>`;
+      const conn = joyPadName
+        ? `<span style="color:#00ff88;">연결됨</span> · <span style="color:#8a97a5;">${joyPadName}</span>`
+        : `<span style="color:#ff8877;">장치 없음</span> — 연결 후 <b>아무 버튼이나 한 번</b> 누르십시오`;
+      // 게임패드로 안 잡히는 장치를 직접 여는 길(WebHID)
+      const h = joyHidStatus();
+      // 쓸 수 없는 기기(아이패드 등)에서는 눌러 볼 것도 없이 사정을 적어 둔다
+      const hidRow = `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">` +
+        `<div data-act="joyHidPick" style="flex:1;padding:7px 9px;border:1px solid ${h.supported ? '#2a4a5a' : '#232a33'};` +
+        `border-radius:5px;background:${h.supported ? '#0a1620' : '#0c1014'};color:${h.supported ? '#00cfff' : '#5a6673'};` +
+        `font-size:11px;font-weight:bold;cursor:pointer;">` +
+        `🔌 장치 직접 연결 (WebHID)${h.supported ? '' : ' — 이 기기에서는 못 씀'}</div>` +
+        (h.open ? `<div data-act="joyHidDrop" style="flex:0 0 auto;color:#ff8877;font-size:9px;border:1px solid #5a2a2a;` +
+                  `border-radius:3px;padding:5px 9px;cursor:pointer;">해제</div>` : '') + `</div>` +
+        `<div style="color:${h.open ? (h.data ? '#00ff88' : '#ffcc44') : '#4a5563'};font-size:9px;margin:-2px 2px 8px;line-height:1.4;">` +
+        (h.open ? (h.data ? `직접 연결됨 — ${h.name}` : `${h.name} 을(를) 열었습니다. 버튼을 눌러 보십시오.`)
+                : (h.supported ? '게임패드로 잡히지 않는 장치(맥에서 흔합니다)는 이 버튼으로 직접 열 수 있습니다.'
+                               : h.msg)) + `</div>`;
+      const head = `<div style="padding:8px 10px;margin-bottom:6px;border:1px solid #1e2630;border-radius:5px;background:#0a1116;` +
+        `font-size:10px;line-height:1.5;color:#cdd6df;">${conn}<br>` +
+        `<span style="color:#567;">동작을 누른 뒤 원하는 버튼을 누르면 그 버튼으로 잡힙니다. ` +
+        `햇(HAT)처럼 축으로 올라오는 입력도 방향별로 잡을 수 있습니다.</span></div>`;
+      const rows = [];
+      let grp = '';
+      JOY_ACTIONS.forEach(a => {
+        if (a.grp !== grp) {
+          grp = a.grp;
+          rows.push(`<div style="color:#556;font-size:9px;letter-spacing:1px;margin:8px 0 4px;">${grp}</div>`);
+        }
+        const code = joyBindOf(a.id);
+        const wait = (joyCapture === a.id);
+        const val = wait ? '버튼을 누르십시오…' : (code ? joyCodeLabel(code) : '없음');
+        const vc   = wait ? '#ffcc44' : (code ? '#00e5ff' : '#4a5563');
+        rows.push(
+          `<div style="display:flex;align-items:center;gap:6px;padding:7px 8px;margin-bottom:3px;` +
+          `border:1px solid ${wait ? '#ffcc4488' : '#1e2630'};border-radius:5px;background:#0a1116;">` +
+          `<div data-act="joyPick" data-arg='["${a.id}"]' style="flex:1;cursor:pointer;">` +
+          `<div style="color:#cdd6df;font-size:11px;font-weight:bold;">${a.label}</div>` +
+          `<div style="color:${vc};font-size:9px;margin-top:1px;">${val}</div></div>` +
+          (code ? `<div data-act="joyUnbind" data-arg='["${a.id}"]' style="flex:0 0 auto;color:#ff8877;font-size:9px;` +
+                  `border:1px solid #5a2a2a;border-radius:3px;padding:3px 8px;cursor:pointer;">해제</div>` : '') +
+          `</div>`);
+      });
+      const foot = `<div data-act="joyResetBinds" style="text-align:right;margin:8px 0 4px;">` +
+        `<span style="display:inline-block;color:#ff8877;font-size:9px;border:1px solid #5a2a2a;border-radius:3px;` +
+        `padding:3px 9px;cursor:pointer;">전체 배정 해제</span></div>`;
+      // 입력 진단 — 지금 들어오는 버튼/축 값을 그대로 보여 준다.
+      // 배정이 안 되는 입력이 무엇으로 올라오는지 눈으로 확인할 수 있다.
+      const mon = `<div style="color:#556;font-size:9px;letter-spacing:1px;margin:10px 0 4px;">입력 진단</div>` +
+        `<div id="joy-mon" style="padding:8px 10px;border:1px solid #1e2630;border-radius:5px;background:#080d12;` +
+        `font-family:monospace;font-size:10px;line-height:1.5;color:#8a97a5;">…</div>` +
+        `<div style="color:#4a5563;font-size:9px;margin:4px 2px 0;line-height:1.4;">` +
+        `버튼·축을 움직이면 값이 바뀝니다. <b>HAT</b> 로 표시된 축은 8방향 햇으로 풀어 씁니다.</div>`;
+      container.innerHTML = back + head + hidRow + rows.join('') + mon + foot;
+      footer.innerHTML = cduFooter("switchMode('SETTINGS')");
+      // 화면에 있는 동안 진단을 갱신한다(배정이 잡히면 목록도 다시 그린다)
+      _joyTick = setInterval(() => {
+        if (currentMode !== 'JOYSTICK') { clearInterval(_joyTick); _joyTick = null; return; }
+        const box = document.getElementById('joy-mon');
+        if (!box) return;
+        const m = joyMonitor();
+        if (!m || m.none) {
+          // 연결했는데도 안 보일 때 어디를 봐야 하는지까지 적는다
+          const why = m ? m.why : 'API_NONE';
+          const msg = {
+            API_NONE: '이 브라우저는 Gamepad API 를 지원하지 않습니다. Chrome · Edge · Safari 최신판을 쓰십시오.',
+            INSECURE: 'https 로 열어야 장치가 보입니다(주소를 확인하십시오).',
+            BLUR: '창이 뒤에 있습니다. 이 창을 클릭해 앞으로 가져오십시오.',
+            NO_INPUT: '브라우저는 <b>장치의 버튼을 한 번 누르기 전까지</b> 장치를 알려 주지 않습니다. ' +
+                      '이 창을 클릭한 뒤 조이스틱 버튼을 눌러 보십시오.',
+          }[why] || '';
+          box.innerHTML = '<span style="color:#ff8877;">장치 없음</span><br>' +
+            `<span style="color:#8a97a5;">${msg}</span>` +
+            `<br><span style="color:#4a5563;">API ${m && m.api ? 'O' : 'X'} · https ${m && m.secure ? 'O' : 'X'} · ` +
+            `창 포커스 ${m && m.focus ? 'O' : 'X'}</span>`;
+        }
+        else {
+          const b = m.btns.length
+            ? m.btns.map(x => `<span style="color:#00ff88;">B${x.i}</span>`).join(' ')
+            : '<span style="color:#4a5563;">없음</span>';
+          const a = m.axes.map(x => {
+            const on = Math.abs(x.v) > 0.2;
+            return `<span style="color:${x.hat ? '#ffcc44' : (on ? '#00e5ff' : '#4a5563')};">` +
+                   `A${x.i}${x.hat ? '(HAT)' : ''} ${x.v.toFixed(2)}</span>`;
+          }).join('&nbsp; ');
+          // 여러 대로 올라오는 장치가 있어 어느 것을 쓰고 있는지도 적는다
+          const list = (m.pads || []).length > 1
+            ? '<br>' + m.pads.map(q => `<span style="color:${q.index === m.index ? '#00e5ff' : '#4a5563'};">` +
+                `#${q.index} ${q.id.slice(0, 22)}${q.index === m.index ? ' ←사용' : ''}</span>`).join('<br>')
+            : '';
+          box.innerHTML = `눌린 버튼: ${b}<br>${a || '축 없음'}` +
+            `<br><span style="color:#4a5563;">#${m.index} ${m.id.slice(0, 28)}` +
+            (m.mapping ? ` · mapping: ${m.mapping}` : ' · mapping: (없음)') + `</span>` + list;
+        }
+        if (_joyCapWas && !joyCapture) { clearInterval(_joyTick); _joyTick = null; renderContent(); }
+        _joyCapWas = !!joyCapture;
+      }, 120);
+      _joyCapWas = !!joyCapture;
     }
     function renderSettingsScreen(container, footer, title) {
       title.innerText = 'Settings';
@@ -2873,6 +3002,8 @@ function act(name, ...args) {
         TOG('metar', '자동 METAR', '근처 공항 METAR로 OAT 자동 반영', autoMetarOn) +
         TOG('aspc', '공역 경보', inhibAspc ? 'INHIBIT(억제됨)' : '접근/진입 경보 사용', !inhibAspc) +
         TOG('taws', 'HTAWS 지형경보', inhibTaws ? 'INHIBIT(억제됨)' : '전방 지형 경보 사용', !inhibTaws) +
+        TOG('joy', '조종 장치', joyOn ? (joyPadName ? `연결됨 — ${joyPadName}` : '조이스틱·게임패드 버튼 사용') : '해제됨', joyOn) +
+        ACT(act('switchMode', 'JOYSTICK'), '조종 장치 버튼 배정', '버튼별 동작 지정(조이스틱·게임패드)') +
         TOG('kbd', '키보드 단축키', kbdShortcuts ? '숫자·방향키로 계기 조작' : '해제됨(DeX 등 물리 키보드 오작동 방지)', kbdShortcuts) +
         `<div style="color:#556;font-size:9px;letter-spacing:1px;margin:10px 0 5px;">앱 / 오프라인</div>` +
         ACT(act('pwaInstall'), '홈 화면에 추가', 'PWA 설치(앱처럼 실행)') +
@@ -3409,6 +3540,7 @@ function act(name, ...args) {
             case 'UTIL': renderUtilScreen(container, footer, title); break;
             case 'CHECKLIST': renderChecklistScreen(container, footer, title); break;
             case 'SETTINGS': renderSettingsScreen(container, footer, title); break;
+            case 'JOYSTICK': renderJoystickScreen(container, footer, title); break;
             case 'TRACKPOINT': renderTrackPointScreen(container, footer, title); break;
             case 'CHARTS': renderChartsScreen(container, footer, title); break;
         }
@@ -3449,7 +3581,7 @@ function act(name, ...args) {
                     <span style="color:var(--text-green);">${freqs[id].act}</span>
                     <span style="color:white;">${freqs[id].id}</span>
                 </div>
-                <div style="color:var(--text-cyan); font-size:9px; font-weight:bold;">▾ VOR 선택</div>
+                <div style="color:var(--text-cyan); font-size:9px; font-weight:bold;">▾ 표지 선택</div>
             </div>
         </div>`;
     }
@@ -3458,29 +3590,40 @@ function act(name, ...args) {
     let _navSelTarget = 'nav1';   // 현재 튜닝 대상 무선
     function openNavSel(id) { _navSelTarget = id; switchMode('NAV_SEL'); }
     function renderNavSelectScreen(container, footer, title) {
-        title.innerText = (_navSelTarget === 'nav1' ? 'NAV1' : 'NAV2') + ' — VOR 선택';
+        title.innerText = (_navSelTarget === 'nav1' ? 'NAV1' : 'NAV2') + ' — 항행표지 선택';
         const cur = freqs[_navSelTarget];
-        const rows = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).filter(v => v.freq).map(v => {
-            const sel = (v.id === cur.id) ? 'border-color:#00e5ff;background:#03202a;' : '';
-            return `<div data-act="pickNavVor" data-arg='["${v.id}"]' style="display:grid;grid-template-columns:56px 1fr 64px;align-items:center;gap:8px;
+        // 한 줄 = 한 표지소. VOR 은 하늘색, 로컬라이저는 분홍(지도 심볼과 같은 색).
+        const row = (id, name, freq, col) => {
+            const sel = (id === cur.id) ? 'border-color:#00e5ff;background:#03202a;' : '';
+            return `<div data-act="pickNavVor" data-arg='["${id}"]' style="display:grid;grid-template-columns:56px 1fr 64px;align-items:center;gap:8px;
                 padding:9px 10px;margin-bottom:6px;border:1px solid #234;border-radius:6px;cursor:pointer;${sel}">
-                <span style="color:#fff;font-weight:bold;font-size:13px;">${v.id}</span>
-                <span style="color:#9fb4c8;font-size:11px;">${v.name}</span>
-                <span style="color:#00e5ff;font-weight:bold;font-size:12px;text-align:right;">${v.freq}</span>
+                <span style="color:#fff;font-weight:bold;font-size:13px;">${id}</span>
+                <span style="color:#9fb4c8;font-size:11px;">${name}</span>
+                <span style="color:${col};font-weight:bold;font-size:12px;text-align:right;">${freq}</span>
             </div>`;
-        }).join('');
+        };
+        const grp = t => `<div style="color:#6a8494;font-size:9px;letter-spacing:1px;margin:10px 2px 5px;">${t}</div>`;
+        const vorRows = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).filter(v => v.freq)
+            .map(v => row(v.id, v.name, v.freq, '#00e5ff')).join('');
+        // 로컬라이저는 공항끼리 주파수가 겹친다 — 이름으로 고르면 그 국이 확실히 잡힌다.
+        const locs = (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS : []);
+        const locRows = locs.map(v => row(v.id, `${v.name} RWY ${v.rwy} LOC`, v.freq, '#f06292')).join('');
+        const rows = grp('VOR · VORTAC') + vorRows +
+                     (locRows ? grp(`로컬라이저(LOC) — ${locs.length}개소`) + locRows : '');
         container.innerHTML = `<div style="padding:8px 6px;overflow-y:auto;height:100%;">
             <div style="color:#9fb4c8;font-size:10px;margin-bottom:8px;">현재: <b style="color:#00e5ff;">${cur.id||'----'} ${cur.act||''}</b>
-                &nbsp;·&nbsp;VOR 명칭을 선택하거나 아래 버튼으로 주파수를 직접 입력하세요.</div>
+                &nbsp;·&nbsp;명칭을 선택하거나 아래 버튼으로 주파수를 직접 입력하세요.
+                <br><span style="color:#6a8494;">로컬라이저는 여러 공항이 같은 주파수를 씁니다 —
+                주파수만 넣으면 <b>가장 가까운 국</b>이 잡힙니다.</span></div>
             <div data-act="switchMode" data-arg='["COM_INPUT","${_navSelTarget}"]' style="text-align:center;padding:9px;margin-bottom:10px;
                 border:1px solid #b8860b;border-radius:6px;color:#facc15;font-weight:bold;font-size:12px;cursor:pointer;">⌨ 직접 주파수 입력</div>
             ${rows}
         </div>`;
         footer.innerHTML = cduFooter("switchMode('AUDIO')");
     }
-    // VOR 명칭 선택 → 무선 튜닝 + PFD 연동
+    // 명칭 선택 → 무선 튜닝 + PFD 연동 (VOR · 로컬라이저 공용)
     function pickNavVor(vorId) {
-        const v = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).find(x => x.id === vorId);
+        const v = (typeof _resolveVor === 'function') ? _resolveVor(null, vorId) : null;
         if (!v) return;
         freqs[_navSelTarget].act = v.freq;
         freqs[_navSelTarget].id  = v.id;
@@ -3521,7 +3664,9 @@ function act(name, ...args) {
     // NAV/LLZ → 선택한 NAV + VOR 매칭 + PFD 연동
     function afldPutNav(freq, id) {    // id: 'nav1' | 'nav2'
         freqs[id].act = freq;
-        const m = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).find(x => x.freq && Math.abs(parseFloat(x.freq) - parseFloat(freq)) < 0.001);
+        // VOR 뿐 아니라 로컬라이저까지 찾는다(_resolveVor) — 종전에는 ILS 주파수를
+        // 넣으면 명칭 칸이 빈 채로 남았다.
+        const m = (typeof _resolveVor === 'function') ? _resolveVor(freq, null) : null;
         freqs[id].id = m ? m.id : '';
         try { setNavRadio(id === 'nav1' ? 'NAV1' : 'NAV2', freq, m ? m.id : null); } catch(e) { _swallow(e); }
         _afldMsg = `${id.toUpperCase()} ← ${freq}${m ? ' (' + m.id + ')' : ''}`;
@@ -3838,7 +3983,8 @@ function act(name, ...args) {
             // NAV1/NAV2는 입력 주파수를 즉시 활성(ACT)으로 튜닝 + VOR 자동 매칭 + PFD 연동
             if (inputTarget === 'nav1' || inputTarget === 'nav2') {
                 freqs[inputTarget].act = v;
-                let match = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).find(x => x.freq && Math.abs(parseFloat(x.freq) - parseFloat(v)) < 0.001);
+                // VOR + 로컬라이저 (_resolveVor) — 같은 주파수를 여러 LOC 이 쓰면 가까운 국
+                let match = (typeof _resolveVor === 'function') ? _resolveVor(v, null) : null;
                 freqs[inputTarget].id = match ? match.id : '';
                 try { setNavRadio(inputTarget === 'nav1' ? 'NAV1' : 'NAV2', v, match ? match.id : null); } catch(e) { _swallow(e); }
             } else {
@@ -3849,9 +3995,15 @@ function act(name, ...args) {
         switchMode(backMode, inputTarget);
     }
 
+    // XFER — COM 은 넣은 값을 대기(STBY)에 두고 활성과 맞바꾼다.
+    // NAV 는 대기 개념이 없다(무선 행에도 활성 주파수와 명칭만 보인다).
+    // 그래서 종전처럼 맞바꾸면 방금 넣은 값이 대기로 밀려나고 옛 주파수가
+    // 다시 활성이 됐다 — 넣어도 반영되지 않는 것처럼 보이던 원인이다.
+    // NAV 에서는 ENTER 와 같이 그대로 튜닝만 한다.
     function handleInputXfer() {
+        const tgt = inputTarget;
         saveInputAndReturn();
-        swapFreq(inputTarget);
+        if (!String(tgt).startsWith('nav')) swapFreq(tgt);
     }
 
     function confirmInput() { 
@@ -3866,6 +4018,11 @@ switchMode('HOME');
     // 예전처럼 버튼이 조용히 죽지 않는다. 복합 동작은 아래에서 합성 액션으로 만든다.
     cduRegister({
       _setToggle,
+      joyPick,
+      joyUnbind,
+      joyHidPick,
+      joyHidDrop,
+      joyResetBinds,
       addInput,
       addSelcalInput,
       addXpdrInput,

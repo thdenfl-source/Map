@@ -28,8 +28,14 @@ import * as wptcrs from './cases/wptcrs.mjs';
 import * as brglbl from './cases/brglbl.mjs';
 import * as directto from './cases/directto.mjs';
 import * as crssync from './cases/crssync.mjs';
+import * as locsta from './cases/locsta.mjs';
+import * as susp from './cases/susp.mjs';
+import * as layout from './cases/layout.mjs';
+import * as gslope from './cases/gslope.mjs';
+import * as joystick from './cases/joystick.mjs';
+import * as geosearch from './cases/geosearch.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, brglbl, directto, crssync];
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, brglbl, directto, crssync, locsta, susp, layout, gslope, joystick, geosearch];
 const filter = process.argv.slice(2);
 
 function makeT() {

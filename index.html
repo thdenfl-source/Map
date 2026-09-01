@@ -308,6 +308,8 @@ html, body {
 
 /* ── SIM SPD (배속) ── */
 .simspd-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* ×1 ×2 / ×4 ×8 두 줄로 접는다 — 옆의 SUSP 와 높이를 맞추기 위해서다 */
+.simspd-grid { display: grid; grid-template-columns: repeat(2, auto); gap: 2px; }
 .simspd-btns { display: flex; gap: 2px; }
 .simspd-btn {
   background: #2a1a2a; border: 1px solid #4a2a4a; color: #ccc;
@@ -318,6 +320,30 @@ html, body {
 .simspd-btn.active { background: #2e0e2e; border-color: #cc66ff; color: #fff; }
 #simspd-1.active { background: #1e1e1e; border-color: #666; color: #aaa; box-shadow: none; }
 #simspd-2.active, #simspd-4.active, #simspd-8.active { box-shadow: 0 0 6px rgba(204,102,255,0.45); }
+
+/* ── SUSP (시퀀싱 보류) ──
+   켜져 있으면 활성 웨이포인트를 지나도 다음으로 넘어가지 않는다.
+   배속과는 상관없는 기능이라 이름표(SUSP)를 따로 세우고, 버튼에는 'On' 만 적는다.
+   켜짐/꺼짐은 AP 의 NAV·OBS 버튼과 같은 색으로 보인다(꺼지면 회색, 켜지면 녹색) —
+   같은 뜻의 표시는 같은 색이어야 눈이 헷갈리지 않는다.
+   홀딩·미스드어프로치에서 저절로 켜지면(auto) '자동' 을 덧붙여 구분한다. */
+.susp-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.susp-btn {
+  background: #111; border: 1px solid #333; color: #555;
+  font-size: 11px; font-weight: bold; letter-spacing: 1px;
+  min-width: 46px; padding: 5px 10px; cursor: pointer; border-radius: 3px;
+  touch-action: manipulation; font-family: 'Helvetica Neue', Arial, sans-serif;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  line-height: 1.15;
+}
+.susp-btn:active { background: #0a1a0a; }
+/* NAV·OBS 버튼(.obs-btn.on)과 같은 녹색 */
+.susp-btn.on, .susp-btn.auto {
+  background: #001a00; border-color: #00cc44; color: #00ee66;
+  box-shadow: 0 0 6px rgba(0,200,68,0.45);
+}
+/* 저절로 걸린 것은 '자동' 을 덧붙여 손으로 켠 것과 구분한다 */
+.susp-btn .susp-auto { display: block; font-size: 7px; letter-spacing: 0; opacity: 0.85; }
 
 /* ── divider ── */
 .ctrl-div { width: 1px; height: 34px; background: #2a2a2a; margin: 0 2px; }
@@ -340,6 +366,17 @@ html, body {
 .hover-btn.on     { background: #1a0e2e; border-color: #cc66ff; color: #cc66ff; }
 .hover-pos-btn.on { background: #2e2a0e; border-color: #ffcc00; color: #ffcc00;
                     box-shadow: 0 0 6px rgba(255,204,0,0.45); }
+/* G/S — 무장(ARM)은 호박색, 붙잡으면(CAPT) 승강계 지시침과 같은 자홍색 */
+.gs-btn {
+  background: #1a1a1a; border: 1px solid #333; color: #555;
+  font-size: 10px; font-weight: bold; padding: 3px 6px; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; white-space: nowrap; font-family: 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.1; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.gs-btn .gs-sub { display: block; font-size: 7px; letter-spacing: 0; opacity: 0.9; }
+.gs-btn.armed { background: #2a1c00; border-color: #ffaa00; color: #ffcc44; }
+.gs-btn.on    { background: #2a0e2a; border-color: #ff44ff; color: #ff88ff;
+                box-shadow: 0 0 6px rgba(255,68,255,0.45); }
 .crht-btn.on     { background: #0e2e1a; border-color: #44ff88; color: #44ff88;
                    box-shadow: 0 0 6px rgba(44,255,100,0.4); }
 .alt-hold-btn.on { background: #0e1a2e; border-color: #00cfff; color: #00cfff;
@@ -609,6 +646,16 @@ body.solo-mode #right-panel {
   display: none;
 }
 body.solo-mode #panel-divider { display: none; }
+/* 3분할이 기본이므로 단독 화면에서는 가운데 창과 두 번째 경계선도 접는다 */
+body.solo-mode #mid-panel,
+body.solo-mode #app.triple #mid-panel,
+body.solo-mode #divider-2,
+body.solo-mode #app.triple #divider-2 { display: none; }
+/* 3분할은 창 폭을 #app.triple #left-panel 처럼 세게 지정한다. 단독 화면에서는
+   남은 한 창이 전부를 차지해야 하므로 여기서 그보다 세게 다시 잡는다. */
+body.solo-mode #app.triple #left-panel,
+body.solo-mode #app.triple #mid-panel,
+body.solo-mode #app.triple #right-panel { flex: 1 1 0 !important; width: 100% !important; }
 body.solo-mode .solo-panel-visible {
   display: flex !important;
   flex-direction: column;
@@ -843,6 +890,39 @@ body.solo-mode .solo-panel-visible {
   padding: 4px; flex-direction: column; gap: 4px;
 }
 #pp-menu.open { display: flex; }
+/* ── 주소·지명 검색 패널 ── */
+#geo-panel {
+  display: none; position: absolute; top: 80px; left: 8px; z-index: 1200;
+  width: min(340px, calc(100% - 16px));
+  background: rgba(5,10,16,0.97); border: 1.5px solid #2a5a7a; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.85);
+}
+#geo-panel.open { display: block; }
+#geo-panel-hdr {
+  color: #00cfff; font-size: 12px; font-weight: bold; letter-spacing: 1px;
+  border-bottom: 1px solid #14324a; padding: 7px 10px 6px; position: relative;
+}
+#geo-close { position: absolute; right: 8px; top: 5px; color: #8a97a5; cursor: pointer; font-size: 13px; }
+#geo-panel-body { padding: 8px; display: flex; flex-direction: column; gap: 7px; }
+#geo-row { display: flex; gap: 5px; }
+#geo-q {
+  flex: 1; min-width: 0; background: #0a1116; border: 1px solid #2a3a4a; border-radius: 4px;
+  color: #cdd6df; font-size: 12px; padding: 7px 8px;
+}
+#geo-go {
+  flex: 0 0 auto; background: #0a1620; border: 1px solid #2a5a7a; border-radius: 4px;
+  color: #00cfff; font-size: 11px; font-weight: bold; padding: 7px 12px; cursor: pointer;
+}
+#geo-list { display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto; }
+.geo-item {
+  background: #0a1116; border: 1px solid #1e2630; border-radius: 4px;
+  padding: 6px 8px; cursor: pointer;
+}
+.geo-item:active { border-color: #00cfff; }
+.geo-item b { color: #cdd6df; font-size: 11px; font-weight: bold; display: block; }
+.geo-item span { color: #6a7784; font-size: 9px; line-height: 1.35; display: block; margin-top: 1px; }
+#geo-msg { color: #8a97a5; font-size: 10px; padding: 4px 2px; }
+#geo-note { color: #4a5563; font-size: 9px; line-height: 1.45; }
 #pp-menu button {
   background: rgba(20,20,20,0.9); border: 1px solid #444; border-radius: 4px;
   color: #cfe; font-size: 11px; font-weight: bold; padding: 7px 12px;
@@ -1564,7 +1644,9 @@ body.night-mode::after {
     <div id="help-body">
       <h3>1. 화면 구성</h3>
       <ul>
-        <li>좌·우 창 모두 <b>PFD / MAP / CDU</b> 탭으로 전환. 양쪽에 같은 창을 고르면 반대쪽이 자동으로 바뀝니다.</li>
+        <li><b>처음 켜면 3분할</b>입니다 — <b>좌 PFD · 중 MAP · 우 CDU</b>.
+            상단 <b>⿰ 2분할</b> 버튼으로 두 창만 볼 수도 있고, 그 선택은 저장되어 다음에도 그대로 열립니다.</li>
+        <li>각 창 모두 <b>PFD / MAP / CDU</b> 탭으로 전환. 다른 창에 있는 창을 고르면 두 창이 자리를 맞바꿉니다.</li>
         <li><b>전체화면</b>: CDU·Flight Plan 하단 <b>Full</b>, MAP 상단 <b>FULL</b> 버튼. 되돌아올 때는 같은 자리의 <b>HALF</b>.</li>
         <li>경계선의 <b>◀▶ 그립</b>을 드래그하면 분할 비율 조절(자동 저장). <b>3분할에서는 그립이 두 개</b>라
             좌·중·우 폭을 각각 잡을 수 있고, 각 경계선은 <b>맞닿은 두 창끼리만</b> 크기를 주고받습니다.
@@ -1577,6 +1659,10 @@ body.night-mode::after {
         <li><b>⿲ 3분할</b>(좌측 상단 탭): 넓은 화면에서 <b>PFD·MAP·CDU</b>를 한 번에 봅니다.
             <b>⿰ 2분할</b>을 누르면 되돌아갑니다. 각 패널의 탭으로 어떤 창을 둘지 바꿀 수 있고,
             같은 창을 고르면 서로 자리를 맞바꿉니다.</li>
+        <li><b>⛶ 단독</b>(각 창 탭 줄의 오른쪽 끝): <b>PFD 단독 · MAP 단독 · CDU 단독</b> — 그 창 하나만
+            화면 가득 띄웁니다. 계기비행 연습처럼 PFD 만 크게 보거나, 지도·CDU 를 넓게 볼 때 쓰십시오.
+            버튼을 <b>한 번 더 누르면</b>(또는 떠 있는 <b>✥ HALF</b> · 상단 막대의 <b>✕</b>)
+            <b>들어가기 전 배치 그대로</b> 돌아옵니다. 단독 중에는 <b>상단 막대</b>에서 다른 창으로 바로 넘어갈 수 있습니다.</li>
         <li>PFD 하단 FCP에서 <b>IAS·HDG·CRS·VS·ALT·CRHT</b>를 ▲▼/◀▶로 조절.</li>
         <li><b>HDG ◀▶</b>는 기수를 즉시 돌리지 않고 <b>선택 헤딩(HSI 청록 벅)</b>만 옮깁니다.
             AFCS가 <b>표준선회(360°/2분 = 3°/s)</b>로 선회하며, 뱅크각은 <b>속도의 16%</b>로 자동 산출됩니다
@@ -1587,6 +1673,11 @@ body.night-mode::after {
       <h3>3. MAP 창</h3>
       <ul>
         <li>상단: GPS·WX·＋(웨이포인트)·RAIN·WIND·NOTAM·FIX·AWY·<b>공역</b>·<b>📏 측정자</b>·FULL.</li>
+        <li><b>＋ 메뉴</b>: <b>PP 현재위치</b>(항공기 자리) · <b>＋ 십자위치</b>(지도 중앙) ·
+            <b>🔎 주소 검색</b>. 주소 검색은 주소·지명을 찾아 그 자리를 <b>웨이포인트(AD1·AD2…)</b> 로 넣고
+            지도를 그리로 옮깁니다. <b>좌표(37.5665, 126.9780)</b> 를 그대로 넣어도 됩니다.<br>
+            지명 자료는 <b>OpenStreetMap(Nominatim)</b> 이며 검색을 누를 때만 한 번 조회합니다
+            (오프라인에서는 좌표 입력만 됩니다). <b>항법용 자료가 아닙니다.</b></li>
         <li><b>FIX</b>: 누르면 패널이 열려 <b>ENR 항로 픽스</b>(149개)와 <b>접근절차 픽스</b>를 따로 켜고 끕니다.
             접근절차 픽스(주황 ◇)는 태안 RNP 16 / RNP 34 / 태안 IFR 로 나뉘며, 탭하면 기준점 라디얼·거리가 함께 뜹니다.</li>
         <li><b>공역 → 서산 반경권</b>: 서산비행장 기준 <b>5 / 10 / 15 / 18NM</b> 거리권.
@@ -1603,6 +1694,33 @@ body.night-mode::after {
             멈춥니다(6,000ft ÷ 6,076ft = 0.99NM). 고도가 높고 국이 가까울수록 차이가 커지고, 멀어지면
             수평거리에 수렴합니다. PFD 우측 <b>NAV1·NAV2</b> 줄과 지도 <b>BRG1</b> 글자에 반영됩니다.
             <b>FMS(GPS) 거리는 수평거리</b>라 이 차이가 없습니다 — 두 값이 다르게 보이는 건 정상입니다.</li>
+        <li><b>글라이드 패스(G/S)</b>: <b>GP 가 있는 ILS 주파수</b>를 NAV1/NAV2 에 넣으면
+            <b>승강계 왼편</b>에 <b>G/S</b> 눈금과 <b>자홍색 마름모</b>가 뜹니다 — 마름모가 가운데
+            기준선보다 <b>위에 있으면 강하선보다 높다</b>는 뜻이고, 위아래 점은 각각 <b>0.35°</b>
+            (최대편위 0.7° = 2점)입니다. 최대편위를 넘으면 마름모가 <b>속이 빈</b> 채 끝에 붙습니다.<br>
+            AP 의 <b>G/S</b> 버튼을 누르면 <b>ARM</b>(호박색)이 되고, 강하선에 닿는 순간 스스로
+            <b>CAPT</b>(자홍색)로 붙잡아 <b>고도를 맡습니다</b> — 강하각과 지상속도에 맞는 강하율로
+            내려가며(3°·120kt ≈ 640fpm) 벗어난 만큼만 되돌립니다. 잡고 있는 동안에는
+            <b>ALT·CRHT 유지가 물러납니다</b>(고도를 두 곳에서 몰면 서로 싸웁니다).
+            신호를 잃거나(25NM 밖·안테나 뒤) 한 번 더 누르면 풀립니다.<br>
+            상태는 <b>PFD 위쪽 AFCS 줄</b>에도 나옵니다 — 무장 중에는 왼쪽 칸에
+            <b>ALT</b> 옆에 <b>흰색 G/S</b> 가 함께 뜨고(고도는 아직 ALT 가 맡고 있다는 뜻),
+            붙잡으면 그 칸의 주 모드가 <b>자홍색 G/S</b> 로 바뀝니다.<br>
+            강하선은 <b>GP 안테나 자리에서 비행장 표고</b>, 거기서부터 접근 방향으로 강하각만큼
+            올라가는 면으로 잡습니다. 강하각은 <b>AIP 게재값</b>이며(사천 24R 3.2° · 원주 3.3° 등),
+            비고에 없으면 3.0° 입니다. <b>GP 가 없는 로컬라이저</b>(대구 31R 등)에서는 뜨지 않습니다.</li>
+        <li><b>로컬라이저(LOC)</b>: 지도 <b>AWY</b> 패널의 <b>로컬라이저(LOC)</b> 를 켜면 VOR 처럼
+            <b>분홍 삼각형 + 식별부호·주파수</b>로 표시됩니다(삼각형은 항공기가 들어오는 쪽을 가리킵니다).
+            눌러서 <b>NAV1/NAV2 튜닝</b>도 됩니다 — <b>ILS 주파수를 넣으면 이제 국이 잡히고</b>,
+            그 순간 <b>OBS 코스가 게재 접근 코스로 맞춰집니다</b>(로컬라이저는 코스가 시설에 붙어 있으므로).
+            안테나는 <b>활주로 반대편 끝</b>에 있습니다. 자료는 <b>AIP AD 2.19</b> 게재 좌표 그대로이며,
+            <b>18개 공항 43개소</b>입니다. AIP 에 접근 코스가 실리지 않은 곳은 <b>같은 활주로 양끝 LOC</b>
+            안테나를 잇는 방위에서 산출했고(±1°), 설명창에 <b>(산출)</b> 로 밝힙니다.<br>
+            CDU 의 <b>NAV1/NAV2 선택 화면</b>에도 VOR 과 함께 목록에 나오며, 고르면 <b>공항·활주로</b>가
+            이름으로 보입니다. <b>로컬라이저는 여러 공항이 같은 주파수를 씁니다</b>(108.70 은 김포·대구 세 곳) —
+            주파수만 넣으면 <b>지금 자리에서 가장 가까운 국</b>이 잡히고, 특정 국을 확실히 잡으려면 이름으로 고르십시오.<br>
+            NAV 주파수 입력창에서는 <b>ENTER 든 XFER 든</b> 넣은 값이 곧바로 활성이 됩니다 — NAV 에는 대기(STBY)가
+            없기 때문입니다(COM 은 종전대로 XFER 로 활성↔대기를 맞바꿉니다).</li>
         <li><b>지도 BRG 시현</b>(<b>#1BDP · #2BDP</b>): PFD 의 BRG1·BRG2 버튼 <b>아래</b>에 있습니다.
             켜야만 지도에 그 니들의 <b>선과 방위·거리 글자</b>가 나타납니다 — <b>기본은 미시현</b>이고
             선·글자가 <b>함께</b> 켜지고 <b>함께</b> 꺼집니다. <b>BRG1·BRG2</b> 버튼은 계기(HSI)의 니들,
@@ -1630,7 +1748,14 @@ body.night-mode::after {
       <ul>
         <li><b>NAV SRC</b>: <b>FMS / NAV1 / NAV2</b>. NAV1·NAV2는 CDU에서 튜닝한 VOR을 따라갑니다.</li>
         <li><b>RNP</b>: NAV SRC 바로 아래. <b>4 / 2 / 1 / 0.3</b> NM — CDI 최대편위(스케일)를 정합니다.</li>
-        <li><b>SIM SPD</b>: <b>×1 / ×2 / ×4 / ×8</b> 배속. 홀딩 한 바퀴 4분, 절차 하나 20분을 실시간으로
+        <li><b>SUSP</b>(SIM SPD 오른쪽): 버튼에는 <b>On</b> 만 적히고, 켜지면 <b>NAV 버튼과 같은 녹색</b>으로 바뀝니다. <b>시퀀싱 보류</b> — 켜져 있으면 활성 웨이포인트를 지나도
+            <b>다음으로 넘어가지 않고</b> 그 구간의 코스를 계속 따라갑니다. <b>마지막 지점이어도 NAV 가
+            풀리지 않아</b>, 홀딩이나 미스드어프로치를 계속 수행할 수 있습니다.
+            비행계획에 <b>홀딩이 걸리면 저절로 켜지고</b>(버튼에 「자동」 표시), 그만하고 다음 절차로 가려면
+            <b>SUSP 를 눌러 풀면</b> 곧바로 다음 지점으로 넘어갑니다. 손으로 켠 경우에는, 풀 때 지점을
+            이미 지나쳤으면 다음 지점으로 넘기고 아직 앞이면 그대로 그 지점으로 갑니다.
+            <b>RESET</b>·<b>CLR</b> 하면 풀립니다.</li>
+        <li><b>SIM SPD</b>: <b>×1 / ×2 / ×4 / ×8</b> 배속(2×2 로 놓았습니다). 홀딩 한 바퀴 4분, 절차 하나 20분을 실시간으로
             기다리지 않아도 됩니다. <b>시뮬 시간만 빨리 흐르고 계산은 그대로</b>라 항적·진입·타이머가
             실시간과 같습니다(프레임을 건너뛰지 않습니다). <b>RESET</b> 하면 ×1 로 돌아옵니다.</li>
         <li><b>STOP WATCH</b>: 시뮬 시간으로 갑니다 — <b>배속에 비례</b>해 빨라지고 <b>시뮬을 멈추면 함께 멈춥니다</b>.
@@ -1786,7 +1911,8 @@ body.night-mode::after {
       <h3>8. 설정 (하단 Setting)</h3>
       <ul>
         <li><b>단위</b>: 고도 ft/m · 거리 NM/km · 속도 kt/km·h · 온도 °C/°F — PFD 계기까지 함께 전환됩니다.</li>
-        <li>야간 모드, 레인지 링, 자동 METAR, 공역·HTAWS 경보, <b>키보드 단축키</b> on/off.</li>
+        <li>야간 모드, 레인지 링, 자동 METAR, 공역·HTAWS 경보, <b>조종 장치</b>·<b>키보드 단축키</b> on/off.</li>
+        <li><b>조종 장치 버튼 배정</b>: 조이스틱·게임패드 버튼을 동작에 잇습니다(아래 10항).</li>
         <li>홈 화면에 추가(PWA 설치), 주변 지도 캐시 저장, 사용 안내 다시 보기.</li>
       </ul>
 
@@ -1798,6 +1924,48 @@ body.night-mode::after {
         <tr><td><b>7 / 8</b></td><td>VS −10 / +10 fpm</td><td><b>우측 Shift</b></td><td>GSPD 켜기/끄기</td></tr>
         <tr><td><b>9 / 0</b></td><td>ALT −10 / +10 ft</td><td><b>← → ↑ ↓</b></td><td>트림 좌/우/전/후</td></tr>
       </table>
+      <h3>10. 조이스틱 / 게임패드</h3>
+      <ul>
+        <li>USB·블루투스로 연결한 뒤 <b>이 창을 클릭해 앞으로 가져오고</b>, <b>아무 버튼이나 한 번</b>
+            누르면 인식됩니다(브라우저는 첫 입력이 있어야 장치를 알려 줍니다).</li>
+        <li><b>인식이 안 될 때</b>: ① 장치의 <b>X-input / D-input 모드 스위치</b>를 <b>D-input</b> 으로 —
+            X-input 은 윈도우 전용이라 맥에서는 값이 올라오지 않는 기종이 많습니다(PXN 계열 등).
+            ② 창을 클릭해 <b>포커스</b>를 준 뒤 버튼을 누릅니다.
+            ③ 아래 <b>입력 진단</b>에 장치 이름이 뜨는지 확인합니다 — 이름이 뜨는데 값이 안 움직이면 ①번입니다.</li>
+        <li>스틱 하나가 <b>여러 대로 잡히는</b> 기종(복합 HID)에서는 <b>값을 내는 장치</b>로 자동으로 옮겨 붙습니다.
+            진단에 연결된 장치가 모두 나오고 사용 중인 것에 <b>←사용</b> 이 붙습니다.</li>
+        <li><b>설정 → 조종 장치 버튼 배정</b>에서 동작을 누르면 <b>입력 대기</b>가 되고,
+            그때 누른 버튼이 그 동작에 잡힙니다. 배정은 기기에 저장되어 다음에도 그대로입니다.</li>
+        <li>배정할 수 있는 동작: <b>FLY/PAUSE · FORCE TRIM · GSPD · HOVER POSITION</b>,
+            <b>트림 ▲▼◀▶ · 페달</b>, <b>HDG · IAS · ALT · CRHT · VS · CRS</b> 증감,
+            <b>ALT/CRHT 유지 · NAV · G/S · SUSP · OBS</b>, <b>HOVER PAGE</b>,
+            지도 <b>추종 · HDG↑/N↑ · 확대/축소</b>.</li>
+        <li>동작 성격에 따라 <b>누르는 순간 한 번</b>(FLY/PAUSE 등), <b>누르는 동안 유지</b>(트림),
+            <b>누르고 있으면 연속</b>(HDG·IAS 등, 화면 버튼과 같은 리듬)으로 동작합니다.</li>
+        <li><b>햇(HAT) 스위치</b>: 8방향 햇을 <b>축 하나</b>로 올려 보내는 기종(대개 축 9)은
+            <b>▲▶▼◀ 네 방향</b>으로 풀어 각각 배정합니다. 쉬는 자리가 범위 밖(3.2857)인 기종은 물론,
+            <b>0 에서 쉬는 기종</b>도 8등분 격자값으로 알아봅니다. <b>대각</b>은 이웃한 두 방향이 함께 걸립니다
+            (예: ▲▶ 를 밀면 전방 트림 + 우 트림). 화면에는 <b>햇 9 ▲</b> 처럼 표시됩니다.</li>
+        <li>일반 아날로그 축은 <b>＋/−</b> 방향별로 잡을 수 있고, 쉬는 자리가 0 이 아닌 장치(정지 상태 −1 등)도
+            연결 시점 값을 중립으로 잡아 오작동하지 않습니다.</li>
+        <li>장치를 뽑거나 창이 뒤로 가면 누르고 있던 동작은 자동으로 풀립니다.</li>
+        <li><b>안드로이드</b>: 조종 장치의 버튼을 게임패드 버튼이 아니라 <b>키</b>로 넘기는 기종이 많습니다
+            (축·햇만 잡히고 버튼은 조용한 증상). 그런 버튼도 그대로 배정할 수 있고
+            <b>키 F13</b> 처럼 표시됩니다. 배정한 키만 듣기 때문에 기존 키보드 단축키와 다투지 않습니다.</li>
+        <li><b>아이패드 · 아이폰</b>: 이 기기는 브라우저 이름과 상관없이 <b>모두 사파리(WebKit) 엔진</b>이라
+            크롬을 깔아도 <b>직접 연결(WebHID)이 없습니다</b>. 여기서는 <b>게임패드로 인식되는 컨트롤러</b>
+            (Xbox · PS · MFi)를 쓰거나, <b>키보드처럼 잡히는 장치</b>를 키로 배정해 쓰십시오.
+            같은 장치라도 맥 · 윈도우 · 안드로이드의 크롬에서는 직접 연결이 됩니다.</li>
+        <li><b>맥에서 게임패드로 아예 안 잡힐 때</b>: 배정 화면의 <b>🔌 장치 직접 연결(WebHID)</b> 을 누르고
+            목록에서 장치를 고르십시오. 브라우저가 게임패드로 보여 주지 않는 장치도 직접 열어 씁니다
+            (Chrome · Edge. 한 번 허락하면 다음부터 자동으로 다시 연결됩니다).</li>
+        <li><b>입력 진단</b>: 배정 화면 아래에 지금 들어오는 <b>버튼 번호와 축 값</b>이 그대로 나옵니다.
+            잡히지 않는 입력이 무엇으로 올라오는지 여기서 확인할 수 있습니다
+            (<b>HAT</b> 로 표시된 축은 8방향 햇으로 풀어 씁니다).</li>
+      </ul>
+      <div class="help-note">※ 아직 <b>버튼</b>만 연동합니다. 사이클릭·컬렉티브·페달의 <b>아날로그 축</b>을
+      직접 조종하는 기능은 넣지 않았습니다(현재 비행 모델이 AFCS 목표값 기반입니다).</div>
+
       <div class="help-note">※ 숫자·트림 키는 누르고 있으면 연속 조작됩니다. 입력창 타이핑 중에는 동작하지 않습니다.<br>
       ※ DeX·데스크톱에서 물리 키보드로 입력할 때 계기가 움직이면 <b>설정 → 키보드 단축키</b>를 끄십시오.</div>
     </div>
@@ -1833,6 +2001,7 @@ body.night-mode::after {
       <button class="page-tab active" data-sel="pfd" data-act="selectPanel" data-arg='["left", "pfd"]'>PFD</button>
       <button class="page-tab" data-sel="map" data-act="selectPanel" data-arg='["left", "map"]'>MAP</button>
       <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["left", "cdu"]'>CDU</button>
+      <button class="page-tab split-tab" id="pfd-solo-btn" data-act="pfdSolo" title="PFD 단독 — PFD 만 화면 가득(한 번 더 누르면 원래 배치)">⛶ PFD 단독</button>
       <button class="page-tab split-tab" id="split-toggle" data-act="toggleTriple" title="2분할 ⇄ 3분할">⿲ 3분할</button>
     </div>
     <div id="pfd-wrap">
@@ -1961,6 +2130,8 @@ body.night-mode::after {
           <div class="alt-hold-btns">
             <button class="alt-hold-btn" id="alt-hold-btn" data-act="toggleAltHold">ALT</button>
             <button class="crht-btn"     id="crht-btn"     data-act="toggleCrht">CRHT</button>
+            <button class="gs-btn"       id="gs-btn"       data-act="toggleGs"
+                    title="G/S — ILS 강하선 추종. 무장(ARM)해 두면 강하선에 닿는 순간 잡아(CAPT) 고도를 맡습니다.">G/S</button>
           </div>
         </div>
 
@@ -2000,14 +2171,22 @@ body.night-mode::after {
         <div class="ctrl-div"></div>
 
         <!-- 배속 — 홀딩 한 바퀴 4분, 절차 하나 20분을 실시간으로 기다리지 않게 -->
+        <!-- 2×2 로 접는다(옆의 SUSP 와 높이를 맞추기 위해서다) -->
         <div class="simspd-group">
           <div class="ctrl-lbl">SIM SPD</div>
-          <div class="simspd-btns">
+          <div class="simspd-grid">
             <button class="simspd-btn active" id="simspd-1" data-act="setSimSpeed" data-arg='[1]' title="실시간">×1</button>
             <button class="simspd-btn" id="simspd-2" data-act="setSimSpeed" data-arg='[2]' title="2배속">×2</button>
             <button class="simspd-btn" id="simspd-4" data-act="setSimSpeed" data-arg='[4]' title="4배속">×4</button>
             <button class="simspd-btn" id="simspd-8" data-act="setSimSpeed" data-arg='[8]' title="8배속">×8</button>
           </div>
+        </div>
+
+        <!-- SUSP — 배속과는 상관없는 기능이라 이름표를 따로 세운다 -->
+        <div class="susp-group">
+          <div class="ctrl-lbl">SUSP</div>
+          <button class="susp-btn" id="susp-btn" data-act="toggleSusp"
+                  title="SUSPEND — 다음 웨이포인트로 자동으로 넘어가지 않고 지금 구간을 계속 유지합니다. 홀딩·미스드어프로치에서 자동으로 켜집니다.">On</button>
         </div>
 
         <div class="ctrl-div"></div>
@@ -2055,6 +2234,7 @@ body.night-mode::after {
       <button class="page-tab" data-sel="pfd" data-act="selectPanel" data-arg='["mid", "pfd"]'>PFD</button>
       <button class="page-tab active" data-sel="map" data-act="selectPanel" data-arg='["mid", "map"]'>MAP</button>
       <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["mid", "cdu"]'>CDU</button>
+      <button class="page-tab split-tab" id="map-solo-btn" data-act="panelSolo" data-arg='["map"]' title="MAP 단독 — 지도만 화면 가득(한 번 더 누르면 원래 배치)">⛶ MAP 단독</button>
     </div>
   </div>
   <div id="divider-2"><div id="divider-grip-2"></div></div>
@@ -2065,6 +2245,7 @@ body.night-mode::after {
       <button class="page-tab" data-sel="pfd" data-act="selectPanel" data-arg='["right", "pfd"]'>PFD</button>
       <button class="page-tab active" data-sel="map" data-act="selectPanel" data-arg='["right", "map"]'>MAP</button>
       <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["right", "cdu"]'>CDU</button>
+      <button class="page-tab split-tab" id="cdu-solo-btn" data-act="panelSolo" data-arg='["cdu"]' title="CDU 단독 — CDU 만 화면 가득(한 번 더 누르면 원래 배치)">⛶ CDU 단독</button>
       <button id="reload-btn" data-act="hardReload" title="새로고침(상태 초기화)">⟳</button>
     </div>
 
@@ -2084,6 +2265,7 @@ body.night-mode::after {
         <div id="pp-menu">
           <button onclick="ppAddWaypoint();togglePpMenu(false)">PP 현재위치</button>
           <button onclick="chAddWaypoint();togglePpMenu(false)">＋ 십자위치</button>
+          <button onclick="openGeoSearch();togglePpMenu(false)">🔎 주소 검색</button>
         </div>
         <button id="rain-btn" data-act="toggleRain">RAIN</button>
         <button id="wind-btn" data-act="toggleWind">WIND</button>
@@ -2093,6 +2275,20 @@ body.night-mode::after {
         <button id="aspc-btn" data-act="toggleAspcPanel">공역</button>
         <button id="map-ruler-btn" data-act="toggleRuler" title="거리·방위 측정">📏</button>
         <button id="map-full-btn" data-act="toggleMapFull" title="전체화면/분할 전환">FULL</button>
+      </div>
+      <div id="geo-panel">
+        <div id="geo-panel-hdr">주소 · 지명 검색
+          <span id="geo-close" data-act="closeGeoSearch" title="닫기">✕</span></div>
+        <div id="geo-panel-body">
+          <div id="geo-row">
+            <input id="geo-q" type="search" placeholder="예: 서울시청 · 강원 양양군 손양면" autocomplete="off">
+            <button id="geo-go" data-act="runGeoSearch">검색</button>
+          </div>
+          <div id="geo-list"></div>
+          <div id="geo-note">검색 결과를 누르면 그 자리에 웨이포인트가 들어가고 지도가 그리로 움직입니다.
+            좌표(37.5665, 126.9780)를 그대로 넣어도 됩니다.<br>
+            지명 검색은 OpenStreetMap(Nominatim) 자료이며 <b>항법용이 아닙니다</b>.</div>
+        </div>
       </div>
       <div id="aspc-panel"></div>
       <div id="fix-panel"></div>
@@ -2316,6 +2512,7 @@ body.night-mode::after {
   <script src="js/data/ifr-procedures.js"></script>
   <script src="js/data/airfield-info.js"></script>
   <script src="js/data/enr-vors.js"></script>
+  <script src="js/data/loc-stations.js"></script>
   <script src="js/data/enr-routes.js"></script>
   <script src="js/data/airspace.js"></script>
   <!-- 앱 코드 -->
@@ -2331,6 +2528,8 @@ body.night-mode::after {
   <script src="js/09-cdu.js"></script>
   <script src="js/10-tools.js"></script>
   <script src="js/11-charts.js"></script>
+  <script src="js/12-joystick.js"></script>
+  <script src="js/13-joyhid.js"></script>
 
 <input type="file" id="zipFileInput" accept=".zip,application/zip,application/x-zip-compressed,application/octet-stream" style="display:none" onchange="handleZipFile(this.files[0]); this.value='';"></body>
 </html>
