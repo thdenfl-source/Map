@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>KUH-1CG CDU - Ultimate PERF & Vy/VS Integration</title>
+    <style>
+        :root {
+            --bg-dark: #050505;
+            --text-green: #c8ff00; 
+            --text-cyan: #00ffff;
+            --active-blue: #87ceeb;
+            --btn-grad: linear-gradient(to bottom, #444, #111, #000);
+            --border-3d: 1px solid #444;
+        }
+
+        body {
+            background-color: #222;
+            margin: 0; padding: 0;
+            width: 354px; height: 567px;
+            overflow: hidden;
+            font-family: 'Arial', sans-serif; color: white;
+            user-select: none; touch-action: manipulation;
+        }
+
+        .cdu-frame {
+            width: 354px;
+            height: 567px;
+            box-sizing: border-box;
+            background-color: #111; padding: 8px; border-radius: 12px; border: 3px solid #000;
+            display: flex; flex-direction: column;
+            box-shadow: 0 13px 33px rgba(0,0,0,0.9);
+        }
+        
+        .touch-display { background-color: var(--bg-dark);
+            flex: 1; display: flex; flex-direction: column; border: 1.5px solid #000; overflow: hidden;
+        }
+
+        /* Header (CNS Bar) */
+        .header-grid { display: grid;
+            grid-template-columns: 0.9fr 1.2fr 0.8fr 1.2fr 0.8fr; background: #111; padding: 4px; gap: 3px; border-bottom: 1.5px solid #333; height: 63px;
+        }
+        .header-box { background: #0a0a0a; border: 0.7px solid #444; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .header-label { font-size: 6px; color: #888; text-align: center; width: 100%; pointer-events: none; }
+        .freq-act { color: white; font-size: 11px; font-weight: bold; }
+        .freq-stby { color: var(--text-cyan); font-size: 10px; font-weight: bold; }
+        .swap-arrow { font-size: 10px; color: #777; cursor: pointer; padding: 2px; z-index: 10;}
+        .green-ind { color: var(--text-green); font-size: 8px; font-weight: bold; text-align: center; line-height: 1.1; }
+
+        /* --- 기능 활성화 버튼 시각적 강조 스타일 --- */
+        .func-active {
+            background: linear-gradient(to bottom, rgba(135, 206, 235, 0.25) 0%, #444 40%, #1a1a1a 100%) !important;
+            border-top: 1px solid rgba(135, 206, 235, 0.6) !important;
+            transition: background 0.1s ease;
+        }
+        .func-active:active {
+            background: linear-gradient(to bottom, rgba(135, 206, 235, 0.4) 0%, #555 40%, #222 100%) !important;
+        }
+        .top-func-btn {
+            background: linear-gradient(to bottom, rgba(135, 206, 235, 0.2) 0%, transparent 80%);
+            transition: background 0.1s ease;
+        }
+        .top-func-btn:active {
+            background: rgba(135, 206, 235, 0.35);
+        }
+
+        /* Titles and Sub-headers */
+        .mode-title-bar { background: linear-gradient(to bottom, #555, #111);
+            text-align: center; padding: 3px; font-size: 9px; font-weight: bold; border-bottom: 1px solid #000; color: #eee;
+        }
+        .sub-header { display: flex; align-items: flex-end; padding: 4px 7px 0 7px;
+            gap: 5px; background: #1a1a1a; }
+        .user-3d-btn { height: 37px; background: var(--btn-grad);
+            border: var(--border-3d); border-radius: 4px 4px 0 0; font-size: 7px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 5px;
+        }
+        
+        .tab-container { display: flex; flex: 1; gap: 3px; }
+        .tab { flex: 1; height: 30px; background: #2c2c2c; border: 0.7px solid #444;
+            border-radius: 4px 4px 0 0; display: flex; align-items: center; justify-content: center; font-size: 7px; cursor: pointer; color: #aaa;
+        }
+        .tab.active { background: #eee; color: black; font-weight: bold; height: 32px; margin-top: -2px; }
+
+        /* Main Content */
+        #mainContentArea { flex: 1; display: flex; flex-direction: column; padding: 7px; overflow-y: auto; }
+        .panel-border { flex: 1; border: 1.5px solid var(--active-blue); border-radius: 5px; padding: 8px; background: black; display: flex; flex-direction: column; }
+
+        /* Common Buttons with enhanced active states for touch feedback */
+        .item-btn { height: 35px; background: var(--btn-grad); border: var(--border-3d);
+            color: white; font-size: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; border-radius: 4px; position: relative; text-align: center;
+            transition: transform 0.05s, background 0.1s;
+        }
+        .item-btn:active {
+            background: linear-gradient(to bottom, #555, #222, #111); 
+            transform: scale(0.96);
+        }
+        .status-line { position: absolute; bottom: 3px; width: 70%; height: 2px; background: #333; border-radius: 1.5px; }
+        .on .status-line { background: var(--text-green); box-shadow: 0 0 3px var(--text-green); }
+
+        /* Sliders */
+        .volume-row { display: grid; grid-template-columns: 50px 43px 1fr 63px; align-items: center; margin-bottom: 7px; gap: 5px; }
+        .wedge-slider { height: 28px; background: #111; border: 0.7px solid #444; position: relative; overflow: hidden; cursor: ew-resize; border-radius: 3px; }
+        .wedge-fill { height: 100%; background: linear-gradient(to right, #1a3a4a, #00d2ff); clip-path: polygon(0% 100%, 100% 0%, 100% 100%); pointer-events: none; }
+        .wedge-text { position: absolute; left: 7px; top: 8px; font-size: 8px; color: var(--active-blue); font-weight: bold; z-index: 3; pointer-events: none; }
+
+        /* Audio Radios */
+        .freq-display-box { height: 35px; background: #0a0a0a; border: 0.7px solid #444; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 5px; border-radius: 4px; cursor: pointer; transition: background 0.1s; }
+        .freq-display-box:active { background: #1a1a1a; }
+
+        /* Intercom Grid */
+        .intercom-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 5px; }
+        .loop-row { display: flex; gap: 8px; margin-top: 10px; }
+
+        /* Numpad with optimized touch targets */
+        .input-row { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 10px 0 20px 0; }
+        .freq-box-main { width: 120px; height: 40px; background: #000; border: 1.5px solid #555; border-radius: 4px; color: var(--text-green); font-size: 22px; display: flex; align-items: center; justify-content: center; font-family: monospace; }
+        .numpad-grid { display: grid; grid-template-columns: repeat(3, 65px); gap: 12px; justify-content: center; }
+        .xpdr-numpad-grid { display: grid; grid-template-columns: repeat(4, 55px); gap: 10px; justify-content: center; margin-bottom: 15px;}
+        .selcal-grid { display: grid; grid-template-columns: repeat(5, 45px); gap: 8px; justify-content: center; }
+        
+        .num-circle { 
+            width: 55px; height: 55px; /* Increased touch target */
+            background: radial-gradient(circle at 30% 30%, #444, #111); border: 0.7px solid #555; border-radius: 50%; color: white; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.6); 
+            transition: transform 0.05s, background 0.1s;
+        }
+        .num-circle:active {
+            background: radial-gradient(circle at 30% 30%, #666, #222);
+            box-shadow: inset 0 3px 6px rgba(0,0,0,0.8);
+            transform: scale(0.95);
+        }
+
+        /* Footer */
+        .footer-nav { height: 53px; display: flex; justify-content: space-around; align-items: center; background: #111; border-top: 1.5px solid #333; padding: 0 5px; }
+        .nav-btn { background: var(--btn-grad); border: var(--border-3d); border-radius: 5px; padding: 6px; min-width: 45px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; font-size: 7px; color: white; transition: transform 0.05s, background 0.1s; }
+        .nav-btn:active { background: linear-gradient(to bottom, #555, #222, #111); transform: scale(0.95); }
+        .nav-btn span { font-size: 14px; pointer-events: none; }
+        .enter-btn-blue { background: #1a2a4a; border: 1px solid var(--active-blue); }
+        .enter-btn-blue:active { background: #2a4a7a; }
+
+        .status-footer { height: 25px; background: #111; display: grid; grid-template-columns: 1fr 1.5fr 1fr; border-top: 0.7px solid #333; font-size: 6px; color: #ccc; align-items: center; padding: 0 7px; text-align: center; }
+        
+        /* Home Grid */
+        .home-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 15px 5px; padding: 5px; }
+        .home-icon-wrapper { width: 23%; display: flex; flex-direction: column; align-items: center; cursor: pointer; text-decoration: none; color: inherit; }
+        .icon-box { width: 45px; height: 45px; background: linear-gradient(to bottom, #444, #1a1a1a); border-radius: 8px; border: 1px solid #555; display: flex; align-items: center; justify-content: center; margin-bottom: 5px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.6); transition: transform 0.05s; }
+        .icon-box:active { transform: scale(0.92); }
+        .icon-box svg { width: 70%; height: 70%; }
+        .icon-label { font-size: 8px; color: #eee; text-align: center; font-weight: bold; line-height: 1.1; pointer-events: none; }
+        
+        /* PERF Page Styles */
+        .perf-row { display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center; }
+        .perf-label { font-size: 8px; color: #ccc; margin-bottom: 2px; }
+        .perf-val-box { border: 1px solid var(--active-blue); background: #000; padding: 4px 8px; border-radius: 4px; color: var(--text-green); font-size: 12px; font-weight: bold; min-width: 50px; text-align: center; cursor: pointer; transition: background 0.1s; }
+        .perf-val-box:active { background: #222; }
+        .perf-result-box { background: #1a1a1a; border: 1px solid #555; padding: 3px 2px; border-radius: 4px; color: white; font-size: 11px; font-weight: bold; min-width: 45px; text-align: center; display: flex; align-items: center; justify-content: center; }
+        .perf-result-title { font-size: 6.5px; color: var(--text-cyan); text-align: center; margin-bottom: 2px; line-height: 1.1; }
+        
+        /* Error/Warning Animation */
+        @keyframes blink { 50% { opacity: 0.4; } }
+    </style>
+</head>
+<body>
+
+<div class="cdu-frame">
+    <div class="touch-display">
+        
+        <div class="header-grid">
+            <div class="header-box" style="padding:0; gap:0;">
+                <div class="top-func-btn" style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="switchMode('AUDIO'); switchAudioTab('COM');">
+                    <div class="header-label" style="line-height:1.2;">Audio &<br>Radios</div>
+                </div>
+                <div style="width:80%; height:1px; background:#333;"></div>
+                <div class="top-func-btn" style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="switchMode('INTERCOM')">
+                    <div class="header-label">Intercom</div>
+                </div>
+            </div>
+
+            <div class="header-box">
+                <div class="header-label">COM1</div>
+                <div class="freq-act" id="h-com1-act">133.30</div>
+                <div class="swap-arrow" onclick="swapFreq('com1')">↕</div>
+                <div class="freq-stby" id="h-com1-stb">121.90</div>
+            </div>
+            
+            <div class="header-box">
+                <div class="header-label" style="margin-bottom:2px;">MIC</div>
+                <div class="green-ind" id="top-mic-val">COM1</div>
+                <div class="header-label" style="margin-top:2px; margin-bottom:2px;">MON</div>
+                <div class="green-ind" id="top-mon-val">1/2</div>
+            </div>
+            
+            <div class="header-box">
+                <div class="header-label">COM2</div>
+                <div class="freq-act" id="h-com2-act">128.20</div>
+                <div class="swap-arrow" onclick="swapFreq('com2')">↕</div>
+                <div class="freq-stby" id="h-com2-stb">118.20</div>
+            </div>
+            
+            <div class="header-box" style="padding:0; gap:0;">
+                <div style="flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer;" onclick="switchMode('XPDR_MODE')">
+                    <div class="header-label" style="color:var(--text-cyan); margin-bottom:1px;">XPDR2</div>
+                    <div class="green-ind" id="top-xpdr-mode">AUTO</div>
+                </div>
+                <div style="width:80%; height:1px; background:#333;"></div>
+                <div style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer;" onclick="switchMode('XPDR_CODE')">
+                    <div class="freq-act" id="top-xpdr-code" style="color:var(--text-green); font-size:12px;">1234</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mode-title-bar" id="modeTitle">Home</div>
+        <div id="mainContentArea"></div>
+        <div class="footer-nav" id="footerNav"></div>
+        
+        <div class="status-footer">
+            <div style="text-align:left;">- Range +<br>Push:Pan</div>
+            <div id="center-label">CDU HOME</div>
+            <div style="text-align:right;">COM1 FREQ<br>Hold:↕</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- State Variables ---
+    let currentMode = 'HOME';
+    let audioTab = 'COM'; 
+    let inputTarget = 'com1';
+    let currentInput = "";
+    let xpdrInput = "";
+    
+    // SELCAL State
+    let selcalCode = "BCAJ";
+    let selcalInput = "";
+    
+    let hasStartedTyping = false; 
+    
+    let micSelected = 'COM1'; 
+    let monStates = { com1: true, com2: true, uvhf: false, vhffm: true, hf: false, selcal: false, nav1: true, nav2: true, speaker: true };
+    let clicksState = 'Off'; 
+    let icStates = { CoPilot: true, Pilot: true, Crew1: true, Pass: true, Crew2: true, wICS: true, Isolate: false, Loop1: false, Loop2: false, Loop5: false };
+    
+    let voxState = 'Off';
+    let volumes = { com1: 100, com2: 75, uvhf: 90, pb: 100, intercom: 100, vhffm: 100, hf: 100, clicks: 100, nav1: 100, nav2: 100, speaker: 100, vox: 50 };
+    
+    let freqs = { 
+        com1: { act: "124.380", stb: "129.990" }, com2: { act: "119.340", stb: "132.110" }, 
+        uvhf: { act: "115.000", stb: "110.000" }, hf: { act: "7.5423", stb: "11.4570" },
+        nav1: { act: "117.80", stb: "113.00", id: "TOP" }, nav2: { act: "115.50", stb: "113.25", id: "STJ" }
+    };
+    
+    let xpdrState = { mode: 'Auto', code: '1234', active: 'XPDR2', adsb: true, flightId: 'TERRY' };
+    let hfState = { tuning: 'Simplex', emission: 'LSB V', sql: 'SQ3', pwr: 'High' };
+
+    // --- EXACT EXCEL PERF DATA ENGINE ---
+    let perfData = { alt: "0", temp: "20", weight: "16000", vs: "0" };
+    let perfResults = { oge: "0.0", ige: "0.0", oge_gonogo: "0.0", ige_gonogo: "0.0", mta30: "0.0", mta10: "0.0", mta25: "0.0", vy: "0.0", vsTq: "0.0", outOfLimits: false };
+
+    // Vy Tables
+    const vyTemps = [-32, -20, -10, 0, 10, 20, 30, 40];
+    const vyWeights = [16000, 18000, 19200];
+    const vyData = [
+        [72.0, 71.8, 71.0, 70.8, 70.7, 70.3, 70.1, 70.0],
+        [75.8, 75.3, 74.9, 74.3, 74.0, 73.5, 73.2, 72.8],
+        [77.2, 77.0, 76.8, 76.0, 75.8, 75.0, 74.6, 74.0]
+    ];
+
+    // Climb/Descent TQ Tables
+    const vsRates = [0, 500, 1000, 1500, 2000, 2500, 3000];
+    const vsWeights = [16000, 18000, 20000];
+    const climbData = [
+        [0, 12.2, 24.8, 36.9, 49.2, 61.3, 73.9],
+        [0, 13.8, 28.0, 41.5, 55.3, 69.2, 83.4],
+        [0, 15.2, 30.8, 46.1, 61.3, 76.6, 93.6]
+    ];
+    const descentData = [
+        [0, 11.0, 22.0, 33.0, 43.8, 54.9, 65.8],
+        [0, 12.2, 22.4, 37.0, 49.2, 61.6, 74.0],
+        [0, 13.8, 27.2, 41.0, 54.8, 68.5, 82.2]
+    ];
+
+    const igeOgeMap = [
+        [70, 64.5], [71, 65.5], [72, 66], [73, 67], [74, 68], [75, 68.5], [76, 69.5], [77, 70], [78, 71], [79, 72],
+        [80, 73], [81, 73.5], [82, 74.5], [83, 75], [84, 76], [85, 77], [86, 78], [87, 78.5], [88, 79.5], [89, 80],
+        [90, 81], [91, 82], [92, 82.5], [93, 83.5], [94, 84.5], [95, 85], [96, 86], [97, 86.5], [98, 87.5], [99, 88.5],
+        [100, 89], [101, 90], [102, 91], [103, 92], [104, 92.5], [105, 93.5], [106, 94], [107, 95], [108, 96],
+        [109, 96.5], [110, 97.5], [111, 98], [112, 99], [113, 100], [114, 101]
+    ];
+
+    const oge19200_data = [
+        [94, 94, 95, 95.5, 96, 97, 97.5, 98.5, 99, 100],          
+        [95, 95.5, 96, 97, 97.5, 98.5, 99, 100, 101, 102],        
+        [96, 97, 97.5, 98.5, 99, 100, 101, 102, 103, 104],        
+        [97.5, 98.5, 99, 100, 101, 102, 103, 104, 105, 106],      
+        [99, 100, 101, 102, 103, 104, 105, 106, 107, 108],        
+        [101, 102, 103, 104, 105, 106, 107, 108, 110, 111.5],     
+        [103, 104, 105, 106, 107, 108, 110, 111.5, 112.5, 114.5]  
+    ];
+
+    const oge16000_data = [
+        [75.5, 75.5, 76, 76, 76.5, 76.5, 77, 77.5, 77.5, 78],     
+        [76, 76.5, 76.5, 77, 77, 77.5, 77.5, 78.5, 78.5, 79],     
+        [77, 77, 77.5, 78, 78.5, 78.5, 78.5, 79, 79.5, 80],       
+        [78, 78.5, 78.5, 79, 79.5, 80, 80, 80.5, 81, 81.5],       
+        [79, 79.5, 80, 80.5, 80.5, 81, 81.5, 82, 82.5, 83],       
+        [80, 80.5, 81, 81.5, 82, 82.5, 83, 83.5, 84, 84.5],       
+        [81.5, 82, 82.5, 83, 83.5, 84, 84.5, 85, 85.5, 86]        
+    ];
+
+    const mta30_data = [
+        [129,129,130,131,131,131,132,132,133,133,134,134,135,135,136,136,137,137,136,135,133,132,131,129,128,127,125,123,121,120,118,115,114,112,110,107,105,103],
+        [125,125,126,126,127,127,127,128,128,129,129,130,130,131,131,131,132,132,131,131,129,128,127,126,124,123,121,118,117,115,115,112,110,109,106,104,102,100],
+        [120,120,121,121,122,122,123,123,124,124,124,125,125,126,126,126,127,127,127,125,124,123,121,120,119,117,116,114,113,111,110,107,105,104,102,100,97,96],
+        [116,116,117,117,118,118,119,119,119,120,120,121,121,121,122,122,123,123,122,121,120,119,117,116,114,113,112,110,109,107,105,103,102,100,99,96,94,92],
+        [111,112,112,113,113,113,114,114,115,115,115,116,117,117,117,118,118,119,117,116,115,114,112,111,111,109,108,106,105,103,101,99,97,96,94,92,90,88],
+        [108,108,109,109,109,110,110,111,111,111,112,112,112,113,113,113,114,114,113,112,111,110,109,108,106,105,103,102,101,99,97,95,94,92,90,88,86,85],
+        [103,104,104,105,105,105,106,106,107,107,107,108,108,109,109,109,109,110,109,108,107,105,104,103,102,101,99,97,96,95,93,91,90,89,87,84,81,81],
+        [100,100,100,101,101,102,102,102,103,103,103,104,104,104,105,105,105,105,105,103,103,101,100,99,98,97,95,93,93,91,89,88,86,85,83,81,79,78],
+        [96,97,97,97,97,98,98,99,99,99,100,100,100,101,101,101,102,102,101,99,98,97,96,95,94,93,91,90,89,87,87,84,83,81,79,77,76,75],
+        [92,93,93,93,94,94,95,95,95,95,96,96,96,96,97,97,97,97,97,95,95,93,92,91,90,89,88,86,85,84,82,81,79,78,76,75,74],
+        [89,89,90,90,90,91,91,91,91,92,92,92,93,93,93,93,94,93,92,91,91,89,89,88,86,85,84,83,81,80,78,77,75,74,73,72],
+        [86,86,86,87,87,87,87,88,88,88,89,89,89,89,89,90,90,89,89,87,86,85,85,84,83,82,80,79,77,76,75,74,72,71,70],
+        [82,83,83,83,83,84,84,84,84,85,85,85,85,85,86,86,87,86,85,84,83,82,81,80,79,78,77,75,74,73,71,71,69,68],
+        [79,79,80,80,80,80,81,81,81,81,81,82,82,82,83,83,83,82,81,80,79,79,78,77,76,75,74,72,71,70,69,67,66],
+        [76,76,76,76,77,77,77,77,78,78,78,78,79,79,79,79,79,79,78,77,76,75,74,73,72,71,70,69,68,66,66,65]
+    ];
+
+    function interpolate1D(x, x0, x1, y0, y1) {
+        if (x1 === x0) return y0;
+        return y0 + (x - x0) * (y1 - y0) / (x1 - x0);
+    }
+
+    function interpolate2D(xArr, yArr, data2D, xVal, yVal) {
+        let x0 = 0, x1 = 1;
+        for (let i = 0; i < xArr.length - 1; i++) {
+            if (xVal >= xArr[i] && xVal <= xArr[i+1]) { x0 = i; x1 = i+1; break; }
+        }
+        if (xVal < xArr[0]) { x0 = 0; x1 = 1; }
+        if (xVal > xArr[xArr.length-1]) { x0 = xArr.length-2; x1 = xArr.length-1; }
+
+        let y0 = 0, y1 = 1;
+        for (let j = 0; j < yArr.length - 1; j++) {
+            if (yVal >= yArr[j] && yVal <= yArr[j+1]) { y0 = j; y1 = j+1; break; }
+        }
+        if (yVal < yArr[0]) { y0 = 0; y1 = 1; }
+        if (yVal > yArr[yArr.length-1]) { y0 = yArr.length-2; y1 = yArr.length-1; }
+
+        let valY0 = interpolate1D(xVal, xArr[x0], xArr[x1], data2D[y0][x0], data2D[y0][x1]);
+        let valY1 = interpolate1D(xVal, xArr[x0], xArr[x1], data2D[y1][x0], data2D[y1][x1]);
+        return interpolate1D(yVal, yArr[y0], yArr[y1], valY0, valY1);
+    }
+
+    function getOgeVal(dataArray, altIdx, tempIdx) {
+        let a0 = Math.floor(altIdx); let a1 = Math.ceil(altIdx);
+        let t0 = Math.floor(tempIdx); let t1 = Math.ceil(tempIdx);
+        let aFrac = altIdx - a0; let tFrac = tempIdx - t0;
+
+        let val00 = dataArray[a0][t0]; let val01 = dataArray[a0][t1];
+        let val10 = dataArray[a1][t0]; let val11 = dataArray[a1][t1];
+
+        let val0 = interpolate1D(tFrac, 0, 1, val00, val01);
+        let val1 = interpolate1D(tFrac, 0, 1, val10, val11);
+        return interpolate1D(aFrac, 0, 1, val0, val1);
+    }
+
+    function calculatePerformance() {
+        let alt = parseFloat(perfData.alt) || 0;
+        let temp = parseFloat(perfData.temp) || 0;
+        let wt = parseFloat(perfData.weight) || 16000;
+        let vs = parseFloat(perfData.vs) || 0;
+
+        // 경고 검증 로직 추가
+        perfResults.outOfLimits = (alt > 14000 || temp > 40 || temp < -34);
+
+        let cAlt = Math.max(0, Math.min(14000, alt));
+        let cTemp = Math.max(-34, Math.min(40, temp));
+
+        // 1. MTA
+        let altIdx = cAlt / 1000;
+        let alt0 = Math.floor(altIdx);
+        let alt1 = Math.ceil(altIdx);
+        let altFrac = altIdx - alt0;
+
+        let tempIdx = (cTemp + 34) / 2;
+        let temp0 = Math.floor(tempIdx);
+        let temp1 = Math.ceil(tempIdx);
+        let tempFrac = tempIdx - temp0;
+
+        function getMtaVal(r, c) {
+            if(r >= mta30_data.length || c >= mta30_data[r].length) return null;
+            return mta30_data[r][c];
+        }
+
+        let mta00 = getMtaVal(alt0, temp0); let mta01 = getMtaVal(alt0, temp1);
+        let mta10 = getMtaVal(alt1, temp0); let mta11 = getMtaVal(alt1, temp1);
+
+        if (mta00 && mta01 && mta10 && mta11) {
+            let mta0 = interpolate1D(tempFrac, 0, 1, mta00, mta01);
+            let mta1 = interpolate1D(tempFrac, 0, 1, mta10, mta11);
+            let mta30 = interpolate1D(altFrac, 0, 1, mta0, mta1);
+
+            perfResults.mta30 = mta30.toFixed(1);
+            perfResults.mta10 = (mta30 + 7).toFixed(1); 
+            perfResults.mta25 = (mta30 + 11).toFixed(1); 
+        } else {
+            perfResults.mta30 = "N/A"; perfResults.mta10 = "N/A"; perfResults.mta25 = "N/A";
+        }
+
+        // 2. OGE 
+        let oAltIdx = Math.max(0, Math.min(6, cAlt / 1000));
+        let oTempIdx = Math.max(0, Math.min(9, (cTemp - (-10)) / 5));
+
+        let oge16k = getOgeVal(oge16000_data, oAltIdx, oTempIdx);
+        let oge19k = getOgeVal(oge19200_data, oAltIdx, oTempIdx);
+
+        let w_factor = (wt - 16000) / (19200 - 16000);
+        let finalOGE = interpolate1D(w_factor, 0, 1, oge16k, oge19k);
+
+        perfResults.oge = finalOGE.toFixed(1);
+        perfResults.oge_gonogo = oge19k.toFixed(1); 
+
+        // 3. IGE 
+        function getIGEfromOGE(targetOGE) {
+            let ige = 0;
+            for (let i = 0; i < igeOgeMap.length - 1; i++) {
+                if (targetOGE >= igeOgeMap[i][0] && targetOGE <= igeOgeMap[i+1][0]) {
+                    ige = interpolate1D(targetOGE, igeOgeMap[i][0], igeOgeMap[i+1][0], igeOgeMap[i][1], igeOgeMap[i+1][1]);
+                    break;
+                }
+            }
+            if (targetOGE < igeOgeMap[0][0]) ige = igeOgeMap[0][1] - (igeOgeMap[0][0] - targetOGE); 
+            if (targetOGE > igeOgeMap[igeOgeMap.length-1][0]) ige = igeOgeMap[igeOgeMap.length-1][1] + (targetOGE - igeOgeMap[igeOgeMap.length-1][0]);
+            return ige;
+        }
+
+        perfResults.ige = getIGEfromOGE(finalOGE).toFixed(1);
+        perfResults.ige_gonogo = getIGEfromOGE(oge19k).toFixed(1);
+
+        // 4. Vy
+        let vyCalc = interpolate2D(vyTemps, vyWeights, vyData, cTemp, wt);
+        perfResults.vy = vyCalc.toFixed(1);
+
+        // 5. VS Torque Margin
+        let absVs = Math.abs(vs);
+        let vsTqCalc = 0;
+        if (vs > 0) {
+            vsTqCalc = interpolate2D(vsRates, vsWeights, climbData, absVs, wt);
+            perfResults.vsTq = "+" + vsTqCalc.toFixed(1);
+        } else if (vs < 0) {
+            vsTqCalc = interpolate2D(vsRates, vsWeights, descentData, absVs, wt);
+            perfResults.vsTq = "-" + vsTqCalc.toFixed(1);
+        } else {
+            perfResults.vsTq = "0.0";
+        }
+    }
+
+    // --- High-fidelity SVG Icons ---
+    const homeButtons = [
+        { id: 'map', text: 'Map<br>Settings', icon: '<svg viewBox="0 0 100 100"><rect x="15" y="25" width="70" height="50" fill="#4caf50" rx="3"/><path d="M30 75 L50 25 L70 75" fill="#81c784"/><circle cx="50" cy="50" r="15" fill="none" stroke="#fff" stroke-width="4"/><line x1="20" y1="20" x2="45" y2="45" stroke="#ccc" stroke-width="8" stroke-linecap="round"/></svg>' },
+        { id: 'traffic', text: 'Traffic', icon: '<svg viewBox="0 0 100 100"><polygon points="30,30 40,50 20,50" fill="#0ff"/><polygon points="70,50 80,70 60,70" fill="#fff"/><line x1="30" y1="20" x2="30" y2="10" stroke="#0ff" stroke-width="4"/><polygon points="25,15 30,5 35,15" fill="#0ff"/><line x1="70" y1="80" x2="70" y2="90" stroke="#fff" stroke-width="4"/><polygon points="65,85 70,95 75,85" fill="#fff"/></svg>' },
+        { id: 'weather', text: 'Connext<br>Weather', icon: '<svg viewBox="0 0 100 100"><circle cx="40" cy="40" r="20" fill="#ffeb3b"/><rect x="45" y="40" width="35" height="30" fill="#fff" rx="10"/><path d="M60 65 L45 85 L55 85 L50 100" stroke="#f44336" stroke-width="4" fill="none"/></svg>' },
+        { id: 'terrain', text: 'Terrain<br>Proximity', icon: '<svg viewBox="0 0 100 100"><polygon points="10,90 50,20 90,90" fill="#4caf50"/><polygon points="30,55 50,20 70,55" fill="#ffeb3b"/><polygon points="40,37 50,20 60,37" fill="#f44336"/></svg>' },
+        { id: 'directTo', text: 'Direct To', icon: '<svg viewBox="0 0 100 100"><path d="M35 20 L35 80 C70 80, 85 65, 85 50 C85 35, 70 20, 35 20 Z" fill="none" stroke="#fff" stroke-width="10"/><line x1="10" y1="50" x2="90" y2="50" stroke="#fff" stroke-width="8"/><polygon points="70,35 95,50 70,65" fill="#fff"/></svg>' },
+        { id: 'fpl', text: 'Flight Plan', icon: '<svg viewBox="0 0 100 100"><path d="M20 80 L50 50 L80 80" fill="none" stroke="#fff" stroke-width="4"/><circle cx="20" cy="80" r="5" fill="#0ff"/><polygon points="50,20 65,45 35,45" fill="#fff"/></svg>' },
+        { id: 'proc', text: 'PROC', icon: '<svg viewBox="0 0 100 100"><path d="M20 80 C 40 20, 80 20, 80 50" fill="none" stroke="#fff" stroke-width="6"/><polygon points="70,40 80,55 90,40" fill="#fff"/><rect x="75" y="60" width="10" height="30" fill="#f0f"/></svg>' },
+        { id: 'charts', text: 'Charts', icon: '<svg viewBox="0 0 100 100"><rect x="25" y="15" width="50" height="70" fill="none" stroke="#fff" stroke-width="6" rx="5"/><circle cx="50" cy="45" r="10" fill="#0ff"/></svg>' },
+        { id: 'sys', text: 'Aircraft<br>Systems', icon: '<svg viewBox="0 0 100 100"><circle cx="50" cy="45" r="22" fill="none" stroke="#ccc" stroke-width="8" stroke-dasharray="12, 6"/><text x="50" y="90" font-size="18" text-anchor="middle" fill="#fff" font-weight="bold">Audio</text></svg>' },
+        { id: 'check', text: 'Checklist', icon: '<svg viewBox="0 0 100 100"><rect x="25" y="15" width="50" height="70" fill="none" stroke="#fff" stroke-width="6" rx="3"/><polyline points="15,45 30,60 60,10" fill="none" stroke="#0ff" stroke-width="8"/></svg>' },
+        { id: 'serv', text: 'Services', icon: '<svg viewBox="0 0 100 100"><path d="M30 50 C30 20, 70 20, 70 50" fill="none" stroke="#fff" stroke-width="8"/><rect x="25" y="50" width="10" height="20" fill="#0ff" rx="4"/><rect x="65" y="50" width="10" height="20" fill="#0ff" rx="4"/></svg>' },
+        { id: 'util', text: 'Utilities', icon: '<svg viewBox="0 0 100 100"><line x1="20" y1="80" x2="70" y2="30" stroke="#ccc" stroke-width="8" stroke-linecap="round"/><circle cx="70" cy="30" r="12" fill="none" stroke="#ccc" stroke-width="6"/></svg>' },
+        { id: 'perf', text: 'PERF', icon: '<svg viewBox="0 0 100 100"><line x1="20" y1="10" x2="20" y2="80" stroke="#fff" stroke-width="4"/><line x1="20" y1="80" x2="90" y2="80" stroke="#fff" stroke-width="4"/><rect x="30" y="50" width="15" height="30" fill="#f0f"/><rect x="55" y="25" width="15" height="55" fill="#0ff"/></svg>' },
+        { id: 'way', text: 'Waypoint<br>Info', icon: '<svg viewBox="0 0 100 100"><polygon points="50,15 85,35 85,75 50,95 15,75 15,35" fill="none" stroke="#0ff" stroke-width="6"/><circle cx="50" cy="55" r="10" fill="#f0f"/></svg>' },
+        { id: 'near', text: 'Nearest', icon: '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="8" fill="#fff"/><line x1="20" y1="20" x2="40" y2="40" stroke="#f0f" stroke-width="6"/><polygon points="30,40 45,45 40,30" fill="#f0f"/></svg>' },
+        { id: 'as565', text: 'AS-565<br>Performance', icon: '<svg viewBox="0 0 100 100"><polyline points="20,80 40,50 60,60 80,20" fill="none" stroke="#ff9800" stroke-width="6"/><circle cx="80" cy="20" r="5" fill="#ff9800"/><text x="50" y="95" font-size="16" fill="#fff" font-weight="bold" text-anchor="middle">AS565</text></svg>' }
+    ];
+
+    function switchMode(mode, target = '') {
+        currentMode = mode;
+        if(target) inputTarget = target;
+        
+        if (mode === 'PERF_INPUT') {
+            currentInput = perfData[inputTarget].toString();
+            hasStartedTyping = false; 
+        } else if (mode === 'COM_INPUT') {
+            currentInput = freqs[inputTarget].stb.replace(/\./g, '');
+            hasStartedTyping = false; 
+        } else if (mode === 'XPDR_CODE') {
+            xpdrInput = xpdrState.code;
+            hasStartedTyping = false;
+        } else if (mode === 'SELCAL_INPUT') {
+            selcalInput = selcalCode;
+            hasStartedTyping = false;
+        }
+        
+        renderContent();
+    }
+
+    function switchAudioTab(tab) {
+        audioTab = tab;
+        renderContent();
+    }
+
+    function toggleClicks() {
+        clicksState = clicksState === 'Off' ? 'On' : 'Off';
+        renderContent();
+    }
+
+    function setVoxMode(mode) {
+        voxState = mode;
+        renderContent();
+    }
+
+    // --- Modularized Render Functions ---
+    
+    function renderHomeScreen(container, footer, title, centerLabel) {
+        title.innerText = "Home";
+        centerLabel.innerText = "CDU HOME";
+        
+        let gridHtml = `<div class="home-grid">`;
+        homeButtons.forEach(btn => {
+            const links = {
+                'weather': "https://customwidgethosting.web.app/embed.html?ffCompiledSrc=https%3A%2F%2Fstorage.googleapis.com%2Fflutterflow-io-6f20.appspot.com%2Fbuild_outputs%2Fintegrated-flight-preparation-assistant-mlvjyo%2Fweb%2FQMZqWepPgY9jqDmcO2Uu%2Fmain.dart.js",
+                'charts': "https://aim.koca.go.kr/eaipPub/Package/history-en-GB.html?language=ko_KR",
+                'serv': "https://thdenfl.tistory.com",
+                'as565': "https://thdenfl-source.github.io/AS565/"
+            };
+
+            let isActiveBtn = ['weather', 'charts', 'fpl', 'serv', 'sys', 'perf', 'as565'].includes(btn.id);
+            let boxClass = isActiveBtn ? 'icon-box func-active' : 'icon-box';
+
+            if (links[btn.id]) {
+                gridHtml += `
+                    <a href="${links[btn.id]}" target="_blank" class="home-icon-wrapper" style="text-decoration:none; color:inherit;">
+                        <div class="${boxClass}">${btn.icon}</div>
+                        <div class="icon-label">${btn.text}</div>
+                    </a>`;
+            } else {
+                let clickAction = btn.id === 'sys' ? `onclick="switchMode('AUDIO'); switchAudioTab('COM');"` :
+                                  btn.id === 'perf' ? `onclick="switchMode('PERF')"` :
+                                  btn.id === 'fpl' ? `onclick="window.parent.setPage(1)"` : '';
+                gridHtml += `
+                    <div class="home-icon-wrapper" ${clickAction}>
+                        <div class="${boxClass}">${btn.icon}</div>
+                        <div class="icon-label">${btn.text}</div>
+                    </div>`;
+            }
+        });
+        gridHtml += `</div>`;
+        container.innerHTML = gridHtml;
+        footer.innerHTML = `<div class="nav-btn"><span>✔️</span>INIT</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn" onclick="switchMode('AUDIO'); switchAudioTab('COM');"><span>✥</span>Full</div>`;
+    }
+
+    function renderPerfScreen(container, footer, title, centerLabel) {
+        calculatePerformance(); 
+        title.innerText = "Performance (Hover & Climb)";
+        centerLabel.innerText = "Flight Data";
+        
+        let warningHtml = perfResults.outOfLimits ? 
+            `<div style="background-color:#3a0000; border:1px solid #f44336; color:#f44336; font-size:9px; font-weight:bold; text-align:center; padding:3px; border-radius:3px; margin-bottom:8px; animation: blink 1.5s infinite;">⚠️ CAUTION: OUT OF CHART LIMITS (Data Capped)</div>` : '';
+
+        container.innerHTML = `
+            ${warningHtml}
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; padding:0 5px 5px 5px; border-bottom:1px solid #333; margin-bottom:10px;">
+                <span style="color:white; font-size:10px; font-weight:bold;">CONDITIONS</span>
+                <span style="color:white; font-size:10px; font-weight:bold;">RESULTS</span>
+            </div>
+            
+            <div style="display:flex; gap:8px; height:100%;">
+                <div style="flex:1; display:flex; flex-direction:column; gap:8px; justify-content:flex-start;">
+                    <div>
+                        <div class="perf-label">ALTITUDE (FT)</div>
+                        <div class="perf-val-box" onclick="switchMode('PERF_INPUT', 'alt')">${perfData.alt}</div>
+                    </div>
+                    <div>
+                        <div class="perf-label">TEMP (OAT °C)</div>
+                        <div class="perf-val-box" onclick="switchMode('PERF_INPUT', 'temp')">${perfData.temp}</div>
+                    </div>
+                    <div>
+                        <div class="perf-label">GROSS WT (LBS)</div>
+                        <div class="perf-val-box" onclick="switchMode('PERF_INPUT', 'weight')">${perfData.weight}</div>
+                    </div>
+                    <div>
+                        <div class="perf-label">V/S (FPM)</div>
+                        <div class="perf-val-box" onclick="switchMode('PERF_INPUT', 'vs')">${perfData.vs}</div>
+                    </div>
+                </div>
+                
+                <div style="width:1px; background:#333;"></div>
+
+                <div style="flex:1.4; display:flex; flex-direction:column; justify-content:flex-start; gap: 6px;">
+                    <div style="display:flex; gap:5px;">
+                        <div style="flex:1;">
+                            <div class="perf-result-title">IGE TQ</div>
+                            <div class="perf-result-box" style="color:#0f0;">${perfResults.ige}%</div>
+                        </div>
+                        <div style="flex:1;">
+                            <div class="perf-result-title">OGE TQ</div>
+                            <div class="perf-result-box" style="color:#0f0;">${perfResults.oge}%</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <div style="flex:1;">
+                            <div class="perf-result-title">IGE GO/NO-GO</div>
+                            <div class="perf-result-box" style="color:#ff9800;">${perfResults.ige_gonogo}%</div>
+                        </div>
+                        <div style="flex:1;">
+                            <div class="perf-result-title">OGE GO/NO-GO</div>
+                            <div class="perf-result-box" style="color:#ff9800;">${perfResults.oge_gonogo}%</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <div style="flex:1;">
+                            <div class="perf-result-title">Vy (IAS)</div>
+                            <div class="perf-result-box" style="color:#fff;">${perfResults.vy} KT</div>
+                        </div>
+                        <div style="flex:1;">
+                            <div class="perf-result-title">V/S ∆TQ</div>
+                            <div class="perf-result-box" style="color:#fff;">${perfResults.vsTq}%</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:5px;">
+                        <div style="flex:1;">
+                            <div class="perf-result-title">MTA(30)</div>
+                            <div class="perf-result-box" style="color:var(--text-cyan); font-size:10.5px;">${perfResults.mta30}%</div>
+                        </div>
+                        <div style="flex:1;">
+                            <div class="perf-result-title">MTA(10)</div>
+                            <div class="perf-result-box" style="color:yellow; font-size:10.5px;">${perfResults.mta10}%</div>
+                        </div>
+                        <div style="flex:1;">
+                            <div class="perf-result-title">MTA(2.5)</div>
+                            <div class="perf-result-box" style="color:#f44336; font-size:10.5px;">${perfResults.mta25}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('HOME')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Full</div>`;
+    }
+
+    function renderPerfInputScreen(container, footer, title) {
+        let titleText = inputTarget === 'alt' ? 'ALTITUDE' : 
+                        (inputTarget === 'temp' ? 'TEMPERATURE' : 
+                        (inputTarget === 'vs' ? 'VERTICAL SPEED (FPM)' : 'GROSS WEIGHT'));
+        title.innerText = `${titleText} ENTRY`;
+        
+        let displayVal = !hasStartedTyping ? perfData[inputTarget] : currentInput;
+        if (displayVal === "") displayVal = "0";
+
+        container.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; padding-top:20px;">
+            <div class="input-row" style="margin-top:0;">
+                <div class="freq-box-main" style="width:150px;">${displayVal}</div>
+                <div class="item-btn" style="width:45px; height:45px;" onclick="backspaceInput()">⬅<br>Bksp</div>
+            </div>
+            <div class="numpad-grid" style="margin-top:10px;">
+                ${[1,2,3,4,5,6,7,8,9].map(n => `<div class="num-circle" onclick="addInput('${n}')">${n}</div>`).join('')}
+                <div class="num-circle" onclick="addInput('-')">-</div>
+                <div class="num-circle" onclick="addInput('0')">0</div>
+                <div></div>
+            </div></div>`;
+        
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('PERF')"><span>↩</span>Cancel</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div></div><div class="nav-btn enter-btn-blue" onclick="confirmPerfInput()"><span>↩</span>Enter</div>`;
+    }
+
+    function renderAudioScreen(container, footer, title, centerLabel) {
+        title.innerText = "Audio & Radios";
+        centerLabel.innerText = `CoPilot ${audioTab === 'Mission' ? 'VHF-FM' : (audioTab === 'Other' ? 'PA' : inputTarget.toUpperCase())} Volume`;
+        
+        let audioContent = '';
+
+        if (audioTab === 'COM') {
+            audioContent = `
+                <div style="display:flex; justify-content:space-between; font-size:7px; color:#888; margin-bottom:5px; padding: 0 60px 0 100px;">
+                    <span>Volume</span><span>Control</span>
+                </div>
+                ${renderAudioRow('COM1', 'com1')} 
+                ${renderAudioRow('COM2', 'com2')} 
+                ${renderAudioRow('U/VHF', 'uvhf')}
+                <div class="volume-row">
+                    <div class="item-btn">▶<br>Playback</div>
+                    <div class="wedge-slider" style="grid-column: span 2;" onpointerdown="handleVol('pb', event)">
+                        <span class="wedge-text">${volumes.pb}%</span>
+                        <div class="wedge-fill" style="width:${volumes.pb}%"></div>
+                    </div>
+                    <div style="display:flex; gap:3px;">
+                        <button class="item-btn" style="width:30px; height:35px;">|◀</button>
+                        <button class="item-btn" style="width:30px; height:35px;">▶|</button>
+                    </div>
+                </div>
+            `;
+        } 
+        else if (audioTab === 'NAV') {
+            audioContent = `
+                <div style="display:flex; justify-content:space-between; font-size:7px; color:#ccc; margin-bottom:4px; padding: 0 70px 0 80px;">
+                    <span>Volume</span><span>Control</span>
+                </div>
+                <div style="display: grid; grid-template-columns: 60px 1fr 80px; align-items: center; margin-bottom: 7px; gap: 6px;">
+                    <div class="item-btn ${monStates.speaker?'on':''}" onclick="toggleMon('speaker')">Speaker<div class="status-line"></div></div>
+                    <div class="wedge-slider" onpointerdown="handleVol('speaker', event)">
+                        <span class="wedge-text">${volumes.speaker}%</span>
+                        <div class="wedge-fill" style="width:${volumes.speaker}%"></div>
+                    </div>
+                    <div></div>
+                </div>
+                <div style="display: grid; grid-template-columns: 60px 1fr 80px; align-items: center; margin-bottom: 7px; gap: 6px;">
+                    <div class="item-btn">▶<br>Playback</div>
+                    <div class="wedge-slider" onpointerdown="handleVol('pb', event)">
+                        <span class="wedge-text">${volumes.pb}%</span>
+                        <div class="wedge-fill" style="width:${volumes.pb}%"></div>
+                    </div>
+                    <div style="display:flex; gap:4px;">
+                        <button class="item-btn" style="flex:1; height:35px; font-size:9px;">|◀◀</button>
+                        <button class="item-btn" style="flex:1; height:35px; font-size:9px;">▶▶|</button>
+                    </div>
+                </div>
+                ${renderNavRow('NAV1', 'nav1')}
+                ${renderNavRow('NAV2', 'nav2')}
+            `;
+        }
+        else if (audioTab === 'Mission') {
+            audioContent = `
+                <div style="margin-bottom: 6px;">
+                    <div style="display:flex; justify-content:space-between; font-size:7px; color:#ccc; margin-bottom:4px; padding: 0 45px 0 130px;">
+                        <span>Volume</span><span>Control</span>
+                    </div>
+                    ${renderMissionRow('VHF-FM', 'vhffm')}
+                </div>
+                <div style="margin-bottom: 6px;">
+                    ${renderMissionRow('HF', 'hf')}
+                </div>
+                <div class="volume-row">
+                    <div class="item-btn ${monStates.selcal?'on':''}" onclick="toggleMon('selcal')">SELCAL<div class="status-line"></div></div>
+                    <div></div>
+                    <div></div>
+                    <div class="freq-display-box" style="align-items:center; justify-content:center;" onclick="switchMode('SELCAL_INPUT')">
+                        <div style="color:white; font-size:7px; margin-bottom:2px;">SELCAL ID</div>
+                        <div style="color:var(--text-cyan); font-size:11px; font-weight:bold;">${selcalCode}</div>
+                    </div>
+                </div>
+            `;
+        } 
+        else if (audioTab === 'Other') {
+            audioContent = `
+                <div style="display:flex; justify-content:space-between; font-size:7px; color:#ccc; margin-bottom:4px; padding: 0 50px 0 130px;">
+                    <span>Volume</span><span>Control</span>
+                </div>
+                <div style="display: flex; gap: 8px; margin-bottom: 8px; padding-left: 5px;">
+                    <div class="item-btn" style="width: 65px; height: 35px;" onclick="toggleClicks()">
+                        <span style="font-size: 9px; color: white;">Clicks</span>
+                        <span style="font-size: 10px; color: var(--text-cyan); font-weight: bold; margin-top: 2px;">${clicksState}</span>
+                    </div>
+                    <div class="wedge-slider" style="width: 140px; height: 30px; align-self: center;" onpointerdown="handleVol('clicks', event)">
+                        <span class="wedge-text">${volumes.clicks}%</span>
+                        <div class="wedge-fill" style="width:${volumes.clicks}%"></div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px; padding-left: 5px;">
+                    <div class="item-btn ${micSelected === 'PA' ? 'on' : ''}" style="width: 65px; height: 35px;" onclick="setMic('PA')">
+                        <span style="font-size: 9px;">PA</span>
+                        <div class="status-line"></div>
+                    </div>
+                    <div style="flex: 1; background: black; border: 0.7px solid #444; border-radius: 4px; height: 35px;"></div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = `
+            <div class="sub-header">
+                <div class="user-3d-btn" style="width:57px;">User<br><span style="color:var(--text-cyan)">Pilot</span></div>
+                <div class="tab-container">
+                    <div class="tab ${audioTab==='COM'?'active':''}" onclick="switchAudioTab('COM')">COM</div>
+                    <div class="tab ${audioTab==='NAV'?'active':''}" onclick="switchAudioTab('NAV')">NAV</div>
+                    <div class="tab ${audioTab==='Mission'?'active':''}" onclick="switchAudioTab('Mission')">Mission</div>
+                    <div class="tab ${audioTab==='Other'?'active':''}" onclick="switchAudioTab('Other')">Other</div>
+                </div>
+            </div>
+            <div class="panel-border">
+                ${audioContent}
+            </div>`;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('HOME')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn" style="color:var(--active-blue)"><span>✥</span>Half</div><div class="nav-btn"><span>▲</span>Up</div><div class="nav-btn"><span>▼</span>Down</div>`;
+    }
+
+    function renderIntercomScreen(container, footer, title, centerLabel) {
+        title.innerText = "Intercom";
+        centerLabel.innerText = "CoPilot ICS Volume";
+        container.innerHTML = `
+            <div class="sub-header" style="justify-content: space-between; padding-bottom:5px;">
+                <div class="user-3d-btn" style="width:60px;">User<br><span style="color:var(--text-cyan)">CoPilot</span></div>
+                <div class="wedge-slider" style="flex:1; margin:0 8px;" onpointerdown="handleVol('intercom', event)">
+                    <span class="wedge-text">${volumes.intercom}%</span>
+                    <div class="wedge-fill" style="width:${volumes.intercom}%"></div>
+                </div>
+                <div class="item-btn ${icStates.Isolate?'on':''}" style="width:45px; height:37px;" onclick="toggleIsolate()">Isolate<div class="status-line"></div></div>
+                <div class="item-btn" style="width:40px; height:37px;" onclick="switchMode('VOX_MODE')">VOX<br><span style="color:var(--text-cyan)">${voxState.toUpperCase()}</span></div>
+            </div>
+            <div class="panel-border" style="padding-top:12px;">
+                <div class="intercom-grid">
+                    <div class="item-btn ${icStates.CoPilot?'on':''}" style="height:60px;" onclick="toggleIC('CoPilot')">👨‍✈️<br>CoPilot<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.Pilot?'on':''}" style="height:60px;" onclick="toggleIC('Pilot')">Pilot<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.Crew1?'on':''}" style="height:60px;" onclick="toggleIC('Crew1')">Crew 1<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.Pass?'on':''}" style="height:60px;" onclick="toggleIC('Pass')">Pass<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.Crew2?'on':''}" style="height:60px;" onclick="toggleIC('Crew2')">Crew 2<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.wICS?'on':''}" style="height:60px;" onclick="toggleIC('wICS')">wICS<div class="status-line"></div></div>
+                </div>
+                <div class="loop-row">
+                    <div class="item-btn ${icStates.Loop1?'on':''}" style="flex:1; height:45px;" onclick="toggleIC('Loop1')">Loop 1<br>Mission Crew<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.Loop2?'on':''}" style="flex:1; height:45px;" onclick="toggleIC('Loop2')">Loop 2<br>All Pass<div class="status-line"></div></div>
+                    <div class="item-btn ${icStates.Loop5?'on':''}" style="flex:1; height:45px;" onclick="toggleIC('Loop5')">Loop 5<br>All<div class="status-line"></div></div>
+                </div>
+            </div>`;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('HOME')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Half</div>`;
+    }
+
+    function renderSelcalInputScreen(container, footer, title, centerLabel) {
+        title.innerText = "COM SELCAL";
+        centerLabel.innerText = "Data Entry";
+        
+        let displayVal = !hasStartedTyping ? selcalCode : selcalInput.padEnd(4, '_');
+
+        container.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; padding-top:10px; height:100%;">
+                <div style="text-align:center; color:white; font-size:10px; font-weight:bold; margin-bottom:5px;">SELCAL ID</div>
+                <div class="input-row" style="margin-top:0; margin-bottom: 15px;">
+                    <div class="freq-box-main" style="width:140px; letter-spacing: 8px; font-size: 24px;">${displayVal}</div>
+                </div>
+                <div class="selcal-grid">
+                    ${['A','B','C','D','E', 'F','G','H','J','K', 'L','M','P','Q','R'].map(c => 
+                        `<div class="num-circle" style="width:45px; height:45px; font-size:16px;" onclick="addSelcalInput('${c}')">${c}</div>`
+                    ).join('')}
+                    <div class="item-btn" style="width:45px; height:45px;">🔍<br>Find</div>
+                    <div style="visibility:hidden"></div>
+                    <div class="num-circle" style="width:45px; height:45px; font-size:16px;" onclick="addSelcalInput('S')">S</div>
+                    <div style="visibility:hidden"></div>
+                    <div class="item-btn" style="width:45px; height:45px;" onclick="backspaceSelcal()">⬅<br>Bksp</div>
+                </div>
+            </div>
+        `;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('AUDIO'); switchAudioTab('Mission');"><span>↩</span>Cancel</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Full</div><div class="nav-btn enter-btn-blue" onclick="confirmSelcal()"><span>↩</span>Enter</div>`;
+    }
+
+    function renderVoxModeScreen(container, footer, title, centerLabel) {
+        title.innerText = "Intercom";
+        centerLabel.innerText = "VOX Mode Selection";
+
+        let isManual = (voxState === 'Manual');
+        let sliderOpacity = isManual ? '1' : '0.3';
+        let pointerEvents = isManual ? 'auto' : 'none';
+
+        container.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; padding-top:20px; height:100%; width:100%;">
+                <div style="color:white; font-size:12px; font-weight:bold; margin-bottom:15px; border-bottom:1px solid #555; width:90%; text-align:center; padding-bottom:5px;">ICS VOX MODE</div>
+                
+                <div style="display:flex; gap:10px; width:90%; justify-content:center; margin-bottom:25px;">
+                    ${['Off', 'Manual', 'Auto'].map(m => 
+                        `<div class="item-btn ${voxState === m ? 'on' : ''}" style="flex:1; height:45px; font-size:12px; font-weight:bold;" onclick="setVoxMode('${m}')">
+                            ${m.toUpperCase()}<div class="status-line"></div>
+                        </div>`
+                    ).join('')}
+                </div>
+
+                <div style="width:90%; opacity:${sliderOpacity}; pointer-events:${pointerEvents}; transition: opacity 0.3s ease;">
+                    <div style="font-size:9px; color:#ccc; margin-bottom:5px; text-align:left;">VOX SENSITIVITY (MANUAL)</div>
+                    <div class="wedge-slider" style="height:35px; border:1px solid #555; border-radius:4px; margin-bottom:10px;" onpointerdown="handleVol('vox', event)">
+                        <span class="wedge-text" style="font-size:12px; top:11px;">${volumes.vox}%</span>
+                        <div class="wedge-fill" style="width:${volumes.vox}%"></div>
+                    </div>
+                </div>
+            </div>
+        `;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('INTERCOM')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Half</div>`;
+    }
+
+    function renderHfControlScreen(container, footer, title, centerLabel) {
+        title.innerText = "HF";
+        centerLabel.innerText = "CoPilot HF1 Volume";
+        container.innerHTML = `
+            <div style="display:flex; flex-direction:column; gap:12px; height:100%; padding-top:5px;">
+                <div style="border: 1px solid var(--text-cyan); border-radius: 5px; background: #050505; display: flex; flex-direction: column; margin-bottom: 5px; padding: 5px;">
+                    <div style="position: relative; height: 45px; display: flex; justify-content: center; align-items: center;">
+                        <div style="position: absolute; top: 0; left: 5px; font-size: 9px; color: white;">Active</div>
+                        <div style="position: absolute; bottom: 0; left: 20px; font-size: 10px; color: white; font-weight: bold;">${hfState.emission}</div>
+                        <div style="font-size: 24px; color: white; font-weight: bold;">${freqs.hf.act}</div>
+                    </div>
+                    <div style="position: relative; height: 15px; display: flex; justify-content: center; align-items: center;">
+                        <div style="width: 100%; height: 1px; background: #555; position: absolute;"></div>
+                        <div style="background: #050505; padding: 0 5px; z-index: 1; color: #555; font-size: 10px;">▼</div>
+                    </div>
+                    <div style="position: relative; height: 50px; display: flex; justify-content: center; align-items: center;">
+                        <div style="position: absolute; top: -5px; left: 5px; font-size: 9px; color: white;">Standby</div>
+                        <div class="item-btn" style="width: 130px; height: 35px; border: 1px solid var(--text-cyan); background: transparent; color: var(--text-cyan); font-size: 18px; font-weight: bold; cursor: pointer;" onclick="switchMode('COM_INPUT', 'hf')">
+                            ${freqs.hf.stb}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 2px;">
+                    <div class="item-btn" style="flex: 1; height: 45px;" onclick="toggleHfTuning()">
+                        <div style="font-size: 9px; color: white; margin-bottom: 3px;">Tuning Mode</div>
+                        <div style="font-size: 12px; color: var(--text-cyan); font-weight: bold;">${hfState.tuning}</div>
+                    </div>
+                    <div class="item-btn" style="flex: 1; height: 45px;" onclick="toggleHfEmission()">
+                        <div style="font-size: 9px; color: white; margin-bottom: 3px;">Emission Mode</div>
+                        <div style="font-size: 12px; color: var(--text-cyan); font-weight: bold;">${hfState.emission}</div>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <div class="item-btn" style="width: 45px; height: 45px;">
+                        <div style="font-size: 16px; margin-bottom: 2px;">🔍</div>
+                        <div style="font-size: 8px; color: white;">Find</div>
+                    </div>
+                    <div class="item-btn" style="flex: 1; height: 45px;" onclick="toggleHfSql()">
+                        <div style="font-size: 9px; color: white; margin-bottom: 3px;">SQL LVL</div>
+                        <div style="font-size: 12px; color: var(--text-cyan); font-weight: bold;">${hfState.sql}</div>
+                    </div>
+                    <div class="item-btn" style="flex: 1; height: 45px;" onclick="toggleHfPwr()">
+                        <div style="font-size: 9px; color: white; margin-bottom: 3px;">XMIT PWR</div>
+                        <div style="font-size: 12px; color: var(--text-cyan); font-weight: bold;">${hfState.pwr}</div>
+                    </div>
+                    <div class="item-btn" style="width: 55px; height: 45px;" onclick="swapFreq('hf')">
+                        <div style="font-size: 12px; color: white; font-weight: bold;">↕ XFER</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('AUDIO')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn" style="color:var(--active-blue)"><span>✥</span>Half</div>`;
+    }
+
+    function renderComInputScreen(container, footer, title) {
+        title.innerText = `${inputTarget.toUpperCase()} Standby`;
+        
+        let displayStr = currentInput;
+        if (hasStartedTyping) {
+            if (inputTarget === 'hf' && displayStr.length > 2 && !displayStr.includes('.')) {
+                displayStr = displayStr.slice(0, 2) + '.' + displayStr.slice(2);
+            } 
+            else if (inputTarget !== 'hf' && displayStr.length > 3 && !displayStr.includes('.')) {
+                displayStr = displayStr.slice(0, 3) + '.' + displayStr.slice(3);
+            }
+        }
+        
+        let displayVal = !hasStartedTyping ? freqs[inputTarget].stb : displayStr;
+        let activeFreqHtml = '';
+        
+        if (inputTarget.startsWith('nav')) {
+            activeFreqHtml = `
+                <div style="text-align:center; color:white; font-size:10px; font-weight:bold; margin-bottom:2px;">${inputTarget.toUpperCase()}</div>
+                <div style="text-align:center; color:white; font-size:11px; margin-bottom:10px;">
+                    Active Freq: <span style="color:var(--text-green); font-weight:bold;">${freqs[inputTarget].act}</span>
+                </div>
+            `;
+        }
+
+        container.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; padding-top:10px;">
+            ${activeFreqHtml}
+            <div class="input-row" style="margin-top:0;">
+                <div class="item-btn" style="width:45px; height:45px;">🔍<br>Find</div>
+                <div class="freq-box-main">${displayVal}</div>
+                <div class="item-btn" style="width:45px; height:45px;" onclick="backspaceInput()">⬅<br>Bksp</div>
+            </div>
+            <div class="numpad-grid">
+                ${[1,2,3,4,5,6,7,8,9].map(n => `<div class="num-circle" onclick="addInput('${n}')">${n}</div>`).join('')}
+                <div></div><div class="num-circle" onclick="addInput('0')">0</div>
+                <div class="item-btn" style="height:55px; font-size:12px;" onclick="handleInputXfer()">↕ XFER</div>
+            </div></div>`;
+        
+        let backMode = inputTarget === 'hf' ? "'HF_CONTROL'" : "'AUDIO'";
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode(${backMode}, '${inputTarget}')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Full</div><div class="nav-btn enter-btn-blue" onclick="confirmInput()"><span>↩</span>Enter</div>`;
+    }
+
+    function renderXpdrModeScreen(container, footer, title, centerLabel) {
+        title.innerText = "Transponder";
+        centerLabel.innerText = "Transponder Mode";
+        container.innerHTML = `
+            <div style="display:flex; height:100%; padding-top:5px;">
+                <div style="flex:1; display:flex; flex-direction:column; gap:6px; border-right:1px solid #333; padding-right:10px;">
+                    <div style="color:white; font-size:10px; padding-bottom:3px; border-bottom:1px solid #555;">XPDR/TCAS Mode</div>
+                    ${['Auto', 'TA Only', 'Altitude Reporting', 'On', 'Standby'].map(m => 
+                        `<div class="item-btn ${xpdrState.mode === m ? 'on' : ''}" style="height:35px; font-size:9px;" onclick="setXpdrMode('${m}')">
+                            ${m.replace(' ', '<br>')}<div class="status-line"></div>
+                        </div>`
+                    ).join('')}
+                </div>
+                <div style="flex:1; display:flex; flex-direction:column; gap:15px; padding-left:10px; justify-content:flex-start; padding-top:20px;">
+                    <div class="item-btn" style="height:45px; font-size:10px;">Active<br><span style="color:var(--text-cyan); font-size:11px;">${xpdrState.active}</span></div>
+                    <div class="item-btn ${xpdrState.adsb ? 'on' : ''}" style="height:45px; font-size:10px;" onclick="toggleAdsb()">ADS-B TX<div class="status-line"></div></div>
+                    <div class="item-btn" style="height:45px; font-size:10px;">Flight ID<br><span style="color:var(--text-cyan); font-size:11px;">${xpdrState.flightId}</span></div>
+                </div>
+            </div>
+        `;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('HOME')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Full</div>`;
+    }
+
+    function renderXpdrCodeScreen(container, footer, title, centerLabel) {
+        title.innerText = "Transponder 2";
+        centerLabel.innerText = "Data Entry";
+        let displayVal = !hasStartedTyping ? xpdrState.code : xpdrInput;
+        container.innerHTML = `
+            <div style="display:flex; flex-direction:column; align-items:center; padding-top:10px; height:100%;">
+                <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center; width:100%; justify-content:center;">
+                    <div style="background:#0a0a0a; border:1px solid #444; width:120px; height:35px; display:flex; align-items:center; justify-content:center; color:var(--text-cyan); font-size:20px; font-weight:bold; border-radius:4px;">${displayVal}</div>
+                    <div class="item-btn" style="width:45px; height:35px;" onclick="backspaceXpdr()">←<br>BKSP</div>
+                </div>
+                <div class="xpdr-numpad-grid">
+                    ${[0,1,2,3,4,5,6,7].map(n => `<div class="num-circle" style="width:45px; height:45px;" onclick="addXpdrInput('${n}')">${n}</div>`).join('')}
+                </div>
+                <div style="display:flex; gap:10px; width:100%; justify-content:center; margin-top:10px;">
+                    <div class="item-btn" style="flex:1; height:35px; font-size:10px;" onclick="flashIdent()">IDENT</div>
+                    <div class="item-btn" style="flex:1; height:35px; font-size:10px;" onclick="setXpdrPreset('1200')">VFR</div>
+                    <div class="item-btn" style="flex:1; height:35px; font-size:10px;" onclick="setXpdrPreset('7700')">EMER</div>
+                </div>
+            </div>
+        `;
+        footer.innerHTML = `<div class="nav-btn" onclick="switchMode('XPDR_MODE')"><span>↩</span>Back</div><div class="nav-btn" onclick="switchMode('HOME')"><span>🏠</span>Home</div><div class="nav-btn"><span>✉</span>Msg</div><div class="nav-btn"><span>✥</span>Full</div><div class="nav-btn enter-btn-blue" onclick="confirmXpdr()"><span>↩</span>Enter</div>`;
+    }
+
+    // --- Main Content Renderer Route ---
+    function renderContent() {
+        const container = document.getElementById('mainContentArea');
+        const footer = document.getElementById('footerNav');
+        const title = document.getElementById('modeTitle');
+        const centerLabel = document.getElementById('center-label');
+        container.innerHTML = '';
+
+        switch(currentMode) {
+            case 'HOME': renderHomeScreen(container, footer, title, centerLabel); break;
+            case 'PERF': renderPerfScreen(container, footer, title, centerLabel); break;
+            case 'PERF_INPUT': renderPerfInputScreen(container, footer, title); break;
+            case 'AUDIO': renderAudioScreen(container, footer, title, centerLabel); break;
+            case 'INTERCOM': renderIntercomScreen(container, footer, title, centerLabel); break;
+            case 'SELCAL_INPUT': renderSelcalInputScreen(container, footer, title, centerLabel); break;
+            case 'VOX_MODE': renderVoxModeScreen(container, footer, title, centerLabel); break;
+            case 'HF_CONTROL': renderHfControlScreen(container, footer, title, centerLabel); break;
+            case 'COM_INPUT': renderComInputScreen(container, footer, title); break;
+            case 'XPDR_MODE': renderXpdrModeScreen(container, footer, title, centerLabel); break;
+            case 'XPDR_CODE': renderXpdrCodeScreen(container, footer, title, centerLabel); break;
+        }
+
+        updateHeaderUI();
+    }
+
+    // --- Render Helpers ---
+    function renderAudioRow(label, id) {
+        let isMicOn = (micSelected === label);
+        let freqBoxHTML = id === 'uvhf' 
+            ? `<div></div>` 
+            : `<div class="freq-display-box" onclick="switchMode('COM_INPUT', '${id}')">
+                <div style="color:white; font-size:10px; font-weight:bold;">${freqs[id].act}</div>
+                <div style="color:var(--text-cyan); font-size:8px;">${freqs[id].stb}</div>
+               </div>`;
+
+        return `<div class="volume-row">
+            <div class="item-btn ${monStates[id]?'on':''}" onclick="toggleMon('${id}')">${label}<div class="status-line"></div></div>
+            <div class="item-btn ${isMicOn?'on':''}" onclick="setMic('${label}')">MIC<div class="status-line"></div></div>
+            <div class="wedge-slider" onpointerdown="handleVol('${id}', event)">
+                <span class="wedge-text">${volumes[id]}%</span>
+                <div class="wedge-fill" style="width:${volumes[id]}%"></div>
+            </div>
+            ${freqBoxHTML}
+        </div>`;
+    }
+
+    function renderNavRow(label, id) {
+        return `<div style="display: grid; grid-template-columns: 60px 1fr 80px; align-items: center; margin-bottom: 7px; gap: 6px;">
+            <div class="item-btn ${monStates[id]?'on':''}" onclick="toggleMon('${id}')">${label}<div class="status-line"></div></div>
+            <div class="wedge-slider" onpointerdown="handleVol('${id}', event)">
+                <span class="wedge-text">${volumes[id]}%</span>
+                <div class="wedge-fill" style="width:${volumes[id]}%"></div>
+            </div>
+            <div class="freq-display-box" style="align-items:center; padding:0; justify-content:center; cursor:pointer;" onclick="switchMode('COM_INPUT', '${id}')">
+                <div style="display:flex; gap:4px; font-size:12px; font-weight:bold; margin-bottom:2px;">
+                    <span style="color:var(--text-green);">${freqs[id].act}</span>
+                    <span style="color:white;">${freqs[id].id}</span>
+                </div>
+                <div style="color:var(--text-cyan); font-size:12px; font-weight:bold;">${freqs[id].stb}</div>
+            </div>
+        </div>`;
+    }
+
+    function renderMissionRow(label, id) {
+        let isMicOn = (micSelected === label);
+        let rightBox = '';
+        
+        if (id === 'vhffm') {
+            rightBox = `<div style="background:black; border:0.7px solid #444; border-radius:4px; height:35px;"></div>`;
+        } else if (id === 'hf') {
+            rightBox = `<div class="freq-display-box" style="align-items:flex-start; justify-content:center; padding:2px 6px; cursor:pointer;" onclick="switchMode('HF_CONTROL')">
+                            <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                <div style="color:white; font-size:14px; font-weight:bold;">${freqs.hf.act}</div>
+                                <div style="color:var(--text-cyan); font-size:8px; font-weight:bold; margin-top:2px;">${hfState.sql}</div>
+                            </div>
+                            <div style="color:var(--text-cyan); font-size:8px; font-weight:bold; text-align:left; margin-top:2px;">${hfState.emission}</div>
+                        </div>`;
+        }
+        
+        return `<div class="volume-row" style="margin-bottom:0;">
+            <div class="item-btn ${monStates[id]?'on':''}" onclick="toggleMon('${id}')">${label}<div class="status-line"></div></div>
+            <div class="item-btn ${isMicOn?'on':''}" onclick="setMic('${label}')">MIC<div class="status-line"></div></div>
+            <div class="wedge-slider" onpointerdown="handleVol('${id}', event)">
+                <span class="wedge-text">${volumes[id]}%</span>
+                <div class="wedge-fill" style="width:${volumes[id]}%"></div>
+            </div>
+            ${rightBox}
+        </div>`;
+    }
+
+    // --- Control Logics ---
+    function toggleHfTuning() { hfState.tuning = hfState.tuning === 'Simplex' ? 'Duplex' : 'Simplex'; renderContent(); }
+    function toggleHfEmission() {
+        const modes = ['LSB V', 'USB V', 'AM'];
+        hfState.emission = modes[(modes.indexOf(hfState.emission) + 1) % modes.length]; renderContent();
+    }
+    function toggleHfSql() {
+        const sqls = ['SQ0', 'SQ1', 'SQ2', 'SQ3'];
+        hfState.sql = sqls[(sqls.indexOf(hfState.sql) + 1) % sqls.length]; renderContent();
+    }
+    function toggleHfPwr() {
+        const pwrs = ['Low', 'Mid', 'High'];
+        hfState.pwr = pwrs[(pwrs.indexOf(hfState.pwr) + 1) % pwrs.length]; renderContent();
+    }
+
+    function setXpdrMode(m) { xpdrState.mode = m; renderContent(); }
+    function toggleAdsb() { xpdrState.adsb = !xpdrState.adsb; renderContent(); }
+    
+    function addXpdrInput(num) {
+        if (!hasStartedTyping) { xpdrInput = num; hasStartedTyping = true; }
+        else if (xpdrInput.length < 4) { xpdrInput += num; }
+        renderContent();
+    }
+    function backspaceXpdr() {
+        if (!hasStartedTyping) { hasStartedTyping = true; }
+        xpdrInput = xpdrInput.slice(0, -1); renderContent();
+    }
+    function setXpdrPreset(code) { xpdrInput = code; hasStartedTyping = true; renderContent(); }
+    function flashIdent() { renderContent(); }
+    function confirmXpdr() {
+        if(hasStartedTyping && xpdrInput.length === 4) { xpdrState.code = xpdrInput; }
+        switchMode('XPDR_MODE');
+    }
+
+    function toggleIsolate() {
+        icStates.Isolate = !icStates.Isolate;
+        if (icStates.Isolate) {
+            icStates.CoPilot = true; icStates.Pilot = true;
+            icStates.Crew1 = false; icStates.Pass = false; icStates.Crew2 = false; icStates.wICS = false;
+            icStates.Loop1 = false; icStates.Loop2 = false; icStates.Loop5 = false;
+        }
+        renderContent();
+    }
+
+    function toggleIC(name) { 
+        icStates[name] = !icStates[name]; 
+        if (name === 'Loop1' && icStates.Loop1) { icStates.Crew1 = true; icStates.Crew2 = true; icStates.Isolate = false; } 
+        else if (name === 'Loop2' && icStates.Loop2) { icStates.Pass = true; icStates.Isolate = false; } 
+        else if (name === 'Loop5' && icStates.Loop5) {
+            icStates.CoPilot = true; icStates.Pilot = true; icStates.Crew1 = true;
+            icStates.Pass = true; icStates.Crew2 = true; icStates.wICS = true;
+            icStates.Isolate = false;
+        }
+        if (['Crew1', 'Pass', 'Crew2', 'wICS'].includes(name) && icStates[name]) { icStates.Isolate = false; }
+        renderContent(); 
+    }
+
+    function setMic(label) { 
+        if (micSelected === label) { micSelected = 'OFF'; } else { micSelected = label; }
+        renderContent(); 
+    }
+    function toggleMon(id) { monStates[id] = !monStates[id]; renderContent(); }
+
+    function updateHeaderUI() {
+        const topMic = document.getElementById('top-mic-val');
+        if(topMic) {
+            if (micSelected === 'OFF' || !micSelected) { topMic.innerText = ''; } 
+            else { topMic.innerText = micSelected; }
+        }
+        
+        let monArr = [];
+        if(monStates.com1) monArr.push("1"); 
+        if(monStates.com2) monArr.push("2"); 
+        if(monStates.uvhf) monArr.push("M");
+        let monText = monArr.length ? monArr.join('/') : 'OFF';
+        if(monStates.vhffm && audioTab === 'Mission') { monText = "VHF-FM"; }
+
+        const topMon = document.getElementById('top-mon-val');
+        if(topMon) topMon.innerText = monText;
+
+        if(document.getElementById('h-com1-act')){
+            document.getElementById('h-com1-act').innerText = freqs.com1.act;
+            document.getElementById('h-com1-stb').innerText = freqs.com1.stb;
+            document.getElementById('h-com2-act').innerText = freqs.com2.act;
+            document.getElementById('h-com2-stb').innerText = freqs.com2.stb;
+        }
+
+        const xpdrModeElem = document.getElementById('top-xpdr-mode');
+        if(xpdrModeElem) {
+            let shortMode = xpdrState.mode.toUpperCase();
+            if(shortMode === 'ALTITUDE REPORTING') shortMode = 'ALT';
+            if(shortMode === 'TA ONLY') shortMode = 'TA';
+            xpdrModeElem.innerText = shortMode;
+        }
+        const xpdrCodeElem = document.getElementById('top-xpdr-code');
+        if(xpdrCodeElem) xpdrCodeElem.innerText = xpdrState.code;
+    }
+
+    function handleVol(id, e) {
+        const s = e.currentTarget;
+        s.setPointerCapture(e.pointerId);
+        const update = (pe) => {
+            const r = s.getBoundingClientRect();
+            volumes[id] = Math.round(Math.max(0, Math.min(100, (pe.clientX - r.left) / r.width * 100)));
+            s.querySelector('.wedge-fill').style.width = volumes[id] + '%';
+            if(s.querySelector('.wedge-text')) s.querySelector('.wedge-text').innerText = volumes[id] + '%';
+        };
+        update(e); s.onpointermove = update; s.onpointerup = () => s.onpointermove = null;
+    }
+
+    function swapFreq(id) { 
+        if(!freqs[id]) return;
+        [freqs[id].act, freqs[id].stb] = [freqs[id].stb, freqs[id].act];
+        renderContent();
+    }
+
+    // --- Input Handling Logic ---
+    function addInput(num) {
+        if (!hasStartedTyping) {
+            currentInput = num;
+            hasStartedTyping = true;
+        } else if (currentMode === 'PERF_INPUT') {
+            if (num === '-' && currentInput.length > 0) return;
+            if (currentInput.length < 6) currentInput += num;
+        } else if (currentInput.length < 7) {
+            currentInput += num;
+        }
+        renderContent();
+    }
+
+    function backspaceInput() {
+        if (!hasStartedTyping) {
+            hasStartedTyping = true;
+            if(currentMode === 'PERF_INPUT') currentInput = perfData[inputTarget].toString();
+        }
+        currentInput = currentInput.slice(0, -1);
+        renderContent();
+    }
+
+    function confirmPerfInput() { 
+        if (hasStartedTyping && currentInput !== "" && currentInput !== "-") {
+            perfData[inputTarget] = currentInput;
+        }
+        switchMode('PERF');
+    }
+
+    // --- SELCAL Input Logic ---
+    function addSelcalInput(char) {
+        if (!hasStartedTyping) {
+            selcalInput = "";
+            hasStartedTyping = true;
+        }
+        if (selcalInput.length >= 4) return;
+        if (selcalInput.includes(char)) return; 
+
+        if (selcalInput.length === 1 && char <= selcalInput[0]) return;
+        if (selcalInput.length === 3 && char <= selcalInput[2]) return;
+
+        selcalInput += char;
+        renderContent();
+    }
+
+    function backspaceSelcal() {
+        if (!hasStartedTyping) {
+            hasStartedTyping = true;
+            selcalInput = selcalCode;
+        }
+        selcalInput = selcalInput.slice(0, -1);
+        renderContent();
+    }
+
+    function confirmSelcal() {
+        if (hasStartedTyping && selcalInput.length === 4) {
+            selcalCode = selcalInput;
+        }
+        switchMode('AUDIO');
+        switchAudioTab('Mission');
+    }
+
+    function saveInputAndReturn() {
+        if (hasStartedTyping && currentInput.length >= 3) {
+            let v = currentInput;
+            if (inputTarget === 'hf') {
+                if (!v.includes('.') && v.length > 2) v = v.slice(0, 2) + "." + v.slice(2);
+            } else {
+                if (!v.includes('.') && v.length > 3) v = v.slice(0, 3) + "." + v.slice(3);
+            }
+            freqs[inputTarget].stb = v;
+        }
+        let backMode = inputTarget === 'hf' ? 'HF_CONTROL' : 'AUDIO';
+        switchMode(backMode, inputTarget);
+    }
+
+    function handleInputXfer() {
+        saveInputAndReturn();
+        swapFreq(inputTarget);
+    }
+
+    function confirmInput() { 
+        saveInputAndReturn();
+    }
+
+    window.onload = () => { switchMode('HOME'); };
+</script>
+</body>
+</html>

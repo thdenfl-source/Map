@@ -1,0 +1,2336 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Flight Simulator">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" sizes="192x192" href="icon.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="apple-touch-icon" sizes="192x192" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<title>Flight Simulator</title>
+<!-- 외부 라이브러리는 저장소 사본을 쓴다(vendor/README.md).
+     CDN 을 쓰면 한 번이라도 못 받는 순간 앱이 통째로 죽는다 — 비행 중에는
+     그럴 여지를 두지 않는다. -->
+<link rel="stylesheet" href="vendor/leaflet.css"/>
+<script src="vendor/leaflet.js"></script>
+<link rel="stylesheet" href="vendor/leaflet-velocity.min.css"/>
+<script src="vendor/leaflet-velocity.min.js"></script>
+<link rel="stylesheet" href="vendor/maplibre-gl.css"/>
+<script src="vendor/maplibre-gl.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-user-select: none; user-select: none;
+  touch-action: none;
+  position: relative;
+}
+#app {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  overflow: hidden;
+}
+/* Divider between the two panels — 가운데 그립을 드래그해 분할 비율 조절 */
+#panel-divider {
+  background: #2a2a2a;
+  z-index: 2000;
+  flex-shrink: 0;
+  position: relative;
+}
+#divider-grip, #divider-grip-2 {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+  z-index: 2001; cursor: col-resize; touch-action: none; user-select: none;
+  background: rgba(15,20,28,0.92); border: 1px solid #4a90d9; border-radius: 6px;
+  color: #7ab8f5; font-size: 12px; font-weight: bold; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+#divider-grip:active, #divider-grip-2:active { background: #1a3a5a; color: #fff; }
+@media (orientation: landscape) {
+  #divider-grip, #divider-grip-2 { width: 26px; height: 56px; }
+  #divider-grip::before, #divider-grip-2::before { content: '◀▶'; letter-spacing: -2px; }
+}
+@media (orientation: portrait) {
+  #divider-grip, #divider-grip-2 { width: 56px; height: 26px; cursor: row-resize; }
+  #divider-grip::before, #divider-grip-2::before { content: '▲▼'; }
+}
+@media (orientation: landscape) {
+  #app { display: flex; flex-direction: row; }
+  #left-panel  { flex: 1 1 0; min-width: 100px; overflow: hidden; }
+  #right-panel { flex: 1 1 0; min-width: 80px; overflow: hidden; }
+  /* PFD를 표시하는 패널은 FCP 버튼이 전부 보이도록 넓은 쪽(55%)을 차지 */
+  #left-panel.pfd-host, #right-panel.pfd-host { flex: 0 0 55%; }
+  #panel-divider { width: 2px; height: 100%; }
+}
+@media (orientation: portrait) {
+  #app { display: flex; flex-direction: column; }
+  #left-panel  { flex: 1 1 0; min-height: 100px; overflow: hidden; }
+  #right-panel { flex: 1 1 0; min-height: 80px; overflow: hidden; }
+  #left-panel.pfd-host, #right-panel.pfd-host { flex: 0 0 55%; }
+  #panel-divider { height: 2px; width: 100%; }
+}
+/* 사용자가 분할 비율을 지정하면 좌측만 고정폭이 되고 우측은 남은 공간을 채운다.
+   (PFD 호스트의 flex:0 0 55%가 함께 걸리면 합이 100%를 넘어 우측이 잘리므로 무효화) */
+#app.split-custom #right-panel { flex: 1 1 0; }
+
+/* ── 3분할(PFD·MAP·CDU) ─────────────────────────────────────────── */
+#mid-panel { display: none; flex-direction: column; overflow: hidden; }
+#divider-2 { display: none; background: #2a2a2a; z-index: 2000; flex-shrink: 0; position: relative; }
+#divider-grip-2 { display: none; }
+#app.triple #mid-panel { display: flex; }
+#app.triple #divider-2 { display: block; }
+#app.triple #divider-grip-2 { display: flex; }
+/* 3분할 배분 — 좌·중은 --tri-l/--tri-m 로 고정하고 우측이 남은 공간을 채운다.
+   기본값은 PFD 호스트가 1.4배 넓은 배분으로 JS가 계산해 넣고,
+   그립을 드래그하면 그 값만 바뀐다(2분할의 splitRatio 와 같은 방식). */
+#app.triple #left-panel  { flex: 0 0 var(--tri-l, 33.333%) !important; }
+#app.triple #mid-panel   { flex: 0 0 var(--tri-m, 33.333%) !important; }
+#app.triple #right-panel { flex: 1 1 0 !important; }
+@media (orientation: landscape) { #divider-2 { width: 2px; height: 100%; } }
+@media (orientation: portrait)  { #divider-2 { height: 2px; width: 100%; } }
+/* 분할 전환 버튼 */
+.split-tab { margin-left: auto; color: #7ab8f5 !important; }
+#left-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#left-tabs, #mid-tabs {
+  display: flex;
+  background: #080808;
+  border-bottom: 1px solid #1e1e1e;
+  flex-shrink: 0;
+}
+#pfd-wrap {
+  position: relative; background: #000; overflow: hidden;
+  flex: 1;
+}
+#pfd { display: block; }
+#right-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#page-tabs {
+  display: flex;
+  background: #080808;
+  border-bottom: 1px solid #1e1e1e;
+  flex-shrink: 0;
+}
+/* 탭 바(좌·중·우 공통): 버튼 동일 크기 + 흰 테두리 */
+/* iOS 상태바(시계·배터리)와 겹치지 않도록 상단 safe-area 여백 추가 */
+#left-tabs, #mid-tabs, #page-tabs { gap: 4px; padding: 4px; padding-top: calc(4px + env(safe-area-inset-top)); }
+#left-tabs { padding-left: calc(4px + env(safe-area-inset-left)); }
+#page-tabs { padding-right: calc(4px + env(safe-area-inset-right)); }
+.page-tab {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.75);
+  border-radius: 0;
+  color: #ccc;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  cursor: pointer;
+  touch-action: manipulation;
+  white-space: nowrap; overflow: hidden;
+  transition: color 0.15s, background 0.15s;
+}
+/* 탭 버튼 높이 고정 — 라벨에 한글·기호가 섞이면 줄 상자 높이가 달라져
+   패널마다 탭 바 높이가 어긋나고, 3분할에서 상단선이 안 맞는다 */
+.page-tab, #reload-btn {
+  height: 28px; padding: 0 2px; line-height: 1; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+}
+#reload-btn {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.75);
+  border-radius: 0;
+  color: #5aaefd;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 0.15s, background 0.15s;
+}
+#reload-btn:hover { color: #fff; background: #06141f; }
+#reload-btn:active { transform: rotate(180deg); }
+.page-tab.active {
+  color: #00ff88;
+  background: #081808;
+  box-shadow: inset 0 -2px 0 #00ff88;
+}
+/* 탭 색상(좌/우 공통 5버튼 배치): PFD·MAP·CDU·Full Screen */
+#left-tabs [data-sel="pfd"], #page-tabs [data-sel="pfd"] { color: #5aaefd; }
+#left-tabs [data-sel="pfd"].active, #page-tabs [data-sel="pfd"].active { color: #5aaefd; background: #051525; box-shadow: inset 0 -2px 0 #5aaefd; }
+#left-tabs [data-sel="map"], #page-tabs [data-sel="map"] { color: #00e07a; }
+#left-tabs [data-sel="map"].active, #page-tabs [data-sel="map"].active { color: #00e07a; background: #001a0d; box-shadow: inset 0 -2px 0 #00e07a; }
+#left-tabs [data-sel="cdu"], #page-tabs [data-sel="cdu"] { color: #c084fc; }
+#left-tabs [data-sel="cdu"].active, #page-tabs [data-sel="cdu"].active { color: #c084fc; background: #0d0020; box-shadow: inset 0 -2px 0 #c084fc; }
+.page-tab.fullscreen-tab { color: #facc15; }
+.page-tab.fullscreen-tab:hover { color: #fff; background: #1a1500; }
+.page-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+}
+.page-hidden { display: none !important; }
+#cdu-wrap {
+  background: #111;
+  overflow: hidden;
+}
+
+.ctrl-bar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0,0,0,0.88);
+  border-top: 1px solid #2a2a2a;
+  z-index: 20;
+}
+.ctrl-sub-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+}
+.ctrl-group { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.ctrl-lbl { color: #bbb; font-size: 10px; letter-spacing: 0.5px; font-family: 'Helvetica Neue', Arial, sans-serif; }
+/* 누를 수 있는 FCP 라벨(IAS/HDG/CRS): 현재값 동기화 버튼 */
+.ctrl-lbl-btn {
+  cursor: pointer; color: #8ac6ff; border: 1px solid #2a4a6a; border-radius: 3px;
+  padding: 0 6px; background: rgba(20,35,55,0.6); touch-action: manipulation; user-select: none;
+}
+.ctrl-lbl-btn:active { background: #2a4a7a; color: #fff; }
+.ctrl-lbl-btn.flash { background: #1a5a2a; border-color: #00cc66; color: #7fffb0; }
+.ctrl-row { display: flex; gap: 2px; }
+.cbtn {
+  background: #1c2c1c; border: 1px solid #2a5a2a; color: #fff;
+  font-size: 14px; width: 34px; height: 28px; cursor: pointer;
+  border-radius: 3px; display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation; -webkit-user-select: none;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.cbtn:active { background: #2e4a2e; }
+
+/* ── Stopwatch ── */
+.sw-group {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  border: 1px solid #2a3a2a; border-radius: 4px; padding: 3px 6px;
+}
+.sw-display {
+  color: #00ff88; font-size: 15px; letter-spacing: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; min-width: 76px; text-align: center;
+}
+.sw-btns { display: flex; gap: 3px; }
+.sw-btn {
+  background: #1a2e1a; border: 1px solid #2a6a2a; color: #fff;
+  font-size: 11px; padding: 3px 8px; cursor: pointer; border-radius: 3px;
+  touch-action: manipulation; font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.sw-btn:active { background: #264426; }
+.sw-btn.run { border-color: #00ff88; color: #00ff88; }
+/* 스톱워치 ↔ 현재 시각 전환 버튼 */
+.sw-btn-time { border-color: #2a4a6a; color: #7ab8f5; }
+.sw-btn-time:active { background: #1a2c44; }
+.sw-display.clock-mode { color: #7ab8f5; }
+
+/* ── BRG Toggle ── */
+.brg-tog-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.brg-tog-btns { display: flex; gap: 2px; }
+.brg-tog-btn {
+  background: #1a1a1a; border: 1px solid #333; color: #888;
+  font-size: 10px; padding: 3px 6px; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; white-space: nowrap; font-family: 'Helvetica Neue', Arial, sans-serif;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.brg-tog-btn.brg1-on { background: #0e1e3a; border-color: #44aaff; color: #44aaff; }
+.brg-tog-btn.brg2-on { background: #001a00; border-color: #00cc44; color: #00cc44; }
+/* 이름표 토글(#1BDP·#2BDP) — 니들 토글보다 한 단계 작게 두어 종속 관계를 보인다 */
+.brg-tog-btn.brg-bdp { font-size: 8px; padding: 2px 5px; letter-spacing: 0.3px; }
+.brg-tog-btn.brg-bdp.brg1-on { background: #0e1e3a; border-color: #44aaff; color: #44aaff; }
+.brg-tog-btn.brg-bdp.brg2-on { background: #001a00; border-color: #00cc44; color: #00cc44; }
+
+/* ── NAV Source ── */
+.nav-src-group { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+/* NAV SRC 와 RNP 는 한 덩어리로 붙여 둔다 — 사이가 벌어지면 다른 그룹처럼 보인다.
+   튜닝 VOR 라벨(빈 줄일 때가 대부분)이 사이를 벌리던 자리도 같이 줄인다. */
+.nav-src-group .nav-icao-lbl { margin-top: 0; min-height: 10px; line-height: 10px; }
+.nav-src-group .rnp-lbl { margin-top: -1px; font-size: 9px; line-height: 10px; }
+.nav-src-group .rnp-btns { margin-top: 1px; }
+.nav-src-btns { display: flex; gap: 2px; }
+.nav-src-btn {
+  background: #1a1a2e; border: 1px solid #2a2a5a; color: #ccc;
+  font-size: 11px; padding: 3px 6px; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; white-space: nowrap;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.nav-src-btn.active { background: #0e1e3e; border-color: #4488ff; color: #fff; }
+.nav-icao-sel {
+  background: #0e1e2e; border: 1px solid #1a4a6a; color: #fff;
+  font-size: 10px; padding: 1px 3px; border-radius: 2px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; width: 70px;
+}
+/* NAV1/NAV2 튜닝 VOR 표시 라벨(PFD NAV SRC 하단) */
+.nav-icao-lbl {
+  color: #44aaff; font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
+  text-align: center; margin-top: 1px; min-height: 12px; line-height: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ── RNP ── */
+.rnp-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.rnp-btns { display: flex; gap: 2px; }
+.rnp-btn {
+  background: #1a2a1a; border: 1px solid #2a4a2a; color: #ccc;
+  font-size: 11px; padding: 3px 5px; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.rnp-btn.active { background: #0e2e0e; border-color: #44aa44; color: #fff; }
+
+/* ── SIM SPD (배속) ── */
+.simspd-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.simspd-btns { display: flex; gap: 2px; }
+.simspd-btn {
+  background: #2a1a2a; border: 1px solid #4a2a4a; color: #ccc;
+  font-size: 11px; padding: 3px 5px; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+/* 실시간(×1)은 평상시라 눈에 띄지 않게, 빨라진 상태는 확실히 보이게 */
+.simspd-btn.active { background: #2e0e2e; border-color: #cc66ff; color: #fff; }
+#simspd-1.active { background: #1e1e1e; border-color: #666; color: #aaa; box-shadow: none; }
+#simspd-2.active, #simspd-4.active, #simspd-8.active { box-shadow: 0 0 6px rgba(204,102,255,0.45); }
+
+/* ── divider ── */
+.ctrl-div { width: 1px; height: 34px; background: #2a2a2a; margin: 0 2px; }
+
+/* ── Hover Page / GSPD / Trim ── */
+.hover-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* HOVER PAGE / HOVER POS 는 두 줄로 쌓아 폭을 줄인다 */
+.hover-btns { display: flex; flex-direction: column; gap: 2px; align-items: stretch; }
+.hover-btns > button { width: 100%; padding: 2px 6px; }
+/* 모드 토글 버튼 공통(HOVER PAGE·HOVER POS·CRHT·ALT HOLD) */
+.hover-btn, .hover-pos-btn, .crht-btn, .alt-hold-btn {
+  background: #1a1a1a; border: 1px solid #333; color: #555;
+  font-size: 10px; font-weight: bold; padding: 3px 6px; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; white-space: nowrap; font-family: 'Helvetica Neue', Arial, sans-serif;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hover-btn:disabled, .hover-pos-btn:disabled {
+  opacity: 0.35; cursor: not-allowed;
+}
+.hover-btn.on     { background: #1a0e2e; border-color: #cc66ff; color: #cc66ff; }
+.hover-pos-btn.on { background: #2e2a0e; border-color: #ffcc00; color: #ffcc00;
+                    box-shadow: 0 0 6px rgba(255,204,0,0.45); }
+.crht-btn.on     { background: #0e2e1a; border-color: #44ff88; color: #44ff88;
+                   box-shadow: 0 0 6px rgba(44,255,100,0.4); }
+.alt-hold-btn.on { background: #0e1a2e; border-color: #00cfff; color: #00cfff;
+                   box-shadow: 0 0 6px rgba(0,200,255,0.4); }
+.alt-hold-group  { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.alt-hold-btns   { display: flex; gap: 2px; }
+
+.trim-group { display: flex; align-items: center; gap: 6px; }
+.trim-pad {
+  /* 좌측에 COLLECTIVE TRIM을 두기 위해 폭을 2/3로 (160 → 107px) */
+  position: relative; width: 107px; height: 54px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2px;
+}
+.trim-cell {
+  background: #1a1a2a; border: 1px solid #333; color: #aaa;
+  font-size: 14px; font-weight: bold; cursor: pointer; border-radius: 2px;
+  touch-action: manipulation; display: flex; align-items: center; justify-content: center;
+  user-select: none; -webkit-user-select: none;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  transition: background 0.1s;
+}
+.trim-cell:active { background: #2a2a4a; color: #fff; }
+.trim-cell.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+.trim-cell.tc-fwd { grid-column: 2; grid-row: 1; }
+.trim-cell.tc-aft { grid-column: 2; grid-row: 2; }
+.trim-cell.tc-l   { grid-column: 1; grid-row: 1 / span 2; }
+.trim-cell.tc-r   { grid-column: 3; grid-row: 1 / span 2; }
+/* 원형 모드 버튼 공통(FORCE TRIM·GSPD) — 실제 조종간 배치에 맞춘 자리 */
+.force-trim-btn, .gspd-btn {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: #1a1a1a; border: 2px solid #555; color: #888;
+  font-size: 9px; font-weight: bold; cursor: pointer;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+.force-trim-btn:active { background: #2a2a4a; }
+.force-trim-btn.active { border-color: #cc66ff; color: #cc66ff; }
+.force-trim-btn.disabled { opacity: 0.3; cursor: not-allowed; pointer-events: none; }
+.gspd-btn:active { background: #2a1a1e; }
+.gspd-btn.on     { background: #2e0e1a; border-color: #ff6688; color: #ff8899;
+                   box-shadow: 0 0 6px rgba(255,80,120,0.4); }
+
+/* ── COLLECTIVE TRIM (파워 조작) ── */
+/* 지금은 VS ▲▼와 같은 동작. 상위모드 해제 기능이 들어가면 파워(출력) 직접 제어로 확장한다. */
+/* 조작부 이름표 공통(4-WAY TRIM · COLLECTIVE TRIM · ANTI-TORQUE PEDAL) */
+.coll-lbl, .pedal-lbl, .trim-lbl {
+  color: #7a8a99; font-size: 8px; font-weight: bold; letter-spacing: 0.3px;
+  text-align: center; line-height: 1.1; white-space: nowrap;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+/* 이름표가 붙는 조작부 3종은 같은 높이로 두고 이름표는 위, 본체는 아래에 붙인다.
+   → 이름 줄과 조작부 아랫변이 각각 한 줄로 맞는다 */
+.trim-padgroup, .coll-group, .pedal-group {
+  display: flex; flex-direction: column; align-items: center;
+  height: 74px; justify-content: space-between;
+}
+.coll-btns { display: flex; flex-direction: column; gap: 2px; }
+.coll-btn {
+  width: 34px; height: 25px; border-radius: 4px;
+  background: #12181e; border: 2px solid #3a4a5a; color: #9fb4c4;
+  font-size: 13px; font-weight: bold; cursor: pointer;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.coll-btn:active { background: #1e3040; border-color: #4dd0e1; color: #4dd0e1; }
+
+/* ── ANTI-TORQUE PEDAL (요 조작) ── */
+.pedal-btns { display: flex; gap: 3px; }
+.pedal-btn {
+  width: 34px; height: 34px; border-radius: 6px;
+  background: #12181e; border: 2px solid #3a4a5a; color: #9fb4c4;
+  font-size: 14px; font-weight: bold; cursor: pointer;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+}
+.pedal-btn:active { background: #1e3040; border-color: #4dd0e1; color: #4dd0e1; }
+
+/* ── OBS button ── */
+.obs-btn {
+  background: #111; border: 1px solid #333; color: #555;
+  font-size: 11px; font-weight: bold; padding: 5px 10px;
+  border-radius: 3px; cursor: pointer; touch-action: manipulation;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 1px; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.obs-btn:active { background: #0a1a0a; }
+.obs-btn.on {
+  background: #001a00; border-color: #00cc44; color: #00ee66;
+  box-shadow: 0 0 6px rgba(0,200,68,0.45);
+}
+/* GSPD 작동 중 — 조향 지령이 먹지 않는 상태. 켜짐 색은 유지하되 빗금으로 표시 */
+.obs-btn.ap-inh {
+  opacity: 0.45; border-style: dashed; box-shadow: none;
+  background-image: repeating-linear-gradient(135deg,
+    rgba(255,255,255,0.12) 0 3px, transparent 3px 6px);
+}
+
+/* ── Map area ── */
+#map-wrap {
+  position: relative; overflow: hidden;
+  flex: 1;
+}
+/* 지도는 상단 80%, 하단 20%는 TERRAIN CUT 패널이 차지(겹침 없음) */
+#map { width: 100%; height: 80%; transform-origin: center center; }
+/* HDG↑ — 회전해도 모서리가 비지 않도록 '보이는 영역의 대각선' 을 한 변으로 하는
+   정사각형으로 키운다(크기·위치는 JS 가 재서 넣는다). 확대(scale)가 아니라서
+   축척이 그대로다. 넘치는 부분은 #map-wrap 이 잘라 낸다. */
+#map.hdg-rot { position: absolute; }
+#map-wrap { overflow: hidden; }
+#map3d {
+  position: absolute; top: 0; left: 0; right: 0; height: 80%;
+  display: none; z-index: 800;   /* above Leaflet panes (~700), below top bars (1000) */
+}
+#map3d.active { display: block; }
+/* When 3D is on, hide the 2D Leaflet map so its panes never paint through */
+#map-wrap.map3d-on #map { visibility: hidden; }
+#layer-btn-3d { background: rgba(0,10,30,0.82); border: 1px solid #333; color: #aaa; }
+#layer-btn-3d.active { background: rgba(0,30,80,0.92); border-color: #4488ff; color: #88ccff; box-shadow: 0 0 8px rgba(68,136,255,0.4); }
+#follow-btn.active { background: rgba(60,30,0,0.92); border-color: #ffaa00; color: #ffcc44; box-shadow: 0 0 8px rgba(255,170,0,0.4); }
+#tilt-ctrl {
+  position: absolute; bottom: 54px; right: 46px; z-index: 900;
+  display: none; flex-direction: column; gap: 0;
+}
+#tilt-ctrl.active { display: flex; }
+#tilt-ctrl button {
+  width: 29px; height: 29px; background: #fff;
+  border: 0; border-bottom: 1px solid #ddd; color: #333;
+  font-size: 15px; line-height: 1; cursor: pointer; padding: 0;
+}
+#tilt-ctrl button:first-child { border-radius: 4px 4px 0 0; }
+#tilt-ctrl button:last-child { border-radius: 0 0 4px 4px; border-bottom: 0; }
+#tilt-ctrl button:hover { background: #f0f0f0; }
+/* Lift the 3D zoom/tilt controls above the bottom SHIP/sim bar */
+/* #map3d 는 높이 80%라 하단 가장자리가 이미 terrain-cut 위에 있음 → px만 올림 */
+#map3d .maplibregl-ctrl-bottom-right { bottom: 44px; }
+/* 좌하단 축척은 좌표창(20%+44px) 위에 배치 */
+#map3d .maplibregl-ctrl-bottom-left { bottom: 62px; }
+/* 3D 축척(.vfr-scale)은 #map3d에 직접 절대배치(left:10px, bottom:62px).
+   maplibre 기본값이 섞이지 않도록 박스 스타일을 2D와 동일하게 명시 */
+#map3d .vfr-scale {
+  box-shadow: none;
+  background: rgba(0,0,0,0.65); padding: 4px 7px 3px; border-radius: 3px;
+  display: inline-block;
+}
+/* 3D 모드: 우하단 FDR/REC 버튼을 zoom/tilt 컨트롤 위로 올려 겹침 방지 */
+#map-wrap.map3d-on #fdr-btn-wrap { bottom: calc(20% + 175px); }
+/* Dual-unit map scale bar (km + NM) */
+.vfr-scale {
+  background: rgba(0,0,0,0.65);
+  padding: 4px 7px 3px;
+  border-radius: 3px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  line-height: 1.5;
+  pointer-events: none;
+}
+.vfr-scale-row { display: flex; align-items: center; gap: 5px; }
+.vfr-scale-bar {
+  height: 4px;
+  border: 1px solid;
+  border-top: none;
+  flex-shrink: 0;
+}
+.vfr-scale-km  { border-color: #fff;    background: #fff; }
+.vfr-scale-nm  { border-color: #00cfff; background: #00cfff; }
+/* Push Leaflet bottom controls above the sim bar.
+   #map 높이가 80%라 하단 가장자리가 이미 terrain-cut(하단 20%) 위에 있으므로
+   bottom:0 기준 + margin 만 준다(20%를 또 더하면 축척이 좌표 위로 밀려 올라감). */
+/* 좌하단 세로 순서: 축척 → 좌표(20%+44px) */
+#map-wrap .leaflet-bottom.leaflet-left  { margin-bottom: 62px; bottom: 0; }
+#map-wrap .leaflet-bottom.leaflet-right { margin-bottom: 44px; bottom: 0; }
+/* ── Solo (single-screen) mode ── */
+#solo-bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 3000;
+  display: flex;
+  background: rgba(0,0,0,0.88);
+  border-bottom: 1px solid #333;
+  height: calc(36px + env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  align-items: stretch;
+}
+#solo-bar button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-right: 1px solid #222;
+  color: #555;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color 0.15s, background 0.15s;
+}
+#solo-bar button:last-child { border-right: none; }
+#solo-bar button.solo-active {
+  color: #00ff88;
+  background: #081808;
+  box-shadow: inset 0 -2px 0 #00ff88;
+}
+/* ✕(분할화면 복귀)는 우측 상단 끝에 배치 */
+#solo-bar button.solo-exit {
+  flex: 0 0 40px;
+  color: #ff4444;
+  font-size: 15px;
+  font-weight: bold;
+  border-left: 2px solid #ff4444;
+  border-right: none;
+  background: rgba(80,0,0,0.5);
+}
+#solo-bar button.solo-exit:hover { color: #fff; background: #aa0000; }
+/* solo-bar tab colors (PFD/MAP/PLAN/CDU가 1~4번째, ✕는 마지막) */
+#solo-bar button:nth-child(1)        { color: #5aaefd; }
+#solo-bar button:nth-child(1).solo-active { color: #5aaefd; box-shadow: inset 0 -2px 0 #5aaefd; }
+#solo-bar button:nth-child(2)        { color: #00e07a; }
+#solo-bar button:nth-child(2).solo-active { color: #00e07a; box-shadow: inset 0 -2px 0 #00e07a; }
+#solo-bar button:nth-child(3)        { color: #ffaa33; }
+#solo-bar button:nth-child(3).solo-active { color: #ffaa33; box-shadow: inset 0 -2px 0 #ffaa33; }
+#solo-bar button:nth-child(4)        { color: #c084fc; }
+#solo-bar button:nth-child(4).solo-active { color: #c084fc; box-shadow: inset 0 -2px 0 #c084fc; }
+/* 전체화면(solo)에서는 상단 바를 모두 숨기고 계기가 화면을 꽉 채움
+   (내비게이션은 하단 푸터 Home/Half/Plan 으로) */
+body.solo-mode #app {
+  position: fixed;
+  top: env(safe-area-inset-top); bottom: 0; left: 0; right: 0;
+}
+/* solo 모드에서 패널 자체 탭바(page-tabs/left-tabs) 숨김 — solo-bar와 중복 */
+body.solo-mode #page-tabs,
+body.solo-mode #left-tabs { display: none !important; }
+/* solo 전용 상단 스위처 바도 숨김(하단 푸터로 대체) */
+body.solo-mode #solo-bar { display: none !important; }
+/* 전체화면에서 MAP/PFD 등 하단 푸터가 없는 화면용 떠 있는 HALF 버튼 */
+#solo-half-btn {
+  display: none;
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 58px);   /* 상단 툴바(공역 등) 아래로 */
+  right: calc(env(safe-area-inset-right) + 10px);
+  z-index: 3500;
+  background: rgba(10,15,22,0.92);
+  border: 1px solid #4a90d9;
+  border-radius: 7px;
+  color: #7ab8f5;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px; font-weight: bold; letter-spacing: 1px;
+  padding: 7px 12px;
+  cursor: pointer; touch-action: manipulation;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+#solo-half-btn:active { background: #1a3a5a; color: #fff; }
+body.solo-mode #solo-half-btn.show { display: block; }
+/* Solo mode: one panel fills everything */
+body.solo-mode #left-panel,
+body.solo-mode #right-panel {
+  display: none;
+}
+body.solo-mode #panel-divider { display: none; }
+body.solo-mode .solo-panel-visible {
+  display: flex !important;
+  flex-direction: column;
+  width: 100% !important;
+  height: 100% !important;
+  flex: 1 !important;
+}
+
+/* ── 지도 중앙 십자마크 ──
+   지도(#map)는 높이 80%(하단 20%는 terrain-cut)이므로 지도의 실제 세로 중앙은
+   맵랩의 40% 지점이다. leafMap.getCenter()(좌표 표시 기준)와 일치하도록 top:40%. */
+#map-crosshair {
+  position: absolute; left: 50%; top: 40%;
+  width: 0; height: 0; z-index: 500; pointer-events: none;   /* 마커 페인(600)보다 아래 → 헬기 아이콘이 위에 표시 */
+}
+#map-crosshair .ch-h, #map-crosshair .ch-v {
+  position: absolute; background: #ff1744;
+  box-shadow: 0 0 2px rgba(0,0,0,0.8);
+}
+#map-crosshair .ch-h { left: -11px; top: -1px; width: 22px; height: 2px; }
+#map-crosshair .ch-v { left: -1px; top: -11px; width: 2px; height: 22px; }
+/* ── 중앙 좌표 표시 (좌하단 최하단: 축척 → 좌표) ── */
+#center-coord {
+  position: absolute; bottom: calc(20% + 44px); left: 10px; z-index: 1100;
+  background: rgba(0,0,0,0.72); border: 1px solid #444; border-radius: 4px;
+  padding: 3px 7px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px; font-weight: bold; line-height: 1.4; color: #ffd54f; white-space: nowrap;
+  pointer-events: none;
+}
+/* FDR upload button — above Leaflet zoom control (bottom-right) */
+#fdr-btn-wrap {
+  position: absolute; bottom: calc(20% + 120px); right: 10px; z-index: 1000;
+}
+#fdr-btn {
+  display: block; width: 36px;
+  background: rgba(20,20,20,0.88); border: 1px solid #444; border-radius: 4px;
+  color: #ccc; font-size: 10px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;
+  padding: 6px 2px; text-align: center; cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+#fdr-btn:hover    { background: rgba(0,30,60,0.92); border-color: #4488ff; color: #88ccff; }
+#rec-btn {
+  display: block; width: 36px; margin-bottom: 4px;
+  background: rgba(20,20,20,0.88); border: 1px solid #444; border-radius: 4px;
+  color: #ccc; font-size: 10px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;
+  padding: 6px 2px; text-align: center; cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+#rec-btn:hover  { background: rgba(60,0,0,0.92); border-color: #ff4444; color: #ff8888; }
+#rec-btn.active {
+  background: rgba(90,0,0,0.92); border-color: #ff4444; color: #ff6666;
+  animation: recblink 1.2s infinite;
+}
+@keyframes recblink { 0%,100%{ box-shadow: 0 0 6px rgba(255,68,68,0.7);} 50%{ box-shadow: none;} }
+#fdr-btn.active   { background: rgba(0,30,80,0.92); border-color: #4488ff; color: #88ccff;
+                    box-shadow: 0 0 8px rgba(68,136,255,0.4); }
+/* FDR panel */
+#fdr-panel {
+  display: none; position: absolute; bottom: calc(20% + 165px); right: 10px; z-index: 1100;
+  width: 220px; background: rgba(8,12,20,0.96); border: 1px solid #2a4a7a;
+  border-radius: 6px; padding: 8px; color: #ccc;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px;
+}
+#fdr-panel.open { display: block; }
+#fdr-panel-title {
+  color: #7ab8f5; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+  border-bottom: 1px solid #1a3050; padding-bottom: 5px; margin-bottom: 7px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+#fdr-file-row { display: flex; gap: 4px; margin-bottom: 6px; }
+#fdr-file-row label {
+  flex: 1; background: rgba(0,20,50,0.9); border: 1px solid #2a4a7a;
+  border-radius: 4px; padding: 5px 6px; cursor: pointer; text-align: center;
+  color: #88ccff; font-size: 10px;
+}
+#fdr-file-row label:hover { border-color: #4488ff; }
+#fdr-status {
+  font-size: 10px; color: #aaa; min-height: 14px; margin-bottom: 5px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#fdr-track-info {
+  font-size: 10px; color: #7ab8f5; margin-bottom: 6px; display: none;
+}
+#fdr-controls { display: none; gap: 4px; }
+#fdr-controls button {
+  flex: 1; background: rgba(0,20,50,0.9); border: 1px solid #2a4a7a;
+  border-radius: 4px; padding: 4px 2px; color: #88ccff;
+  font-size: 11px; cursor: pointer;
+}
+#fdr-controls button:hover  { border-color: #4488ff; }
+#fdr-controls button.active { background: rgba(0,40,100,0.9); border-color: #4488ff; }
+#fdr-speed { display: none; align-items: center; gap: 4px; margin-top: 5px; font-size: 10px; }
+#fdr-speed label { color: #aaa; }
+#fdr-speed select {
+  background: rgba(0,20,50,0.9); border: 1px solid #2a4a7a;
+  border-radius: 3px; color: #88ccff; font-size: 10px; padding: 2px;
+}
+#fdr-timeline { display: none; margin-top: 5px; }
+#fdr-timeline input[type=range] { width: 100%; accent-color: #4488ff; }
+/* ── Map top button bar ── */
+#map-top-bar {
+  position: absolute; top: 8px; left: 8px; right: 8px; z-index: 1000;
+  display: flex; gap: 4px;
+}
+#map-top-bar button {
+  flex: 1; min-width: 0;
+  background: rgba(20,20,20,0.88); border: 1px solid #444; color: #fff;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: bold;
+  padding: 7px 2px; border-radius: 5px; cursor: pointer;
+  touch-action: manipulation; text-align: center;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+#orient-btn.hdg-up {
+  background: rgba(40,20,0,0.92); border-color: #ff8844; color: #ffaa66;
+  box-shadow: 0 0 8px rgba(255,136,68,0.4);
+}
+#layer-btn.sat {
+  background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
+  box-shadow: 0 0 8px rgba(68,136,255,0.4);
+}
+#gps-btn.active {
+  background: rgba(0,40,0,0.92); border-color: #00dd44; color: #00ff88;
+  box-shadow: 0 0 8px rgba(0,220,80,0.4);
+}
+/* MAP 상단 FULL/HALF 토글 버튼 — 눈에 띄는 노랑, 폭은 콤팩트 */
+#map-full-btn {
+  flex: 0 0 auto; min-width: 58px;
+  border-color: #b8860b; color: #facc15;
+}
+#map-full-btn:active { background: rgba(40,32,0,0.92); }
+/* ── 화면 터치 잠금 ── */
+#lock-btn.locked { background: rgba(60,45,0,0.92); border-color: #ffaa00; color: #ffcc44; }
+#lock-overlay {
+  display: none;
+  position: fixed; inset: 0; z-index: 99999;
+  background: rgba(0,0,0,0.12);
+  flex-direction: column; align-items: center; justify-content: flex-end;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 26px);
+  touch-action: none; -webkit-user-select: none; user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#lock-overlay.on { display: flex; }
+#lock-badge {
+  position: absolute; top: calc(env(safe-area-inset-top) + 10px); left: 50%; transform: translateX(-50%);
+  background: rgba(10,10,14,0.9); border: 1px solid #ffaa00; border-radius: 6px;
+  color: #ffcc44; font-size: 12px; font-weight: bold; letter-spacing: 1px; padding: 5px 14px;
+}
+#lock-unlock {
+  position: relative; overflow: hidden;
+  width: 210px; height: 46px; border-radius: 23px;
+  background: rgba(10,10,14,0.92); border: 1.5px solid #ffaa00;
+  display: flex; align-items: center; justify-content: center;
+  color: #ffcc44; font-size: 13px; font-weight: bold; letter-spacing: 1px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.6);
+}
+#lock-unlock-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+  background: rgba(255,170,0,0.28); transition: width 0.08s linear;
+}
+#lock-unlock-txt { position: relative; z-index: 1; pointer-events: none; }
+/* 거리·방위 측정자(Ruler) */
+#map-ruler-btn { flex: 0 0 auto; min-width: 40px; font-size: 14px; padding: 5px 2px; }
+#map-ruler-btn.ruler-active {
+  background: rgba(60,45,0,0.92); border-color: #ffd54f; color: #ffd54f;
+  box-shadow: 0 0 8px rgba(255,213,79,0.4);
+}
+#ruler-readout {
+  display: none;
+  position: absolute; top: 46px; left: 8px; z-index: 1260;
+  background: rgba(8,10,14,0.94); border: 1px solid #ffd54f; border-radius: 6px;
+  padding: 7px 9px; min-width: 168px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#ruler-readout .rr-row { display: flex; justify-content: space-between; gap: 10px; font-size: 11px; padding: 2px 0; }
+#ruler-readout .rr-lbl { color: #8a9aa8; }
+#ruler-readout .rr-val { color: #ffd54f; font-weight: bold; }
+#ruler-readout .rr-btns { display: flex; gap: 5px; margin-top: 6px; }
+#ruler-readout .rr-btns button {
+  flex: 1; background: rgba(25,25,25,0.9); border: 1px solid #444; border-radius: 4px;
+  color: #cfe; font-size: 10px; font-weight: bold; padding: 5px 0; cursor: pointer;
+}
+#notam-btn.active {
+  background: rgba(40,25,0,0.92); border-color: #ff9800; color: #ffb74d;
+  box-shadow: 0 0 8px rgba(255,152,0,0.4);
+}
+#fix-btn.active {
+  background: rgba(0,35,40,0.92); border-color: #26c6da; color: #4dd0e1;
+  box-shadow: 0 0 8px rgba(38,198,218,0.4);
+}
+#awy-btn.active {
+  background: rgba(20,35,0,0.92); border-color: #8bc34a; color: #aed581;
+  box-shadow: 0 0 8px rgba(139,195,74,0.4);
+}
+#aspc-btn.active {
+  background: rgba(35,20,40,0.92); border-color: #ba68c8; color: #ce93d8;
+  box-shadow: 0 0 8px rgba(186,104,200,0.4);
+}
+#aspc-panel {
+  display: none;
+  position: absolute; top: 44px; right: 8px; z-index: 1100;
+  width: 290px; max-height: 62%; overflow-y: auto;
+  background: rgba(8,8,14,0.94); border: 1px solid #ba68c8; border-radius: 8px;
+  padding: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-overflow-scrolling: touch;
+}
+#aspc-panel.open { display: block; }
+#fix-panel {
+  display: none;
+  position: absolute; top: 44px; right: 8px; z-index: 1100;
+  width: 240px; max-height: 62%; overflow-y: auto;
+  background: rgba(6,14,16,0.94); border: 1px solid #26c6da; border-radius: 8px;
+  padding: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-overflow-scrolling: touch;
+}
+#fix-panel.open { display: block; }
+#fix-panel label {
+  display: flex; align-items: center; gap: 6px; color: #cfe8ec; font-size: 10px;
+  padding: 5px 3px; border-bottom: 1px solid #14343a; cursor: pointer;
+}
+#fix-panel .fixp-hdr { color:#4dd0e1; font-size:9px; font-weight:bold; letter-spacing:0.5px; padding:2px 3px 5px; }
+#awy-panel {
+  display: none;
+  position: absolute; top: 44px; right: 8px; z-index: 1100;
+  width: 210px; background: rgba(8,14,8,0.94);
+  border: 1px solid #8bc34a; border-radius: 8px; padding: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#awy-panel.open { display: block; }
+#pp-menu {
+  display: none;
+  position: absolute; top: 44px; z-index: 1200;
+  background: rgba(8,8,14,0.95); border: 1px solid #00ff88; border-radius: 6px;
+  padding: 4px; flex-direction: column; gap: 4px;
+}
+#pp-menu.open { display: flex; }
+#pp-menu button {
+  background: rgba(20,20,20,0.9); border: 1px solid #444; border-radius: 4px;
+  color: #cfe; font-size: 11px; font-weight: bold; padding: 7px 12px;
+  cursor: pointer; white-space: nowrap; text-align: left;
+}
+#pp-menu button:active { border-color: #00ff88; color: #00ff88; }
+.aspc-grp {
+  color: #ce93d8; font-size: 10px; font-weight: bold; letter-spacing: 1px;
+  border-bottom: 1px solid #2a1a30; padding: 6px 2px 3px; margin-top: 2px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.aspc-grp span {
+  cursor: pointer; color: #aaa; font-size: 9px;
+  border: 1px solid #555; border-radius: 4px;
+  padding: 2px 8px; margin-left: 4px;
+  background: rgba(255,255,255,0.05);
+}
+.aspc-grp span:active { background: rgba(186,104,200,0.25); border-color: #ba68c8; color: #fff; }
+.aspc-item {
+  display: flex; align-items: center; gap: 6px; padding: 4px 2px;
+  color: #ccc; font-size: 10px; cursor: pointer; user-select: none;
+}
+.aspc-item input { accent-color: #ba68c8; margin: 0; }
+/* ── 경보 INHIBIT 메뉴 ── */
+#inhib-menu {
+  display: none;
+  position: absolute; bottom: calc(20% + 40px); left: 8px; z-index: 1250;
+  background: rgba(8,8,14,0.95); border: 1px solid #ffaa00; border-radius: 6px;
+  padding: 5px; flex-direction: column; gap: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#map-wrap.tcut-off #inhib-menu { bottom: 40px; }
+#inhib-menu.open { display: flex; }
+#inhib-menu button {
+  background: rgba(20,20,20,0.9); border: 1px solid #444; border-radius: 4px;
+  color: #cfe; font-size: 11px; font-weight: bold; padding: 7px 12px;
+  cursor: pointer; white-space: nowrap; text-align: left;
+  display: flex; justify-content: space-between; gap: 12px;
+}
+#inhib-menu button span { color: #00e07a; }
+#inhib-menu button.inhibited { border-color: #ffaa00; }
+#inhib-menu button.inhibited span { color: #ffaa00; }
+#inhib-btn.inhib-active { background: rgba(60,45,0,0.92); border-color: #ffaa00; color: #ffcc44; }
+/* ── SHIP 선택 메뉴(INHIBIT식) ── */
+#ship-menu {
+  display: none;
+  position: absolute; bottom: calc(20% + 40px); left: 8px; z-index: 1250;
+  background: rgba(8,8,14,0.95); border: 1px solid #7ab8f5; border-radius: 6px;
+  padding: 5px; flex-direction: column; gap: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#map-wrap.tcut-off #ship-menu { bottom: 40px; }
+#ship-menu.open { display: flex; }
+#ship-menu button {
+  background: rgba(20,20,20,0.9); border: 1px solid #444; border-radius: 4px;
+  color: #cfe; font-size: 11px; font-weight: bold; padding: 7px 12px;
+  cursor: pointer; white-space: nowrap; text-align: left;
+  display: flex; justify-content: space-between; gap: 12px;
+}
+#ship-menu button span { color: #888; }
+#ship-menu button.on { border-color: #33cc55; }
+#ship-menu button.on span { color: #4ade80; }
+
+/* ── 공역 접근/진입 경보 배너 ── */
+#aspc-alert {
+  display: none;
+  position: absolute; top: 46px; left: 50%; transform: translateX(-50%);
+  z-index: 1300; max-width: 86%;
+  padding: 6px 14px; border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+}
+#aspc-alert.near { display: block; background: rgba(60,45,0,0.92); border: 1px solid #ffaa00; color: #ffcc44; }
+#aspc-alert.inside { display: block; background: rgba(70,0,0,0.94); border: 1px solid #ff3322; color: #ff7766; animation: aspcBlink 1s step-end infinite; }
+@keyframes aspcBlink { 50% { opacity: 0.45; } }
+/* ── 지형 접근 경고(T-CUT 기반) ── */
+#terrain-alert {
+  display: none;
+  position: absolute; top: 78px; left: 50%; transform: translateX(-50%);
+  z-index: 1300; padding: 5px 16px; border-radius: 6px;
+  background: rgba(70,0,0,0.94); border: 1px solid #ff3322; color: #ff7766;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 13px; font-weight: bold;
+  letter-spacing: 2px; pointer-events: none;
+  animation: aspcBlink 1s step-end infinite;
+}
+#terrain-alert.on { display: block; }
+/* ── VNAV 강하 알림 ── */
+#vnav-alert {
+  display: none;
+  position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
+  z-index: 1300; padding: 5px 16px; border-radius: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px; font-weight: bold; letter-spacing: 1px; white-space: nowrap; pointer-events: none;
+}
+#vnav-alert.pre   { display: block; background: rgba(60,45,0,0.92); border: 1px solid #ffaa00; color: #ffd24d; }
+#vnav-alert.begin { display: block; background: rgba(50,0,50,0.94); border: 1px solid #ff4dd2; color: #ff9de8; animation: aspcBlink 1s step-end infinite; }
+
+/* GPS 상태창: 하단 좌표창(#center-coord, left:10px) 오른쪽에 나란히 배치 */
+#gps-status {
+  position: absolute; bottom: calc(20% + 44px); left: 235px; z-index: 1100;
+  background: rgba(0,20,0,0.80); border: 1px solid #226622; color: #00cc66;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 9px;
+  padding: 3px 7px; border-radius: 3px; display: none;
+  text-align: left; line-height: 1.5; white-space: nowrap;
+}
+#map-wrap.tcut-off #gps-status { bottom: 44px; }
+#wx-btn.wx-active {
+  background: rgba(0,20,40,0.92); border-color: #00aaff; color: #66ccff;
+  box-shadow: 0 0 8px rgba(0,170,255,0.4);
+}
+#rain-btn.rain-active {
+  background: rgba(0,10,40,0.92); border-color: #4488ff; color: #88bbff;
+  box-shadow: 0 0 8px rgba(68,136,255,0.4);
+}
+#wind-btn.wind-active {
+  background: rgba(0,30,20,0.92); border-color: #44cc88; color: #88ffcc;
+  box-shadow: 0 0 8px rgba(68,204,136,0.4);
+}
+
+#map-sim-bar {
+  position: absolute; bottom: 20%; left: 0; right: 0; z-index: 1000;
+  display: flex; gap: 3px; padding: 5px 6px;
+  background: rgba(0,0,0,0.82); border-top: 1px solid #2a2a2a;
+}
+/* 심바로 옮긴 지도 버튼들의 활성 스타일이 sim-btn 그라데이션 위에서도 보이게 */
+#map-sim-bar #layer-btn.sat {
+  background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
+}
+#map-sim-bar .sim-btn { flex: 1; }
+/* ── TERRAIN CUT (전방 20NM 지형 단면, 맵 높이의 1/5) ── */
+#terrain-cut {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 20%;
+  background: #06090d; border-top: 1px solid #2a3a4a; z-index: 990;
+}
+/* T-CUT 꺼짐: 지도 100% 높이, 20% 기반 오프셋 전부 0 기준으로.
+   ★ 십자마크는 지도 세로 중앙(=leafMap.getCenter, 좌표 입력 기준)과 일치해야 함:
+   패널 켜짐(지도 80%) → top:40%, 꺼짐(지도 100%) → top:50% */
+#map-wrap.tcut-off #terrain-cut { display: none; }
+#map-wrap.tcut-off #map, #map-wrap.tcut-off #map3d { height: 100%; }
+#map-wrap.tcut-off #map-crosshair { top: 50%; }
+#map-wrap.tcut-off #map-sim-bar { bottom: 0; }
+#map-wrap.tcut-off #center-coord { bottom: 44px; }
+#map-wrap.tcut-off #fdr-btn-wrap { bottom: 120px; }
+#map-wrap.tcut-off #fdr-panel { bottom: 165px; }
+#map-wrap.tcut-off.map3d-on #fdr-btn-wrap { bottom: 175px; }
+#map-tcut-btn.active { color: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 6px rgba(0,229,255,0.35); }
+/* ── HOLD ENTRY (홀딩 진입 판정 레이어) ── */
+#map-hold-btn.active { color: #ffb74d; border-color: #ffb74d; box-shadow: 0 0 6px rgba(255,183,77,0.35); }
+#hold-entry {
+  display: none; position: absolute; right: 8px; top: 48px; z-index: 996;
+  width: 226px; max-width: 52%;   /* 분할 화면에서 지도를 덮지 않게 — 창이 아니라 지도 폭 기준 */
+  background: rgba(8,12,18,0.94); border: 1px solid #2a3a4a; border-radius: 6px;
+  font: 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+}
+#map-wrap.hold-entry-on #hold-entry { display: block; }
+#hold-entry-head {
+  position: relative; color: #ffb74d; font-weight: bold; letter-spacing: .5px;
+  padding: 5px 22px 5px 8px; border-bottom: 1px solid #22303c;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#hold-entry-head button {
+  position: absolute; top: 50%; right: 5px; transform: translateY(-50%);
+  background: none; border: none; color: #667; font-size: 12px; line-height: 1;
+  cursor: pointer; padding: 2px 4px;
+}
+#hold-entry-canvas { display: block; width: calc(100% - 16px); aspect-ratio: 1; margin: 4px auto 0; }
+#hold-entry-info { padding: 4px 8px 7px; color: #8fa6bb; line-height: 1.5; }
+#hold-entry-info b { color: #e8eaed; }
+
+#terrain-cut canvas { width: 100%; height: 100%; display: block; }
+#tcut-title {
+  position: absolute; top: 3px; left: 8px; color: #7fa8c9;
+  font: bold 10px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  letter-spacing: 1px; pointer-events: none;
+}
+.as-tip {
+  background: rgba(10,10,20,0.92) !important; border: 1px solid #555 !important;
+  color: #ccc !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+  font-size: 11px !important; border-radius: 4px !important;
+}
+/* Tap-to-add waypoint confirm popup */
+.tap-confirm-popup .leaflet-popup-content-wrapper {
+  background: #0d1a0d; border: 1.5px solid #00ff88; border-radius: 6px;
+  padding: 0; box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+}
+.tap-confirm-popup .leaflet-popup-tip { background: #0d1a0d; }
+.tap-confirm-popup .leaflet-popup-content { margin: 0; }
+.apt-wx-popup .leaflet-popup-content-wrapper {
+  background: #0a1a0a; border: 1.5px solid #00ff88; border-radius: 6px;
+  padding: 0; color: #ccffcc; box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+}
+.apt-wx-popup .leaflet-popup-tip { background: #0a1a0a; }
+.apt-wx-popup .leaflet-popup-content { margin: 0; min-width: 240px; }
+.apt-wx-popup .leaflet-popup-close-button { color: #00ff88 !important; font-size: 18px !important; top: 4px !important; right: 6px !important; }
+#wx-panel {
+  display: none; position: absolute; top: 80px; right: 8px; z-index: 1100;
+  width: 380px; background: rgba(5,14,5,0.97); border: 1.5px solid #226622;
+  border-radius: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.85);
+}
+#wx-panel-header {
+  color: #00cc88; font-size: 18px; font-weight: bold; text-align: center;
+  letter-spacing: 1px; border-bottom: 1px solid #1a3a1a; padding: 7px 10px 6px;
+  position: relative; cursor: grab; user-select: none;
+}
+#wx-panel-body {
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 8px;
+  max-height: 520px; overflow-y: auto;
+}
+.wx-ap-btn {
+  background: #0e1e0e; border: 1px solid #1a3a1a; color: #559955;
+  border-radius: 3px; padding: 6px 2px; font-size: 16px; font-weight: bold;
+  cursor: pointer; letter-spacing: 0.3px; font-family: 'Helvetica Neue', Arial, sans-serif;
+  touch-action: manipulation; text-align: center; line-height: 1.4;
+  transition: background 0.1s, border-color 0.1s;
+}
+.wx-ap-btn.wx-ap-sel { background: #002a10; border-color: #00ff88; color: #00ff88; }
+#wx-fetch-row { display: flex; gap: 5px; align-items: center; }
+#wx-icao {
+  flex: 1; background: #050e05; border: 1px solid #226622; color: #00ff88;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: bold;
+  padding: 5px 6px; border-radius: 3px; outline: none; min-width: 0;
+  text-transform: uppercase; letter-spacing: 3px;
+}
+.wx-fetch-btn {
+  background: #0d2010; border: 1px solid #226622; color: #00cc88;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 18px; font-weight: bold;
+  padding: 5px 10px; border-radius: 3px; cursor: pointer; letter-spacing: 0.5px;
+  touch-action: manipulation; white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s;
+}
+.wx-fetch-btn:active { background: #003a18; border-color: #00ff88; }
+#wx-result {
+  font-size: 18px; line-height: 1.6; color: #aaa;
+  border-top: 1px solid #1a3a1a; padding-top: 6px;
+}
+
+/* ── Flight Plan (Garmin CDU Style) ── */
+#fp-wrap {
+  /* CDU와 같은 프레임을 쓰므로 배경·정렬은 #cdu-wrap과 동일하게 */
+  background: #111;
+  position: relative;
+  overflow: hidden;
+  font-family: 'Arial', sans-serif;
+  color: white;
+}
+.fp-mode-title {
+  background: linear-gradient(to bottom, #555, #111);
+  text-align: center; padding: 4px 8px;
+  font-size: 9px; font-weight: bold; letter-spacing: 1px;
+  border-bottom: 1px solid #000; color: #eee; flex-shrink: 0;
+}
+.fp-content-area {
+  flex: 1; display: flex; flex-direction: column;
+  padding: 6px; overflow-y: auto; gap: 5px; min-height: 0;
+}
+.fp-panel-border {
+  border: 1.5px solid #87ceeb; border-radius: 5px;
+  padding: 6px; background: #000;
+  display: flex; flex-direction: column; overflow-y: auto; gap: 3px;
+}
+.fp-footer-nav {
+  height: 50px; display: flex; justify-content: space-around;
+  align-items: center; background: #111;
+  border-top: 1.5px solid #333; padding: 0 3px; flex-shrink: 0;
+}
+.fp-nav-btn {
+  background: linear-gradient(to bottom, #444, #111, #000);
+  border: 1px solid #444; border-radius: 5px;
+  padding: 4px 2px; flex: 1; max-width: 68px;
+  height: 40px; box-sizing: border-box;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; font-size: 7px; color: white;
+  touch-action: manipulation; transition: transform 0.05s;
+  text-align: center; line-height: 9px; margin: 0 2px;
+}
+.fp-nav-btn:active { background: linear-gradient(to bottom, #555, #222, #111); transform: scale(0.95); }
+/* 아이콘 줄 상자 고정 — nav-btn과 같은 이유 */
+.fp-nav-btn span { font-size: 13px; line-height: 16px; height: 16px; display: block; pointer-events: none; }
+.fp-nav-btn.fp-nav-enter { background: #1a2a4a; border-color: #87ceeb; }
+.fp-nav-btn.fp-nav-active { background: linear-gradient(to bottom, #0e2a0e, #050d05); border-color: #00cc00; color: #00ff88; }
+.fp-wp-row {
+  display: grid;
+  grid-template-columns: 14px 18px 1fr 34px 38px 30px 26px;
+  align-items: center; gap: 2px;
+  padding: 5px 4px; border-bottom: 1px solid #0e0e0e;
+  cursor: pointer; touch-action: manipulation;
+}
+.fp-wp-row:active { background: #0a1510; }
+.fp-wp-row.active-wp { background: #081a08; border-left: 3px solid #00ff88; }
+.fp-wp-seq { color: #333; font-size: 8px; }
+/* 순서 바꾸기 손잡이 — 여기만 끌면 목록이 스크롤되지 않고 행이 따라온다 */
+.fp-wp-grip {
+  color: #4a5a6a; font-size: 12px; line-height: 1; text-align: center;
+  cursor: grab; touch-action: none; user-select: none;
+}
+.fp-wp-grip:active { cursor: grabbing; color: #87ceeb; }
+.fp-wp-row.fp-dragging {
+  background: #0d1b2a; opacity: 0.9;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6); border-bottom-color: #87ceeb;
+}
+.fp-wp-ident { color: #fff; font-weight: bold; font-size: 12px; }
+.fp-wp-hdg { color: #c8ff00; font-size: 10px; font-weight: bold; text-align: right; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+.fp-wp-dist { color: #00ffff; font-size: 10px; text-align: right; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+.fp-wp-hold {
+  background: transparent; border: 1px solid #2a2a2a; color: #555;
+  width: 28px; height: 22px; font-size: 8px; font-weight: bold;
+  cursor: pointer; border-radius: 2px;
+  display: flex; align-items: center; justify-content: center; touch-action: manipulation;
+}
+.fp-wp-hold.active { border-color: #ffcc44; color: #ffcc44; background: #201a06; }
+/* ── 홀딩 설정 화면 ── */
+.hold-row { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 6px; margin-bottom: 7px; }
+.hold-lbl { color: #87ceeb; font-size: 9px; font-weight: bold; letter-spacing: 0.5px; }
+.hold-seg { display: flex; gap: 4px; }
+.hold-btn {
+  flex: 1; background: #0d0d0d; border: 1px solid #2a2a2a; color: #777;
+  font-size: 10px; font-weight: bold; padding: 6px 0; border-radius: 3px;
+  cursor: pointer; touch-action: manipulation; text-align: center;
+}
+.hold-btn.on { border-color: #ffcc44; color: #ffcc44; background: #201a06; }
+.hold-spin { display: flex; align-items: center; gap: 4px; }
+.hold-spin .hold-btn { flex: 0 0 30px; }
+.hold-val {
+  flex: 1; text-align: center; color: #ffcc44; font-weight: bold; font-size: 15px;
+  background: #080808; border: 1px solid #222; border-radius: 3px; padding: 5px 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+.fp-wp-del {
+  background: transparent; border: 1px solid #442222; color: #cc4444;
+  width: 24px; height: 22px; font-size: 11px; cursor: pointer; border-radius: 2px;
+  display: flex; align-items: center; justify-content: center; touch-action: manipulation;
+}
+.fp-section-hdr {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 4px; background: #0c1520;
+  border-bottom: 1px solid #1a2a3a;
+  color: #87ceeb; font-size: 8px; font-weight: bold; letter-spacing: 0.5px;
+}
+.fp-empty-state {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px; padding: 16px 8px; flex: 1;
+}
+.fp-empty-label { color: #2a4a3a; font-size: 8px; letter-spacing: 1px; margin-bottom: 4px; }
+.fp-empty-btn {
+  width: 100%; padding: 10px;
+  background: linear-gradient(to bottom, #1a2a3a, #0a1520);
+  border: 1.5px solid #2a4a6a; border-radius: 5px;
+  color: #87ceeb; font-size: 10px; font-weight: bold;
+  text-align: center; cursor: pointer; touch-action: manipulation;
+  letter-spacing: 0.5px;
+}
+.fp-empty-btn:active { background: #1a2a4a; }
+.fp-ap-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.fp-ap-btn {
+  background: linear-gradient(to bottom, #1a2a3a, #0a1520);
+  border: 1px solid #2a4a6a; color: #00ffff;
+  padding: 6px 4px; font-size: 11px; cursor: pointer;
+  border-radius: 4px; touch-action: manipulation;
+  font-weight: bold; min-width: 42px; text-align: center; flex: 1;
+}
+.fp-ap-btn:active { background: #0a1a2a; }
+.fp-input-type-btn {
+  height: 48px;
+  background: linear-gradient(to bottom, #444, #111, #000);
+  border: 1px solid #444; border-radius: 4px;
+  color: #fff; font-size: 10px; font-weight: bold;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 2px;
+  cursor: pointer; touch-action: manipulation;
+  transition: transform 0.05s;
+}
+.fp-input-type-btn:active { transform: scale(0.95); background: linear-gradient(to bottom, #555, #222, #111); }
+.fp-input-type-btn.fp-cyan { border-color: #87ceeb; color: #87ceeb; }
+.fp-disp-box {
+  flex: 1; height: 42px;
+  background: #000; border: 1.5px solid #555; border-radius: 4px;
+  color: #c8ff00; font-size: 20px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; letter-spacing: 2px; padding: 0 10px;
+}
+.fp-disp-cursor { font-size: 16px; color: #87ceeb; animation: fp-blink 0.9s step-start infinite; }
+@keyframes fp-blink { 50% { opacity: 0; } }
+.fp-key-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.fp-key {
+  height: 44px;   /* CDU item-btn 높이 수준 */
+  background: radial-gradient(circle at 30% 30%, #444, #111);
+  border: 0.7px solid #555; border-radius: 5px;
+  color: white; font-size: 15px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; touch-action: manipulation;
+  transition: transform 0.05s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+}
+.fp-key:active { background: radial-gradient(circle at 30% 30%, #666, #222); transform: scale(0.92); }
+.fp-numpad-grid { display: grid; grid-template-columns: repeat(3, 44px); gap: 8px; justify-content: center; margin: 6px auto; }
+/* 화면 안에 함께 놓는 숫자판 — 값 칸 바로 아래에 붙여 두느라 5열로 낮게 만든다.
+   (종전에는 숫자판만 있는 화면으로 넘어갔다 돌아왔다) */
+.fp-pad5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; margin-top: 7px; }
+.fp-pad-key {
+  height: 38px; background: radial-gradient(circle at 30% 30%, #3a3a3a, #111);
+  border: 0.7px solid #555; border-radius: 6px;
+  color: #fff; font-size: 15px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; touch-action: manipulation; box-shadow: 0 2px 4px rgba(0,0,0,0.6);
+}
+.fp-pad-key:active { transform: scale(0.95); box-shadow: inset 0 2px 5px rgba(0,0,0,0.8); }
+.fp-pad-key.wide { grid-column: span 2; }
+.fp-pad-key.ent  { background: #00252e; border-color: #00e5ff; color: #00e5ff; font-size: 13px; }
+.fp-pad-key.clr  { background: #2a0e0e; border-color: #663333; color: #ff6666; font-size: 13px; }
+.fp-num-circ {
+  width: 42px; height: 42px;
+  background: radial-gradient(circle at 30% 30%, #444, #111);
+  border: 0.7px solid #555; border-radius: 50%;
+  color: white; font-size: 16px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; touch-action: manipulation;
+  box-shadow: 0 3px 5px rgba(0,0,0,0.6);
+  transition: transform 0.05s;
+}
+.fp-num-circ:active { background: radial-gradient(circle at 30% 30%, #666, #222); transform: scale(0.95); box-shadow: inset 0 3px 6px rgba(0,0,0,0.8); }
+.fp-bksp-btn {
+  flex-shrink: 0; width: 42px; height: 42px;
+  background: linear-gradient(to bottom, #444, #111, #000);
+  border: 0.7px solid #555; border-radius: 6px;
+  color: white; font-size: 9px; font-weight: bold;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  cursor: pointer; touch-action: manipulation;
+}
+.fp-bksp-btn:active { background: linear-gradient(to bottom, #555, #222, #111); }
+.fp-ifr-tab-row { display: flex; gap: 3px; margin-bottom: 5px; }
+.fp-ifr-tab {
+  flex: 1; height: 30px;
+  background: #2c2c2c; border: 0.7px solid #444;
+  border-radius: 4px 4px 0 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8px; cursor: pointer; color: #aaa; touch-action: manipulation;
+}
+.fp-ifr-tab.active { background: #eee; color: black; font-weight: bold; }
+.fp-ifr-sel {
+  background: #0a0a0a; border: 1px solid #1a5a1a; color: #c8ff00;
+  padding: 6px; font-size: 11px; border-radius: 3px; width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+.fp-ifr-lbl { color: #87ceeb; font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; margin-top: 4px; }
+.fp-ifr-add {
+  background: linear-gradient(to bottom, #1a3a1a, #0a1a0a);
+  border: 1px solid #2a6a2a; color: #00ff88;
+  padding: 8px; font-size: 10px; cursor: pointer; border-radius: 4px;
+  font-weight: bold; text-align: center; touch-action: manipulation;
+  margin-top: 6px;
+}
+.fp-ifr-add:active { background: #0e1a0e; }
+.fp-phase-badge {
+  font-size: 7px; padding: 0 2px; border-radius: 2px;
+  vertical-align: middle; margin-right: 2px; font-weight: bold; display: inline-block;
+}
+.badge-dep { background: #0d280d; color: #00cc44; border: 1px solid #226622; }
+.badge-enr { background: #0d1a2e; color: #4488ff; border: 1px solid #224466; }
+.badge-app { background: #2e1a0d; color: #ff8844; border: 1px solid #664422; }
+.sim-btn.on { background: linear-gradient(to bottom, #0e2a0e, #050d05, #000); border-color: #00cc00; color: #00ee00; }
+.sim-btn {
+  flex: 1; min-width: 0; background: linear-gradient(to bottom, #333, #111, #000);
+  border: 1px solid #444; color: #fff;
+  padding: 6px 2px; font-size: 10px; cursor: pointer; border-radius: 4px;
+  text-align: center; touch-action: manipulation; font-weight: bold;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  white-space: nowrap; overflow: hidden;
+}
+.sim-btn:active { background: linear-gradient(to bottom, #555, #222, #111); }
+.sim-btn.clr { border-color: #552222; color: #ee7777; }
+.ac-marker svg { display: block; }
+        :root {
+            --bg-dark: #050505;
+            --text-green: #c8ff00; 
+            --text-cyan: #00ffff;
+            --active-blue: #87ceeb;
+            --btn-grad: linear-gradient(to bottom, #444, #111, #000);
+            --border-3d: 1px solid #444;
+        }
+
+
+        .cdu-frame {
+            width: 354px;
+            height: 567px;
+            box-sizing: border-box;
+            background-color: #111; padding: 8px; border-radius: 12px; border: 3px solid #000;
+            display: flex; flex-direction: column;
+            box-shadow: 0 13px 33px rgba(0,0,0,0.9);
+            font-family: 'Arial', sans-serif; color: white; touch-action: manipulation;
+        }
+        
+        .touch-display { background-color: var(--bg-dark);
+            flex: 1; display: flex; flex-direction: column; border: 1.5px solid #000; overflow: hidden;
+        }
+
+        /* Header (CNS Bar) */
+        .header-grid { display: grid;
+            grid-template-columns: 0.9fr 1.2fr 0.8fr 1.2fr 0.8fr; background: #111; padding: 4px; gap: 3px; border-bottom: 1.5px solid #333; height: 63px;
+        }
+        .header-box { background: #0a0a0a; border: 0.7px solid #444; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; position: relative; overflow: hidden; }
+        .header-label { font-size: 6px; color: #888; text-align: center; width: 100%; pointer-events: none; }
+        .freq-act { color: white; font-size: 11px; font-weight: bold; }
+        .freq-stby { color: var(--text-cyan); font-size: 10px; font-weight: bold; }
+        .swap-arrow { font-size: 10px; color: #777; cursor: pointer; padding: 2px; z-index: 10;}
+        .green-ind { color: var(--text-green); font-size: 8px; font-weight: bold; text-align: center; line-height: 1.1; }
+
+        /* --- 기능 활성화 버튼 시각적 강조 스타일 --- */
+        .func-active {
+            background: linear-gradient(to bottom, rgba(135, 206, 235, 0.25) 0%, #444 40%, #1a1a1a 100%) !important;
+            border-top: 1px solid rgba(135, 206, 235, 0.6) !important;
+            transition: background 0.1s ease;
+        }
+        .func-active:active {
+            background: linear-gradient(to bottom, rgba(135, 206, 235, 0.4) 0%, #555 40%, #222 100%) !important;
+        }
+        .top-func-btn {
+            background: linear-gradient(to bottom, rgba(135, 206, 235, 0.2) 0%, transparent 80%);
+            transition: background 0.1s ease;
+        }
+        .top-func-btn:active {
+            background: rgba(135, 206, 235, 0.35);
+        }
+
+        /* Titles and Sub-headers */
+        .mode-title-bar { background: linear-gradient(to bottom, #555, #111);
+            text-align: center; padding: 3px; font-size: 9px; font-weight: bold; border-bottom: 1px solid #000; color: #eee;
+        }
+        .sub-header { display: flex; align-items: flex-end; padding: 4px 7px 0 7px;
+            gap: 5px; background: #1a1a1a; }
+        .user-3d-btn { height: 37px; background: var(--btn-grad);
+            border: var(--border-3d); border-radius: 4px 4px 0 0; font-size: 7px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 0 5px;
+        }
+        
+        .tab-container { display: flex; flex: 1; gap: 3px; }
+        .tab { flex: 1; height: 30px; background: #2c2c2c; border: 0.7px solid #444;
+            border-radius: 4px 4px 0 0; display: flex; align-items: center; justify-content: center; font-size: 7px; cursor: pointer; color: #aaa;
+        }
+        .tab.active { background: #eee; color: black; font-weight: bold; height: 32px; margin-top: -2px; }
+
+        /* Main Content */
+        #mainContentArea { flex: 1; display: flex; flex-direction: column; padding: 7px; overflow-y: auto; }
+        .panel-border { flex: 1; border: 1.5px solid var(--active-blue); border-radius: 5px; padding: 8px; background: black; display: flex; flex-direction: column; }
+
+        /* Common Buttons with enhanced active states for touch feedback */
+        .item-btn { height: 35px; background: var(--btn-grad); border: var(--border-3d);
+            color: white; font-size: 8px; display: flex; flex-direction: column; justify-content: center; align-items: center; cursor: pointer; border-radius: 4px; position: relative; text-align: center;
+            transition: transform 0.05s, background 0.1s;
+        }
+        .item-btn:active {
+            background: linear-gradient(to bottom, #555, #222, #111); 
+            transform: scale(0.96);
+        }
+        .status-line { position: absolute; bottom: 3px; width: 70%; height: 2px; background: #333; border-radius: 1.5px; }
+        .on .status-line { background: var(--text-green); box-shadow: 0 0 3px var(--text-green); }
+
+        /* Sliders */
+        .volume-row { display: grid; grid-template-columns: 50px 43px 1fr 63px; align-items: center; margin-bottom: 7px; gap: 5px; }
+        .wedge-slider { height: 28px; background: #111; border: 0.7px solid #444; position: relative; overflow: hidden; cursor: ew-resize; border-radius: 3px; }
+        .wedge-fill { height: 100%; background: linear-gradient(to right, #1a3a4a, #00d2ff); clip-path: polygon(0% 100%, 100% 0%, 100% 100%); pointer-events: none; }
+        .wedge-text { position: absolute; left: 7px; top: 8px; font-size: 8px; color: var(--active-blue); font-weight: bold; z-index: 3; pointer-events: none; }
+
+        /* Audio Radios */
+        .freq-display-box { height: 35px; background: #0a0a0a; border: 0.7px solid #444; display: flex; flex-direction: column; justify-content: center; align-items: flex-end; padding-right: 5px; border-radius: 4px; cursor: pointer; transition: background 0.1s; }
+        .freq-display-box:active { background: #1a1a1a; }
+
+        /* Intercom Grid */
+        .intercom-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 5px; }
+        .loop-row { display: flex; gap: 8px; margin-top: 10px; }
+
+        /* Numpad with optimized touch targets */
+        .input-row { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 10px 0 20px 0; }
+        .freq-box-main { width: 120px; height: 40px; background: #000; border: 1.5px solid #555; border-radius: 4px; color: var(--text-green); font-size: 22px; display: flex; align-items: center; justify-content: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+        .numpad-grid { display: grid; grid-template-columns: repeat(3, 65px); gap: 12px; justify-content: center; }
+        .xpdr-numpad-grid { display: grid; grid-template-columns: repeat(4, 55px); gap: 10px; justify-content: center; margin-bottom: 15px;}
+        .selcal-grid { display: grid; grid-template-columns: repeat(5, 45px); gap: 8px; justify-content: center; }
+        
+        .num-circle { 
+            width: 55px; height: 55px; /* Increased touch target */
+            background: radial-gradient(circle at 30% 30%, #444, #111); border: 0.7px solid #555; border-radius: 50%; color: white; font-size: 18px; font-weight: bold; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 3px 5px rgba(0,0,0,0.6); 
+            transition: transform 0.05s, background 0.1s;
+        }
+        .num-circle:active {
+            background: radial-gradient(circle at 30% 30%, #666, #222);
+            box-shadow: inset 0 3px 6px rgba(0,0,0,0.8);
+            transform: scale(0.95);
+        }
+
+        /* Footer */
+        .footer-nav { height: 53px; display: flex; justify-content: space-around; align-items: center; background: #111; border-top: 1.5px solid #333; padding: 0 5px; }
+        .nav-btn { background: var(--btn-grad); border: var(--border-3d); border-radius: 5px; padding: 4px 4px;
+                   /* 개수와 라벨 길이에 상관없이 모두 같은 크기 — Flight Plan 푸터와 동일한 규칙 */
+                   flex: 1 1 0; min-width: 0; max-width: 68px; margin: 0 2px;
+                   height: 42px; box-sizing: border-box;
+                   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+                   cursor: pointer; font-size: 7px; line-height: 9px; color: white; transition: transform 0.05s, background 0.1s; }
+        .nav-btn:active { background: linear-gradient(to bottom, #555, #222, #111); transform: scale(0.95); }
+        /* 아이콘 줄 상자를 고정 — 이모지/기호의 글리프 높이 차이로 버튼 크기가 달라지지 않게 */
+        .nav-btn span { font-size: 14px; line-height: 17px; height: 17px; display: block; pointer-events: none; }
+        .enter-btn-blue { background: #1a2a4a; border: 1px solid var(--active-blue); }
+        .enter-btn-blue:active { background: #2a4a7a; }
+
+        
+        /* Home Grid */
+        .home-grid { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 7px 5px; padding: 4px; }
+        .home-icon-wrapper { width: 23%; display: flex; flex-direction: column; align-items: center; cursor: pointer; text-decoration: none; color: inherit; }
+        .icon-box { width: 44px; height: 44px; background: linear-gradient(to bottom, #444, #1a1a1a); border-radius: 8px; border: 1px solid #555; display: flex; align-items: center; justify-content: center; margin-bottom: 3px; overflow: hidden; box-shadow: 0 3px 5px rgba(0,0,0,0.6); transition: transform 0.05s; }
+        .icon-box:active { transform: scale(0.92); }
+        .icon-box svg { width: 70%; height: 70%; }
+        .icon-label { font-size: 8px; color: #eee; text-align: center; font-weight: bold; line-height: 1.1; pointer-events: none; min-height: 18px; display: flex; align-items: flex-start; justify-content: center; }
+        
+        /* PERF Page Styles */
+        .perf-row { display: flex; justify-content: space-between; margin-bottom: 12px; align-items: center; }
+        .perf-label { font-size: 8px; color: #ccc; margin-bottom: 2px; }
+        .perf-val-box { border: 1px solid var(--active-blue); background: #000; padding: 4px 8px; border-radius: 4px; color: var(--text-green); font-size: 12px; font-weight: bold; min-width: 50px; text-align: center; cursor: pointer; transition: background 0.1s; }
+        .perf-val-box:active { background: #222; }
+        .perf-result-box { background: #1a1a1a; border: 1px solid #555; padding: 3px 2px; border-radius: 4px; color: white; font-size: 11px; font-weight: bold; min-width: 45px; text-align: center; display: flex; align-items: center; justify-content: center; }
+        .perf-result-title { font-size: 6.5px; color: var(--text-cyan); text-align: center; margin-bottom: 2px; line-height: 1.1; }
+        
+        /* Error/Warning Animation */
+        @keyframes blink { 50% { opacity: 0.4; } }
+
+/* Ship Control */
+#ship-panel {
+  display: none; position: absolute; bottom: 55px; right: 8px; z-index: 1100;
+  width: 196px; background: #111; border: 1.5px solid #2a2a2a; border-radius: 10px;
+  padding: 10px; font-family: 'Arial', sans-serif;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.85);
+}
+.ship-tab {
+  flex: 1; background: #1a1a1a; border: 1px solid #3a3a3a; color: #666;
+  border-radius: 4px; padding: 5px 0; font-size: 9px; font-weight: bold;
+  cursor: pointer; letter-spacing: 0.5px; transition: background 0.1s;
+}
+.ship-tab.ship-tab-active { background: #0d2040; border-color: #7ab8f5; color: #7ab8f5; }
+.ship-num {
+  background: radial-gradient(circle at 35% 35%, #3c3c3c, #111);
+  border: 0.7px solid #555; border-radius: 50%; color: #fff;
+  font-size: 15px; font-weight: bold; width: 100%; aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.6);
+  transition: transform 0.05s, background 0.1s;
+}
+.ship-num:active { transform: scale(0.91); background: radial-gradient(circle at 35% 35%, #555, #222); }
+.ship-clr { background: radial-gradient(circle at 35% 35%, #3a1010, #1a0000) !important; border-color: #772222 !important; font-size: 9px !important; }
+.ship-ent { background: radial-gradient(circle at 35% 35%, #0d1f4a, #060e20) !important; border-color: #3355bb !important; color: #88aaff !important; font-size: 9px !important; }
+.sim-btn.ship-active { background: #1a3050; border-color: #7ab8f5; color: #7ab8f5; }
+/* ── 야간(Night) 모드: 밝은 지도/차트를 어둡게, 붉은 딤 오버레이 ── */
+body.night-mode #map, body.night-mode #map3d { filter: brightness(0.5) contrast(1.05); }
+body.night-mode #pfd { filter: brightness(0.72); }
+body.night-mode #pdfViewArea, body.night-mode #cdu-wrap { filter: brightness(0.72); }
+body.night-mode::after {
+  content: ''; position: fixed; inset: 0; z-index: 4000; pointer-events: none;
+  background: rgba(40,0,0,0.16); mix-blend-mode: multiply;
+}
+
+/* ── 시작 안내 오버레이 ── */
+#help-overlay {
+  position: fixed; inset: 0; z-index: 5000;
+  background: rgba(0,0,0,0.72);
+  display: flex; align-items: center; justify-content: center;
+}
+#help-panel {
+  width: min(560px, 92vw); max-height: 86vh;
+  background: #0c1118; border: 1px solid #3a6ea5; border-radius: 10px;
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.8);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+#help-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: #101a28; border-bottom: 1px solid #24405e;
+  color: #7ab8f5; font-size: 14px; font-weight: bold; letter-spacing: 0.5px;
+}
+#help-head button {
+  background: none; border: none; color: #ff6655; font-size: 16px; font-weight: bold;
+  cursor: pointer; padding: 0 4px;
+}
+#help-body {
+  padding: 10px 16px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  color: #ccc; font-size: 12px; line-height: 1.55;
+}
+#help-body h3 { color: #8ac6ff; font-size: 12px; margin: 10px 0 4px; letter-spacing: 0.5px; }
+#help-body ul { margin: 0 0 4px; padding-left: 18px; }
+#help-body li { margin-bottom: 2px; }
+#help-body b { color: #ffd54f; font-weight: bold; }
+#help-body table {
+  width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 11px;
+}
+#help-body td { border: 1px solid #223349; padding: 3px 7px; }
+#help-body td b { color: #7fffb0; }
+#help-body .help-note { color: #778; font-size: 10px; margin-top: 4px; }
+#help-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 9px 14px; background: #101a28; border-top: 1px solid #24405e;
+}
+#help-foot label { color: #99a; font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#help-foot button {
+  background: #14324f; border: 1px solid #4a90d9; color: #8ac6ff;
+  font-size: 12px; font-weight: bold; padding: 7px 20px; border-radius: 5px; cursor: pointer;
+}
+#help-foot button:active { background: #1e4a75; color: #fff; }
+</style>
+</head>
+<body>
+<!-- ── 단일화면 선택 바 (기본 숨김) ── -->
+<!-- ── 시작 안내(사용법/키보드) 오버레이 ── -->
+<div id="help-overlay" style="display:none;">
+  <div id="help-panel">
+    <div id="help-head">
+      <span>✈ VFR Flight Simulator 사용 안내</span>
+      <button data-act="closeHelp" title="닫기">✕</button>
+    </div>
+    <div id="help-body">
+      <h3>1. 화면 구성</h3>
+      <ul>
+        <li>좌·우 창 모두 <b>PFD / MAP / CDU</b> 탭으로 전환. 양쪽에 같은 창을 고르면 반대쪽이 자동으로 바뀝니다.</li>
+        <li><b>전체화면</b>: CDU·Flight Plan 하단 <b>Full</b>, MAP 상단 <b>FULL</b> 버튼. 되돌아올 때는 같은 자리의 <b>HALF</b>.</li>
+        <li>경계선의 <b>◀▶ 그립</b>을 드래그하면 분할 비율 조절(자동 저장). <b>3분할에서는 그립이 두 개</b>라
+            좌·중·우 폭을 각각 잡을 수 있고, 각 경계선은 <b>맞닿은 두 창끼리만</b> 크기를 주고받습니다.
+            그립을 <b>더블탭</b>하면 기본 배분으로 되돌아갑니다. <b>⟳</b>은 새로고침.</li>
+      </ul>
+
+      <h3>2. 기본 비행 (시뮬레이션)</h3>
+      <ul>
+        <li>MAP 하단 <b>▶ FLY</b>로 시작(다시 누르면 PAUSE), <b>RESET</b> 초기화, <b>CLR</b> 비행계획 삭제.</li>
+        <li><b>⿲ 3분할</b>(좌측 상단 탭): 넓은 화면에서 <b>PFD·MAP·CDU</b>를 한 번에 봅니다.
+            <b>⿰ 2분할</b>을 누르면 되돌아갑니다. 각 패널의 탭으로 어떤 창을 둘지 바꿀 수 있고,
+            같은 창을 고르면 서로 자리를 맞바꿉니다.</li>
+        <li>PFD 하단 FCP에서 <b>IAS·HDG·CRS·VS·ALT·CRHT</b>를 ▲▼/◀▶로 조절.</li>
+        <li><b>HDG ◀▶</b>는 기수를 즉시 돌리지 않고 <b>선택 헤딩(HSI 청록 벅)</b>만 옮깁니다.
+            AFCS가 <b>표준선회(360°/2분 = 3°/s)</b>로 선회하며, 뱅크각은 <b>속도의 16%</b>로 자동 산출됩니다
+            (100kt → 16°). 목표에 가까워지면 자동 롤아웃하고, 수동 뱅크 트림을 쓰면 해제됩니다.</li>
+        <li><b>IAS/HDG/CRS 라벨 버튼</b>을 누르면 현재 값으로 즉시 동기화(CRS는 NAV 소스로 Direct-To).</li>
+      </ul>
+
+      <h3>3. MAP 창</h3>
+      <ul>
+        <li>상단: GPS·WX·＋(웨이포인트)·RAIN·WIND·NOTAM·FIX·AWY·<b>공역</b>·<b>📏 측정자</b>·FULL.</li>
+        <li><b>FIX</b>: 누르면 패널이 열려 <b>ENR 항로 픽스</b>(149개)와 <b>접근절차 픽스</b>를 따로 켜고 끕니다.
+            접근절차 픽스(주황 ◇)는 태안 RNP 16 / RNP 34 / 태안 IFR 로 나뉘며, 탭하면 기준점 라디얼·거리가 함께 뜹니다.</li>
+        <li><b>공역 → 서산 반경권</b>: 서산비행장 기준 <b>5 / 10 / 15 / 18NM</b> 거리권.
+            태안 절차상 해미 APPROACH 허가 없이는 서산 <b>10NM</b> 안에서 비행이 금지되므로 그 확인용입니다.</li>
+        <li>하단: FLY/RESET/CLR/<b>SHIP</b>/<b>T-CUT</b>/<b>⟳ HOLD</b>/<b>INHIB</b>/N↑/1인칭/MAP(위성)/3D/<b>🔒 잠금</b>.</li>
+        <li><b>N↑ / HDG↑</b>: 지도를 북쪽 위 / 기수 위로 놓습니다. <b>3D 에서도 같이 적용</b>됩니다 —
+            HDG↑ 면 3D 카메라도 기수 위로 돌고(1인칭을 꺼 둬도), N↑ 로 되돌리면 북쪽으로 맞춘 뒤
+            손으로 돌려 보는 것은 그대로 둡니다. <b>HDG↑ 에서도 축척은 그대로</b>입니다 —
+            회전하며 생기는 모서리는 지도를 확대하지 않고 <b>보이는 영역의 대각선만큼 넓혀서</b> 채웁니다.
+            (종전에는 1.42배 확대로 덮어 모드를 바꾸는 순간 지도가 확대됐고, 세로로 긴 화면에서는
+            그래도 모서리에 검은 삼각형이 남았습니다.)</li>
+        <li><b>DME 경사거리</b>: VOR/DME·TACAN 거리는 <b>항공기와 지상국 사이의 직선거리</b>입니다
+            (수평거리가 아닙니다). 그래서 <b>6,000ft 로 송신소 상공을 지나면 0 이 아니라 약 1.0NM</b> 에서
+            멈춥니다(6,000ft ÷ 6,076ft = 0.99NM). 고도가 높고 국이 가까울수록 차이가 커지고, 멀어지면
+            수평거리에 수렴합니다. PFD 우측 <b>NAV1·NAV2</b> 줄과 지도 <b>BRG1</b> 글자에 반영됩니다.
+            <b>FMS(GPS) 거리는 수평거리</b>라 이 차이가 없습니다 — 두 값이 다르게 보이는 건 정상입니다.</li>
+        <li><b>지도 BRG 시현</b>(<b>#1BDP · #2BDP</b>): PFD 의 BRG1·BRG2 버튼 <b>아래</b>에 있습니다.
+            켜야만 지도에 그 니들의 <b>선과 방위·거리 글자</b>가 나타납니다 — <b>기본은 미시현</b>이고
+            선·글자가 <b>함께</b> 켜지고 <b>함께</b> 꺼집니다. <b>BRG1·BRG2</b> 버튼은 계기(HSI)의 니들,
+            <b>#1BDP·#2BDP</b> 는 지도 시현입니다 — 계기로만 보고 지도는 깨끗하게 둘 수 있습니다.
+            니들 자체를 끄면 지도에서도 함께 사라집니다.</li>
+        <li><b>DME 아크(Y 절차)</b>: 접근절차의 아크 구간은 <b>기준국에서 지정된 거리를 유지하며</b> 돕니다.
+            지도에 그려지는 원호와 <b>NAV 오토파일럿이 나는 길이 같습니다</b> — 종전에는 두 픽스를 잇는
+            직선으로 날아 원호 안쪽을 가로질렀습니다(11NM 아크에서 약 0.3NM). CDI 편차도 이 구간에서는
+            <b>기준국까지의 거리 오차</b>를 가리킵니다. 아크 표시가 없는 구간(Z 절차 등)은 종전대로 픽스를 잇는 직선입니다.</li>
+
+        <li><b>1인칭</b>: 항공기를 화면 가운데(세로로는 아래에서 25% 지점)에 붙들어 앞을 더 보여 줍니다.
+            <b>3D 에서도 동작</b>하며 고도에 맞춰 줌·틸트가 걸립니다. 타일을 받는 중에도 카메라는 계속
+            따라갑니다 — 종전에는 타일이 다 오기 전까지 3D 추종이 멈춰 서 있었습니다.</li>
+        <li><b>📏 측정자</b>: 지도를 탭해 점을 찍으면 구간 방위·거리, 합계, 시작→끝 직선거리 표시.</li>
+        <li><b>공역</b>: 관제권·금지(P)·제한(R)·위험(D)구역, FIR·KADIZ. <b>모두 테두리만</b> 그려 내부의 심볼을 그대로 터치할 수 있습니다.
+            테두리 선을 탭하면 공역 정보가 뜨고, 접근/진입 시 경보는 종전과 동일합니다.</li>
+        <li><b>심볼 탭</b>: FIX·항로 경유점·<b>VOR</b>·<b>공항</b>·<b>비행계획 웨이포인트</b> 어느 것을 탭해도 좌표 확인·복사가 가능합니다.
+            VOR은 <b>NAV1/NAV2 튜닝</b>, 공항은 <b>METAR/TAF</b>·<b>공항 정보</b>가 함께 나옵니다.<br><b>비행계획 웨이포인트</b>는 몇 번째인지·HOLD·VNAV 여부를 보여 주고, <b>ℹ 정보</b> 를 누르면 CDU 의 그 <b>웨이포인트 카드</b>로 바로 갑니다(이미 플랜에 있으므로 「플랜 추가」는 없습니다). 종전에는 지도에서 누르는 즉시 활성 웨이포인트가 됐습니다 — 이제 활성 지정은 카드의 <b>Direct To</b> 입니다.</li>
+        <li><b>SHIP</b>: 버튼을 누르면 「배 표시 / 설정창」 선택. 선박 속도·침로를 입력해 이동시킬 수 있습니다.</li>
+        <li><b>🔒 잠금</b>: 화면 터치를 차단(비행 중 오조작 방지). 해제는 하단 버튼을 <b>1.2초 길게</b> 누르기.</li>
+        <li>우하단 <b>REC</b>(항적 기록, GPX/KML 저장) · <b>FDR</b>(항적 리플레이).</li>
+      </ul>
+
+      <h3>4. PFD · HOVER PAGE</h3>
+      <ul>
+        <li><b>NAV SRC</b>: <b>FMS / NAV1 / NAV2</b>. NAV1·NAV2는 CDU에서 튜닝한 VOR을 따라갑니다.</li>
+        <li><b>RNP</b>: NAV SRC 바로 아래. <b>4 / 2 / 1 / 0.3</b> NM — CDI 최대편위(스케일)를 정합니다.</li>
+        <li><b>SIM SPD</b>: <b>×1 / ×2 / ×4 / ×8</b> 배속. 홀딩 한 바퀴 4분, 절차 하나 20분을 실시간으로
+            기다리지 않아도 됩니다. <b>시뮬 시간만 빨리 흐르고 계산은 그대로</b>라 항적·진입·타이머가
+            실시간과 같습니다(프레임을 건너뛰지 않습니다). <b>RESET</b> 하면 ×1 로 돌아옵니다.</li>
+        <li><b>STOP WATCH</b>: 시뮬 시간으로 갑니다 — <b>배속에 비례</b>해 빨라지고 <b>시뮬을 멈추면 함께 멈춥니다</b>.
+            그래서 배속을 걸어도 이걸로 <b>아웃바운드 1분·선회 시점</b>을 그대로 잴 수 있습니다
+            (홀딩 레그 타이머와 같은 시간축). <b>GPS 모드</b>는 실제 비행이므로 실시간으로 갑니다.
+            위쪽 <b>시각</b> 표시는 언제나 실제 현재 시각입니다.</li>
+        <li><b>GSPD 작동 중에는 NAV·OBS 가 조향하지 못합니다.</b> GSPD 는 요/롤 축을 가져가
+            (요 조작은 <b>ANTI-TORQUE PEDAL</b> 전용) 오토파일럿이 뱅크를 지령해도 기수가 돌지 않습니다.
+            이때 NAV·OBS 버튼은 <b>빗금으로 흐리게</b> 표시되고 FMA 는 <b>GS·NAV대기</b>로 바뀝니다.
+            GSPD 를 끄면 그대로 이어서 조향합니다(설정은 유지).</li>
+        <li><b>NAV 오토파일럿</b>: 코스선을 선택한 각도로 인터셉트한 뒤 롤아웃해 추종합니다.
+            NAV 옆 <b>45°</b> 버튼으로 인터셉트 각도를 <b>30 / 45 / 60°</b> 중에서 고릅니다.
+            그 각으로 잡기에 표적이 너무 가까우면 <b>표적으로 직행</b>하며, 이때 FMA에 <b>NAV DIR</b>로 표시됩니다.
+            <b>측풍에서는 편류수정각(WCA)</b>을 자동으로 넣어 기수를 바람 쪽으로 틀고 대지트랙을 코스에 맞춥니다.
+            VOR/LOC 소스일 때는 편위를 거리(NM)가 아닌 <b>각도(최대편위 10°)</b>로 보아 실제 수신기처럼 동작합니다.</li>
+        <li><b>홀딩 패턴</b>: CDU <b>Flight Plan</b>의 각 웨이포인트 행에 있는 <b>HOLD</b> 버튼으로 설정합니다.
+            <b>선회방향(LEFT/RIGHT)</b>, <b>인바운드 코스(°M)</b>, <b>레그(TIME 30~180초 / DIST 1~20NM)</b>를 고르고 ENTER 하면
+            지도에 노란 레이스트랙으로 그려집니다. <b>NAV 오토파일럿</b>이 그 웨이포인트를 활성으로 잡으면 자동 무장되고,
+            FMA에는 <b>HOLD ARM</b> → 진입 후 <b>HOLD D/P/T</b>(진입 방식)로 표시됩니다.
+            홀딩 중에는 웨이포인트 시퀀싱이 멈추며, 빠져나가려면 <b>DEL HOLD</b>로 홀딩을 지웁니다.</li>
+        <li><b>진입 절차(Entry)</b> — 판정 기준은 <b>픽스 도달 시점의 기수</b>와 인바운드 코스의 각도 차이입니다.
+            표준(우선회) 기준 상대각 <b>r = 기수 − 인바운드 코스</b>(좌선회는 좌우 대칭):
+            <table style="margin:4px 0;border-collapse:collapse;font-size:11px;">
+              <tr><th style="text-align:left;padding:2px 8px 2px 0;">구역</th>
+                  <th style="text-align:left;padding:2px 8px 2px 0;">범위</th>
+                  <th style="text-align:left;padding:2px 0;">절차</th></tr>
+              <tr><td style="padding:2px 8px 2px 0;"><b>직진</b><br>Direct</td>
+                  <td style="padding:2px 8px 2px 0;">r 0~180°<br>(180°)</td>
+                  <td style="padding:2px 0;">픽스 통과 즉시 <b>그려진 홀딩 트랙을 그대로 따라</b> 선회·비행</td></tr>
+              <tr><td style="padding:2px 8px 2px 0;"><b>평행</b><br>Parallel</td>
+                  <td style="padding:2px 8px 2px 0;">r 180~290°<br>(110°)</td>
+                  <td style="padding:2px 0;">픽스 통과 후 <b>지상항적이 인바운드 역방위각</b>이 되게 기수를 잡고 레그 시간(기본 1분) 비행 →
+                      <b>좌장주면 우선회 · 우장주면 좌선회</b> 후 인바운드 트래킹</td></tr>
+              <tr><td style="padding:2px 8px 2px 0;"><b>눈물방울</b><br>Teardrop</td>
+                  <td style="padding:2px 8px 2px 0;">r 290~360°<br>(70°)</td>
+                  <td style="padding:2px 0;">픽스 통과 후 홀딩 패턴의 <b>3선회지점</b>(아웃바운드 레그 끝)으로 직행 →
+                      그 지점부터 홀딩 트랙 추종</td></tr>
+            </table>
+            진입이 끝나면 <b>지도에 그려진 레이스트랙 자체를 목표 경로로 추종</b>합니다(경로 추종 방식).
+            패턴은 현재 대기속도의 <b>표준선회 반경</b>과 레그(시간·거리)로 그려지고, 항공기는 그 선을 따라 돕니다 —
+            무풍에서 <b>패턴 이탈 평균 0.05NM</b>. 바람이 있으면 편류수정으로 대지항적을 패턴에 맞춥니다.
+            합류 시 <b>CDI·코스선이 대기 인바운드 코스로 전환(Twist)</b>되고,
+            홀딩이 걸린 웨이포인트에서는 <b>NAV 오토파일럿이 해제되지 않습니다</b>(픽스를 지나도 계속 홀딩).</li>
+        <li><b>선회 선행</b>: 웨이포인트에서 다음 레그로 꺾을 때 <b>d = R·tan(θ/2)</b> 만큼 미리 선회를 시작합니다
+            (R 은 지상속도·실제 뱅크 기준). VNAV 의 TOD 도 레그 방향 거리와 지상속도로 계산합니다.</li>
+        <li><b>방위 표기는 모두 자북(°M)</b>입니다 — HDG·CRS·BRG·NAV SOURCE·지도 BRG 라벨·비행계획 구간방위·바람·선박 침로.
+            지도의 선과 거리는 정확도를 위해 내부적으로 진북(대권) 기하로 계산하고, 화면 숫자와 입력만 자북으로 변환합니다
+            (한국 자기편차 9°W 기준). 측정자는 <b>°T / °M</b>을 함께 표시합니다.</li>
+        <li><b>NAV SOURCE 판독</b>(HSI 우측, 황토 바탕): <b>FMS · NAV1 · NAV2</b> 세 소스가 각각 가리키는 지점의
+            <b>명칭 · 방위 · 거리</b>를 동시에 표시합니다. 현재 선택된 소스는 배경 강조로 구분되며,
+            좌우의 <b>BRG1 · BRG2 판독을 모두 대신합니다</b> — 같은 값을 두 번 적지 않습니다.
+            <b>나침반의 BRG1(파랑) · BRG2(녹색) 니들</b>은 그대로이고, 하단 <b>BRG</b> 버튼으로 켜고 끕니다.</li>
+        <li><b>순서 바꾸기</b>: 비행계획 목록에서 각 줄 왼쪽의 <b>≡ 손잡이</b>를 <b>끌어서</b> 순서를 바꿉니다
+            (터치·마우스 모두 됩니다). 놓으면 <b>번호가 1,2,3… 로 다시 매겨지고</b>, <b>활성 웨이포인트</b>는
+            자리가 아니라 <b>그 지점</b>을 따라갑니다. 손잡이 밖을 누르면 종전대로
+            웨이포인트 카드가 열립니다.</li>
+        <li><b>CRS 라벨을 누르면 지금 자리로</b>: PFD 의 <b>CRS</b> 글자를 누르면 코스선이
+            <b>지금 있는 자리를 지나도록</b> 다시 잡힙니다(FMS 는 활성 웨이포인트, VOR 은 그 국 기준).
+            먼 거리에서 코스선이 항공기를 비켜 가던 것을 바로잡았습니다 — 대권의 방위는 양 끝에서
+            다르므로(수렴각), 지점에서 잰 방위로 코스를 잡아야 선이 정확히 항공기를 지납니다
+            (80NM 에서 약 1.1NM 어긋났습니다).</li>
+        <li><b>Direct To 는 언제든 다시</b>: <b>이미 활성인 지점</b>이어도 버튼을 누르면 <b>지금 있는 자리에서</b>
+            그 지점으로 코스를 다시 잡습니다(코스에서 밀려난 뒤 「여기서 다시 곧장」 이 필요한 때를 위해서입니다).
+            이렇게 잡은 구간의 <b>레그 코스는 항공기를 따라 계속 다시 잡힙니다</b> — 카드에 <b>「레그 코스 · 현 위치」</b>
+            로 적히고, 카드를 열어 둔 채 날면 값이 따라 움직입니다. 늘 현재 위치를 지나는 선이므로
+            <b>이 구간에서는 CDI 편차가 0</b> 입니다(코스를 정해 두고 인터셉트하려면 왼쪽 <b>진입 코스</b>를 쓰거나
+            FCP 의 <b>CRS</b> 로 코스를 정하십시오 — 그때는 코스가 굳고 편차가 살아납니다).
+            비행계획을 따라 다음 지점으로 넘어가면 종전대로 <b>구간(leg) 코스</b>로 돌아갑니다.</li>
+        <li><b>진입 코스</b>(웨이포인트 카드): <b>Direct To</b> 버튼이 반으로 나뉘어, <b>왼쪽</b>에서
+            <b>그 지점으로 향해 들어갈 방위(°M)</b>를 직접 넣습니다 — <b>OBS 모드처럼</b> 접근 방향을
+            골라서 들어갈 수 있습니다. 누르면 <b>아래 빈 자리에 숫자판</b>이 펴지고(값 칸은 그대로 보입니다),
+            ENT 하면 그 지점이 활성이 되며 <b>CDI · 지도 코스선 · NAV 오토파일럿</b>이 모두 그 선을 씁니다.
+            <b>비우고 ENT</b> 하면 해제되어 앞 지점에서 이어지는 레그 코스로 돌아갑니다.
+            <b>오른쪽</b>은 종전 그대로 <b>➤ Direct To</b> — 지금 자리에서 곧장 그 지점으로 갑니다.</li>
+        <li><b>웨이포인트 상세</b>: 비행계획 목록에서 <b>항목을 누르면</b> 카드가 열립니다.
+            <b>이름 · 좌표</b>를 고치고, <b>VNAV 고도 / 오프셋</b>(지점보다 몇 NM 앞에서 그 고도에 닿을지)을 넣고,
+            <b>HOLD</b> 설정과 <b>삭제</b>를 여기서 합니다.
+            활성 웨이포인트로 잡으려면 카드 안의 <b>➤ Direct To</b> 를 누릅니다
+            (종전에는 목록을 누르면 곧바로 활성이 돼 되돌릴 수가 없었습니다).
+            VNAV 고도를 비우고 ENTER 하면 해제됩니다.</li>
+        <li><b>웨이포인트 추가</b>(<b>Add WPT</b>): <b>입력 방법을 먼저</b> 고릅니다 —
+            <b>LAT/LON</b>(좌표 직접) · <b>RAD/DIS</b>(기준점·방위·거리) ·
+            <b>RAD/RAD</b>(두 기준점 방위의 교점) · <b>P.POS</b>(지금 있는 자리).
+            그 아래에 <b>IDENT · IFR 절차 · 국내 공항</b> 프리셋이 있습니다.
+            P.POS 로 만들면 곧바로 상세 카드가 열려 이름·좌표를 다듬을 수 있습니다.</li>
+        <li><b>출발지(ORIGIN)를 넣으면 항공기가 그 자리로 갑니다.</b> 비행계획의 <b>첫 웨이포인트</b>를
+            공항 명칭·좌표 어느 방법으로 넣든(나중에 고쳐도) 항공기가 그 지점에 섭니다 —
+            다른 공항에서 출발해 보려고 지도를 끌어다 옮길 필요가 없습니다.
+            두 번째 웨이포인트부터는 옮기지 않습니다. <b>비행 중이면 옮길지 되묻고</b>,
+            <b>GPS 모드</b>에서는 옮기지 않습니다(위치는 수신기가 정합니다).</li>
+        <li><b>방위 · 거리 입력</b>: RAD/DIS · RAD/RAD 는 <b>값 칸 바로 아래에 숫자판이 함께</b> 있습니다.
+            칸을 눌러 고르고 숫자판으로 칩니다 — <b>다른 화면으로 넘어가지 않아</b> 넣은 값과 결과 좌표를 같이 봅니다.
+            <b>ENT</b> 를 누르면 다음 칸으로 저절로 옮겨 갑니다.
+            범위를 벗어난 값(방위 0~360, 거리 0.1~400NM)은 알리고 <b>원래 값을 그대로 둡니다</b>.
+            웨이포인트 카드의 <b>VNAV 고도 · 오프셋</b>, <b>홀딩 설정</b>의 <b>INBD CRS · 시간/거리</b>도 같은 방식입니다.
+            홀딩 시간은 이제 <b>아무 값이나</b>(10~600초) 넣을 수 있습니다 — 종전에는 30·60·90·120·150·180초만 골랐습니다.</li>
+        <li><b>HOVER PAGE</b>(80kt 미만): 호버 속도·위치 지시. 좌측 HOVER 그룹의 <b>HOVER PAGE / HOVER POS</b> 사각 버튼으로 켜고,
+            기준 속도는 트림 옆 원형 <b>GSPD</b> 버튼으로 잡습니다(실제 조종간 배치에 맞춘 위치).</li>
+        <li>HOVER PAGE에는 <b>SHIP</b>(청록)과 <b>비행계획 활성 웨이포인트</b>(빨강 삼각형)가 함께 표시됩니다.
+            반경 50 ft 이내면 실제 축척 위치에, 밖이면 방향 니들과 점선으로 나타납니다.</li>
+        <li><b>ANTI-TORQUE PEDAL ◀▶</b>(GSPD 우측): 뱅크 없이 기수만 즉시 회전(홀드 시 약 12°/s).
+            <b>GSPD 작동 중에는 HDG 화살표가 기수와 분리</b>되므로 요 조작은 이 페달로 합니다.</li>
+        <li><b>COLLECTIVE TRIM ▲▼</b>(4-way 트림 좌측): 현재는 VS ▲▼와 같은 동작(±100 fpm)입니다.
+            4-way 트림은 <b>사이클릭</b>, 페달은 <b>요</b>, 컬렉티브는 <b>파워</b>를 맡는 수동 조작 구성으로
+            확장하기 위한 배치입니다.</li>
+        <li>지도에 SHIP이 켜져 있으면 호버 페이지에 <b>선박 상대위치</b>가 표시됩니다(멀면 니들, 50ft 이내면 실제 위치).</li>
+        <li><b>T-CUT</b>: 전방 20NM 지형 단면. 현재 고도가 화면 중앙에 오고 지형이 상대적으로 움직입니다.</li>
+        <li><b>⟳ HOLD</b>: 홀딩 진입 판정 레이어. 홀딩 픽스를 중심으로 <b>직진 / 평행 / 눈물방울</b> 구역을
+            자북 기준으로 칠하고, <b>픽스에서 본 항공기 방위</b>(어느 방향에서 들어오는가)가 어느 구역에 있는지
+            항공기 기호로 표시합니다. 판정·방위·픽스까지 거리·기수와 <b>바람 보정 기수</b>(인바운드/아웃바운드)를 함께 읽어 줍니다.
+            비행계획에 홀딩이 <b>아직 활성이 아니어도</b>(예정) 미리 볼 수 있습니다.
+            홀딩은 <b>FPL → 웨이포인트 → HOLD</b> 에서 넣습니다.</li>
+      </ul>
+
+      <h3>5. CDU 홈 (20개 기능)</h3>
+      <ul>
+        <li><b>기상</b>: Windy · 저고도날씨 · METAR/TAF · Tide forecast</li>
+        <li><b>정보</b>: CCTV · Charts · NOTAM · <b>INFO</b>(비행장) · Services · SkyVector · ER availability · Wildfire status</li>
+        <li><b>항법</b>: Flight Plan · PROC · <b>VNAV</b> · Track &amp; Point · MAP</li>
+        <li><b>운영</b>: PERF · Checklist · Utilities · Setting</li>
+        <li>하단 공통 버튼: <b>Home · Full/Half · Setting · Back</b> (홈 화면에는 <b>UBIKAIS</b> 바로가기)</li>
+      </ul>
+
+      <h3>6. 주요 기능</h3>
+      <ul>
+        <li><b>INFO</b>: 비행장별 TWR·APP·GND 주파수, VOR/ATIS, ILS, RWY, 표고. <b>주파수를 탭하면 COM1/2·NAV1/2에 바로 튜닝</b>됩니다. 상단 <b>ALL</b>은 코드 입력 시 전체 공개(기본은 AIP 공개 공항만).</li>
+        <li><b>VNAV</b>: 타깃 고도와 강하각(−3° 등)을 넣으면 요구고도·편차·수직속도·TOD를 실시간 계산하고, T-CUT에 강하선을 그립니다. <b>강하 10초 전</b>과 <b>Begin Descent</b> 알림 제공.</li>
+        <li><b>TAS / IAS</b> (UTIL → True / Indicated Airspeed): <b>기압고도·외기온도</b>를 넣고
+            <b>IAS 를 넣으면 TAS 가</b>, <b>TAS 를 넣으면 IAS 가</b> 나옵니다.
+            <b>✈ 현재 비행상태 사용</b> 을 누르면 지금 고도·속도·외기온도가 그대로 들어갑니다.
+            ISA 편차·밀도고도·배율을 함께 보여 주므로 원판 계산기로 검산할 수 있습니다.
+            (밀도비 환산 TAS = IAS × √(ρ₀/ρ) — 압축성 보정 없음)</li>
+        <li><b>Utilities</b>: 길이·속도·온도·중량·압력·연료 환산, Time/Speed/Distance, <b>Fuel Endurance</b>, <b>Wind Component</b>, <b>Sunrise/Sunset</b>, <b>True↔Magnetic</b>, 밀도고도, 좌표 변환.</li>
+        <li><b>Track &amp; Point</b>: 포인트·항적을 기기에 저장, 폴더·아이콘 관리, GPX/KML 내보내기·가져오기. 지도 포인트를 탭하면 <b>숨기기·플랜 추가·Direct</b> 선택.</li>
+        <li><b>Checklist</b>: KUH-1CG 정상·특수·비상 절차(계통별), 이전/다음 이동.</li>
+        <li><b>웨이포인트 좌표 산출</b>(Flight Plan → <b>Add WPT</b>):
+            <b>BRG / DIST</b>는 참조점에서 지정한 <b>자북 방위(라디얼)</b>로 지정 거리만큼 나아간 지점을,
+            <b>BRG / BRG</b>는 두 참조점의 방위선이 <b>만나는 지점</b>을 대권 기하로 계산해 웨이포인트로 만듭니다.
+            참조점은 <b>VOR · AIP 픽스 · 공항 · 현재 비행계획 WP</b> 중에서 고르며(카테고리 필터 + 이름 검색,
+            현 위치에서 가까운 순), 산출 좌표는 확정 전에 <b>DMS·십진수·현 위치 기준 방위/거리</b>로 미리 보여줍니다.
+            이름은 <b>SEL270/20</b>, <b>SEL/TGU</b> 처럼 자동으로 붙습니다.
+            BRG/BRG 는 교차각이 10° 미만이면 거부하고 30° 미만이면 경고합니다
+            (얕은 각도에서는 방위 1°가 좌표를 크게 흔듭니다).</li>
+      </ul>
+
+      <h3>7. GPS 모드 (실비행)</h3>
+      <ul>
+        <li>GPS 버튼을 켜면 실제 위치·속도·고도로 계기가 움직입니다.</li>
+        <li>헤딩: <b>10kt 미만은 기기 나침반</b>, 10kt 이상은 항적 기준(첫 실행 시 나침반 권한 허용).</li>
+        <li>신호가 잠시 끊겨도 GPS는 꺼지지 않고 자동으로 재개됩니다.</li>
+      </ul>
+
+      <h3>8. 설정 (하단 Setting)</h3>
+      <ul>
+        <li><b>단위</b>: 고도 ft/m · 거리 NM/km · 속도 kt/km·h · 온도 °C/°F — PFD 계기까지 함께 전환됩니다.</li>
+        <li>야간 모드, 레인지 링, 자동 METAR, 공역·HTAWS 경보, <b>키보드 단축키</b> on/off.</li>
+        <li>홈 화면에 추가(PWA 설치), 주변 지도 캐시 저장, 사용 안내 다시 보기.</li>
+      </ul>
+
+      <h3>9. 키보드 조작</h3>
+      <table>
+        <tr><td><b>1 / 2</b></td><td>IAS −1 / +1 kt</td><td><b>- / =</b></td><td>CRHT −10 / +10 ft</td></tr>
+        <tr><td><b>3 / 4</b></td><td>HDG 좌 / 우 1°</td><td><b>Space</b></td><td>FLY / PAUSE</td></tr>
+        <tr><td><b>5 / 6</b></td><td>CRS 좌 / 우 1°</td><td><b>Enter</b></td><td>Force Trim Release</td></tr>
+        <tr><td><b>7 / 8</b></td><td>VS −10 / +10 fpm</td><td><b>우측 Shift</b></td><td>GSPD 켜기/끄기</td></tr>
+        <tr><td><b>9 / 0</b></td><td>ALT −10 / +10 ft</td><td><b>← → ↑ ↓</b></td><td>트림 좌/우/전/후</td></tr>
+      </table>
+      <div class="help-note">※ 숫자·트림 키는 누르고 있으면 연속 조작됩니다. 입력창 타이핑 중에는 동작하지 않습니다.<br>
+      ※ DeX·데스크톱에서 물리 키보드로 입력할 때 계기가 움직이면 <b>설정 → 키보드 단축키</b>를 끄십시오.</div>
+    </div>
+    <div id="help-foot">
+      <label><input type="checkbox" id="help-dontshow"> 다시 보지 않기</label>
+      <button data-act="closeHelp">시작하기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 화면 터치 잠금 오버레이 — 모든 터치를 흡수하고, 길게 눌러야 해제 -->
+<div id="lock-overlay">
+  <div id="lock-badge">🔒 화면 잠금</div>
+  <div id="lock-unlock">
+    <div id="lock-unlock-fill"></div>
+    <span id="lock-unlock-txt">길게 눌러 해제</span>
+  </div>
+</div>
+<div id="solo-bar" style="display:none;">
+  <button data-act="setSolo" data-arg='["pfd"]'>PFD</button>
+  <button data-act="setSolo" data-arg='["map"]'>MAP</button>
+  <button data-act="setSolo" data-arg='["plan"]'>PLAN</button>
+  <button data-act="setSolo" data-arg='["cdu"]'>CDU</button>
+  <button class="solo-exit" data-act="exitSolo" title="분할화면으로 돌아가기">✕</button>
+</div>
+<!-- 전체화면(solo)에서 하단 푸터가 없는 화면(MAP/PFD)용 분할복귀 버튼 -->
+<button id="solo-half-btn" data-act="exitSolo" title="분할화면으로 돌아가기">✥ HALF</button>
+<div id="app">
+
+  <!-- ── LEFT PANEL (PFD / MAP) ── -->
+  <div id="left-panel">
+    <div id="left-tabs">
+      <button class="page-tab active" data-sel="pfd" data-act="selectPanel" data-arg='["left", "pfd"]'>PFD</button>
+      <button class="page-tab" data-sel="map" data-act="selectPanel" data-arg='["left", "map"]'>MAP</button>
+      <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["left", "cdu"]'>CDU</button>
+      <button class="page-tab split-tab" id="split-toggle" data-act="toggleTriple" title="2분할 ⇄ 3분할">⿲ 3분할</button>
+    </div>
+    <div id="pfd-wrap">
+    <canvas id="pfd"></canvas>
+    <div class="ctrl-bar">
+
+      <!-- 1행: SPD / HDG / CRS / VS / ALT / 스톱워치 -->
+      <div class="ctrl-sub-row">
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl ctrl-lbl-btn" id="ias-lbl-btn" data-act="fcpSync" data-arg='["ias"]'>IAS</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="spd-dn">▼</button>
+            <button class="cbtn" id="spd-up">▲</button>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl ctrl-lbl-btn" id="hdg-lbl-btn" data-act="fcpSync" data-arg='["hdg"]'>HDG</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="hdg-dn">◄</button>
+            <button class="cbtn" id="hdg-up">►</button>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl ctrl-lbl-btn" id="crs-lbl-btn" data-act="fcpSync" data-arg='["crs"]'>CRS</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="crs-dn">◄</button>
+            <button class="cbtn" id="crs-up">►</button>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl">VS</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="vs-dn">▼</button>
+            <button class="cbtn" id="vs-up">▲</button>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl">ALT</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="alt-dn">▼</button>
+            <button class="cbtn" id="alt-up">▲</button>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl">CRHT</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="crht-dn">▼</button>
+            <button class="cbtn" id="crht-up">▲</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <div class="sw-group">
+          <div class="sw-display clock-mode" id="sw-display">--:--:--</div>
+          <div class="sw-btns" id="sw-btns-sw" style="display:none;">
+            <button class="sw-btn" id="sw-toggle" data-act="swToggle">GO</button>
+            <button class="sw-btn" data-act="swReset">RESET</button>
+            <button class="sw-btn sw-btn-time" data-act="swSetMode" data-arg='["clock"]'>TIME</button>
+          </div>
+          <div class="sw-btns" id="sw-btns-clock">
+            <button class="sw-btn sw-btn-time" data-act="swSetMode" data-arg='["sw"]'>STOP WATCH</button>
+          </div>
+        </div>
+
+      </div><!-- end ctrl-sub-row 1 -->
+
+      <!-- 2행: WDIR / WSPD / AP(OBS·NAV) / BRG -->
+      <div class="ctrl-sub-row" style="border-top:1px solid #1e1e1e;">
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl">WDIR</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="wdir-dn">◄</button>
+            <button class="cbtn" id="wdir-up">►</button>
+          </div>
+        </div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl">WSPD</div>
+          <div class="ctrl-row">
+            <button class="cbtn" id="wspd-dn">▼</button>
+            <button class="cbtn" id="wspd-up">▲</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <div class="ctrl-group">
+          <div class="ctrl-lbl">AP</div>
+          <div style="display:flex;gap:4px;align-items:center;">
+            <button class="obs-btn" id="obs-btn" data-act="toggleObs">OBS</button>
+            <button class="obs-btn" id="nav-ap-btn" data-act="toggleNavAp">NAV</button>
+            <button class="obs-btn" id="icpt-btn" data-act="cycleIntercept"
+                    title="인터셉트 각도 (30/45/60°)">45°</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <div class="brg-tog-group">
+          <div class="ctrl-lbl">BRG</div>
+          <div class="brg-tog-btns">
+            <button class="brg-tog-btn brg1-on" id="brg1-tog" data-act="toggleBrg1">BRG1</button>
+            <button class="brg-tog-btn brg2-on" id="brg2-tog" data-act="toggleBrg2">BRG2</button>
+          </div>
+          <!-- 이름표(방위·거리) 시현 — 기본은 끔. 니들만 필요할 때가 있다 -->
+          <div class="brg-tog-btns">
+            <button class="brg-tog-btn brg-bdp" id="brg1-bdp" data-act="toggleBrg1Lbl"
+                    title="BRG1 선·방위·거리를 지도에 시현">#1BDP</button>
+            <button class="brg-tog-btn brg-bdp" id="brg2-bdp" data-act="toggleBrg2Lbl"
+                    title="BRG2 선·방위·거리를 지도에 시현">#2BDP</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <div class="alt-hold-group">
+          <div class="ctrl-lbl">ALT</div>
+          <div class="alt-hold-btns">
+            <button class="alt-hold-btn" id="alt-hold-btn" data-act="toggleAltHold">ALT</button>
+            <button class="crht-btn"     id="crht-btn"     data-act="toggleCrht">CRHT</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <div class="hover-group">
+          <div class="ctrl-lbl">HOVER</div>
+          <div class="hover-btns">
+            <button class="hover-btn"     id="hover-btn"     data-act="toggleHoverPage" disabled>HOVER PAGE</button>
+            <button class="hover-pos-btn" id="hover-pos-btn" data-act="toggleHoverPosition" title="Hover Position">HOVER POS</button>
+          </div>
+        </div>
+
+      </div><!-- end ctrl-sub-row 2 -->
+
+      <!-- 3행: NAV SOURCE / RNP -->
+      <div class="ctrl-sub-row" style="border-top:1px solid #1e1e1e;">
+
+        <div class="nav-src-group">
+          <div class="ctrl-lbl">NAV SRC</div>
+          <div class="nav-src-btns">
+            <button class="nav-src-btn active" id="nav-fms" data-act="setNavSrc" data-arg='["FMS"]'>FMS</button>
+            <button class="nav-src-btn" id="nav-nav1" data-act="setNavSrc" data-arg='["NAV1"]'>NAV1</button>
+            <button class="nav-src-btn" id="nav-nav2" data-act="setNavSrc" data-arg='["NAV2"]'>NAV2</button>
+          </div>
+          <div class="nav-icao-lbl" id="nav-icao-lbl" style="visibility:hidden">----</div>
+          <!-- RNP 는 NAV SRC 아래로 — 비행 중 바꿀 일이 드문 설정이다 -->
+          <div class="ctrl-lbl rnp-lbl">RNP</div>
+          <div class="rnp-btns">
+            <button class="rnp-btn" id="rnp-4" data-act="setRnp" data-arg='[4]'>4</button>
+            <button class="rnp-btn" id="rnp-2" data-act="setRnp" data-arg='[2]'>2</button>
+            <button class="rnp-btn active" id="rnp-1" data-act="setRnp" data-arg='[1]'>1</button>
+            <button class="rnp-btn" id="rnp-03" data-act="setRnp" data-arg='[0.3]'>0.3</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <!-- 배속 — 홀딩 한 바퀴 4분, 절차 하나 20분을 실시간으로 기다리지 않게 -->
+        <div class="simspd-group">
+          <div class="ctrl-lbl">SIM SPD</div>
+          <div class="simspd-btns">
+            <button class="simspd-btn active" id="simspd-1" data-act="setSimSpeed" data-arg='[1]' title="실시간">×1</button>
+            <button class="simspd-btn" id="simspd-2" data-act="setSimSpeed" data-arg='[2]' title="2배속">×2</button>
+            <button class="simspd-btn" id="simspd-4" data-act="setSimSpeed" data-arg='[4]' title="4배속">×4</button>
+            <button class="simspd-btn" id="simspd-8" data-act="setSimSpeed" data-arg='[8]' title="8배속">×8</button>
+          </div>
+        </div>
+
+        <div class="ctrl-div"></div>
+
+        <div class="trim-group" id="trim-group">
+          <div class="coll-group">
+            <div class="coll-lbl">COLLECTIVE<br>TRIM</div>
+            <div class="coll-btns">
+              <button class="coll-btn" id="coll-up" title="컬렉티브 업(상승)">▲</button>
+              <button class="coll-btn" id="coll-dn" title="컬렉티브 다운(강하)">▼</button>
+            </div>
+          </div>
+          <div class="trim-padgroup">
+            <div class="trim-lbl">4-WAY<br>TRIM</div>
+            <div class="trim-pad" id="trim-pad">
+              <button class="trim-cell tc-l"   id="trim-l"   data-trim-dir="L">◄</button>
+              <button class="trim-cell tc-fwd" id="trim-fwd" data-trim-dir="F">▲</button>
+              <button class="trim-cell tc-aft" id="trim-aft" data-trim-dir="A">▼</button>
+              <button class="trim-cell tc-r"   id="trim-r"   data-trim-dir="R">►</button>
+            </div>
+          </div>
+          <button class="force-trim-btn" id="force-trim-btn" data-act="forceTrim" title="Force Trim">FORCE<br>TRIM</button>
+          <button class="gspd-btn" id="gspd-btn" data-act="toggleGspd" title="Ground Speed Hold">GSPD</button>
+          <div class="pedal-group">
+            <div class="pedal-lbl">ANTI-TORQUE<br>PEDAL</div>
+            <div class="pedal-btns">
+              <button class="pedal-btn" id="ped-l" title="좌 페달(기수 좌선회)">◄</button>
+              <button class="pedal-btn" id="ped-r" title="우 페달(기수 우선회)">►</button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end ctrl-sub-row 3 -->
+
+    </div>
+    </div><!-- end #pfd-wrap -->
+  </div><!-- end #left-panel -->
+
+  <!-- ── RIGHT PANEL (3 pages) ── -->
+  <div id="panel-divider"><div id="divider-grip"></div></div>
+
+  <!-- 3분할일 때만 보이는 중앙 패널 -->
+  <div id="mid-panel">
+    <div id="mid-tabs" class="panel-tabs">
+      <button class="page-tab" data-sel="pfd" data-act="selectPanel" data-arg='["mid", "pfd"]'>PFD</button>
+      <button class="page-tab active" data-sel="map" data-act="selectPanel" data-arg='["mid", "map"]'>MAP</button>
+      <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["mid", "cdu"]'>CDU</button>
+    </div>
+  </div>
+  <div id="divider-2"><div id="divider-grip-2"></div></div>
+
+  <div id="right-panel">
+
+    <div id="page-tabs">
+      <button class="page-tab" data-sel="pfd" data-act="selectPanel" data-arg='["right", "pfd"]'>PFD</button>
+      <button class="page-tab active" data-sel="map" data-act="selectPanel" data-arg='["right", "map"]'>MAP</button>
+      <button class="page-tab" data-sel="cdu" data-act="selectPanel" data-arg='["right", "cdu"]'>CDU</button>
+      <button id="reload-btn" data-act="hardReload" title="새로고침(상태 초기화)">⟳</button>
+    </div>
+
+    <!-- Page 1: Map -->
+    <div id="map-wrap" class="page-content tcut-off">
+      <div id="map"></div>
+      <div id="map3d">
+        <div id="tilt-ctrl">
+          <button data-act="tiltAdj" data-arg='[-5]' title="Tilt up">▲</button>
+          <button data-act="tiltAdj" data-arg='[5]'  title="Tilt down">▼</button>
+        </div>
+      </div>
+      <div id="map-top-bar">
+        <button id="gps-btn" data-act="toggleGPS">GPS</button>
+        <button id="wx-btn" data-act="toggleWxPanel">WX</button>
+        <button id="pp-btn" data-act="togglePpMenu">＋</button>
+        <div id="pp-menu">
+          <button onclick="ppAddWaypoint();togglePpMenu(false)">PP 현재위치</button>
+          <button onclick="chAddWaypoint();togglePpMenu(false)">＋ 십자위치</button>
+        </div>
+        <button id="rain-btn" data-act="toggleRain">RAIN</button>
+        <button id="wind-btn" data-act="toggleWind">WIND</button>
+        <button id="notam-btn" data-act="toggleNotamLayer">NOTAM</button>
+        <button id="fix-btn" data-act="toggleFixPanel">FIX</button>
+        <button id="awy-btn" data-act="toggleAwyLayer">AWY</button>
+        <button id="aspc-btn" data-act="toggleAspcPanel">공역</button>
+        <button id="map-ruler-btn" data-act="toggleRuler" title="거리·방위 측정">📏</button>
+        <button id="map-full-btn" data-act="toggleMapFull" title="전체화면/분할 전환">FULL</button>
+      </div>
+      <div id="aspc-panel"></div>
+      <div id="fix-panel"></div>
+      <div id="awy-panel"></div>
+      <input type="file" id="notamFileInput" accept=".kml,.gpx" style="display:none" onchange="loadNotamFile(this)">
+      <!-- 지도 중앙 십자마크 + 중앙(1인칭: 항공기) 좌표 표시 -->
+      <div id="map-crosshair"><div class="ch-h"></div><div class="ch-v"></div></div>
+      <div id="center-coord"></div>
+      <!-- FDR upload button + panel (above Leaflet zoom) -->
+      <div id="fdr-btn-wrap">
+        <button id="rec-btn" data-act="toggleTrackRec">REC</button>
+        <button id="fdr-btn" data-act="toggleFdrPanel">FDR</button>
+      </div>
+      <div id="fdr-panel">
+        <div id="fdr-panel-title">
+          <span>⏺ FDR REPLAY</span>
+          <span data-act="toggleFdrPanel" style="cursor:pointer;color:#555;font-size:13px;">✕</span>
+        </div>
+        <div id="fdr-file-row">
+          <label for="fdr-file-input">📂 GPX / KML 파일 열기</label>
+          <input id="fdr-file-input" type="file" style="display:none" onchange="loadFdrFile(this)">
+        </div>
+        <div id="fdr-status">파일을 선택하세요</div>
+        <div id="fdr-track-info"></div>
+        <div id="fdr-controls" style="display:none;gap:4px;display:none;">
+          <button id="fdr-play-btn"  data-act="fdrPlay">▶</button>
+          <button id="fdr-pause-btn" data-act="fdrPause">⏸</button>
+          <button id="fdr-stop-btn"  data-act="fdrStop">⏹</button>
+        </div>
+        <div id="fdr-speed" style="display:none;">
+          <label>배속</label>
+          <select id="fdr-speed-sel" onchange="fdrSetSpeed(this.value)">
+            <option value="1">1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+            <option value="8">8×</option>
+          </select>
+        </div>
+        <div id="fdr-timeline" style="display:none;">
+          <input type="range" id="fdr-slider" min="0" value="0" oninput="fdrSeek(this.value)">
+          <div id="fdr-time-label" style="text-align:right;color:#888;font-size:9px;margin-top:2px;"></div>
+        </div>
+        <div style="margin-top:7px;border-top:1px solid #2a4a7a;padding-top:5px;">
+          <div style="color:#7ab8f5;font-size:10px;font-weight:bold;letter-spacing:1px;">📒 로그북 (REC 항적)</div>
+          <div id="logbook-list" style="max-height:130px;overflow-y:auto;-webkit-overflow-scrolling:touch;"></div>
+        </div>
+      </div>
+
+      <div id="gps-status"></div>
+      <div id="inhib-menu">
+        <div style="color:#889;font-size:9px;font-weight:bold;letter-spacing:1px;padding:2px 4px;">경보 INHIBIT</div>
+        <button id="inhib-aspc-btn" data-act="toggleInhib" data-arg='["aspc"]'>공역경보 <span>ON</span></button>
+        <button id="inhib-taws-btn" data-act="toggleInhib" data-arg='["taws"]'>HTAWS <span>ON</span></button>
+      </div>
+      <div id="ruler-readout"></div>
+      <div id="ship-menu">
+        <div style="color:#889;font-size:9px;font-weight:bold;letter-spacing:1px;padding:2px 4px;">⛵ SHIP</div>
+        <button id="ship-menu-show" data-act="shipToggleOn">배 표시 <span>OFF</span></button>
+        <button id="ship-menu-panel" data-act="shipTogglePanel">설정창 <span>OFF</span></button>
+      </div>
+      <div id="aspc-alert"></div>
+      <div id="terrain-alert">⚠ TERRAIN</div>
+      <div id="vnav-alert"></div>
+      <div id="terrain-cut"><canvas id="tcut-canvas"></canvas><div id="tcut-title">TERRAIN — 전방 20NM</div></div>
+      <!-- 홀딩 진입 판정 레이어 — 홀딩 픽스로 향하는 현재 접근방향이
+           직진·평행·눈물방울 중 어느 구역에 있는지 보여 준다 -->
+      <div id="hold-entry">
+        <div id="hold-entry-head">⟳ HOLD ENTRY — <span id="hold-entry-fix">—</span>
+          <button data-act="toggleHoldEntry" title="닫기">✕</button>
+        </div>
+        <canvas id="hold-entry-canvas"></canvas>
+        <div id="hold-entry-info"></div>
+      </div>
+      <div id="map-sim-bar">
+        <button class="sim-btn" id="map-fly-btn" data-act="toggleSim">▶ FLY</button>
+        <button class="sim-btn" data-act="resetSim">⟳ RESET</button>
+        <button class="sim-btn clr" data-act="clearFP">✕ CLR</button>
+        <button class="sim-btn" id="map-ship-btn" data-act="toggleShip">⛵ SHIP</button>
+        <button class="sim-btn" id="map-tcut-btn" data-act="toggleTcut">⛰ T-CUT</button>
+        <button class="sim-btn" id="map-hold-btn" data-act="toggleHoldEntry">⟳ HOLD</button>
+        <button class="sim-btn" id="inhib-btn" data-act="toggleInhibMenu">INHIB</button>
+        <button class="sim-btn" id="orient-btn" data-act="toggleMapOrient">N↑</button>
+        <button class="sim-btn" id="follow-btn" data-act="toggleFollow">1인칭</button>
+        <button class="sim-btn sat" id="layer-btn" data-act="toggleLayer">MAP</button>
+        <button class="sim-btn" id="layer-btn-3d" data-act="toggle3dMap">3D</button>
+        <button class="sim-btn" id="lock-btn" data-act="lockScreen" title="화면 터치 잠금">🔒</button>
+      </div>
+
+      <!-- Weather Overlay Panel -->
+      <div id="wx-panel">
+        <div id="wx-panel-header">✈ WEATHER — METAR / TAF
+          <button data-act="closeWxPanel" style="position:absolute;top:50%;right:8px;transform:translateY(-50%);background:none;border:none;color:#666;font-size:14px;line-height:1;cursor:pointer;padding:0;">✕</button>
+        </div>
+        <div id="wx-panel-body">
+          <div id="wx-ap-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;"></div>
+          <div id="wx-fetch-row">
+            <input id="wx-icao" type="text" maxlength="4" placeholder="ICAO" autocomplete="off" autocorrect="off" spellcheck="false">
+            <button class="wx-fetch-btn" data-act="fetchWx" data-arg='["METAR"]'>METAR</button>
+            <button class="wx-fetch-btn" data-act="fetchWx" data-arg='["TAF"]'>TAF</button>
+          </div>
+          <div id="wx-result" style="display:none;"></div>
+        </div>
+      </div>
+
+      <!-- Ship Control Panel -->
+      <div id="ship-panel">
+        <div id="ship-panel-header" style="color:#7ab8f5;font-size:9px;font-weight:bold;text-align:center;letter-spacing:1px;border-bottom:1px solid #222;padding-bottom:6px;margin-bottom:8px;position:relative;cursor:grab;user-select:none;">⛵ SHIP CONTROL</div>
+        <div style="display:flex;gap:4px;margin-bottom:8px;">
+          <button id="ship-tab-spd" class="ship-tab ship-tab-active" data-act="shipSetMode" data-arg='["SPD"]'>SPD</button>
+          <button id="ship-tab-crs" class="ship-tab" data-act="shipSetMode" data-arg='["CRS"]'>CRS</button>
+        </div>
+        <div id="ship-display" style="background:#000;border:1.5px solid #333;border-radius:4px;color:#c8ff00;font-size:24px;text-align:right;padding:4px 10px;margin-bottom:3px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;min-height:36px;display:flex;align-items:center;justify-content:flex-end;letter-spacing:2px;">0</div>
+        <div id="ship-unit" style="color:#555;font-size:7px;text-align:right;margin-bottom:8px;">kt · max 50</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px;">
+          <button class="ship-num" data-act="shipKey" data-arg='["7"]'>7</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["8"]'>8</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["9"]'>9</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["4"]'>4</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["5"]'>5</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["6"]'>6</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["1"]'>1</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["2"]'>2</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["3"]'>3</button>
+          <button class="ship-num ship-clr" data-act="shipKey" data-arg='["CLR"]'>CLR</button>
+          <button class="ship-num" data-act="shipKey" data-arg='["0"]'>0</button>
+          <button class="ship-num ship-ent" data-act="shipKey" data-arg='["ENT"]'>ENT</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);border-top:1px solid #1e1e1e;padding-top:7px;gap:4px;">
+          <div style="text-align:center;">
+            <div style="color:#555;font-size:6px;letter-spacing:0.5px;">SPEED</div>
+            <div id="ship-stat-spd" style="color:#c8ff00;font-size:11px;font-weight:bold;">0kt</div>
+          </div>
+          <div style="text-align:center;">
+            <div style="color:#555;font-size:6px;letter-spacing:0.5px;">COURSE</div>
+            <div id="ship-stat-crs" style="color:#00ffff;font-size:11px;font-weight:bold;">000°</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 2: Flight Plan -->
+    <div id="fp-wrap" class="page-content page-hidden">
+      <!-- CDU와 동일한 354×567 규격 안에서 시현(다른 CDU 화면과 외곽을 맞춤) -->
+      <div id="fp-scaler" style="position:absolute;top:0;left:0;width:354px;height:567px;transform-origin:top left;">
+        <div class="cdu-frame">
+          <div class="touch-display">
+            <div class="fp-mode-title" id="fp-mode-title">ACTIVE FLIGHT PLAN</div>
+            <div class="fp-content-area" id="fp-content-area"></div>
+            <div class="fp-footer-nav" id="fp-footer-nav"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 3: CDU -->
+    <div id="cdu-wrap" class="page-content page-hidden">
+      <div id="cdu-scaler" style="position:absolute;top:0;left:0;width:354px;height:567px;transform-origin:top left;">
+<div class="cdu-frame">
+    <div class="touch-display">
+        
+        <div class="header-grid">
+            <div class="header-box" style="padding:0; gap:0;">
+                <div class="top-func-btn" style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer;" data-act="openAudioCom">
+                    <div class="header-label" style="line-height:1.2;">Audio &<br>Radios</div>
+                </div>
+                <div style="width:80%; height:1px; background:#333;"></div>
+                <div class="top-func-btn" style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer;" data-act="switchMode" data-arg='["INTERCOM"]'>
+                    <div class="header-label">Intercom</div>
+                </div>
+            </div>
+
+            <div class="header-box">
+                <div class="header-label">COM1</div>
+                <div class="freq-act" id="h-com1-act">133.30</div>
+                <div class="swap-arrow" data-act="swapFreq" data-arg='["com1"]'>↕</div>
+                <div class="freq-stby" id="h-com1-stb">121.90</div>
+            </div>
+            
+            <div class="header-box">
+                <div class="header-label" style="margin-bottom:2px;">MIC</div>
+                <div class="green-ind" id="top-mic-val">COM1</div>
+                <div class="header-label" style="margin-top:2px; margin-bottom:2px;">MON</div>
+                <div class="green-ind" id="top-mon-val">1/2</div>
+            </div>
+            
+            <div class="header-box">
+                <div class="header-label">COM2</div>
+                <div class="freq-act" id="h-com2-act">128.20</div>
+                <div class="swap-arrow" data-act="swapFreq" data-arg='["com2"]'>↕</div>
+                <div class="freq-stby" id="h-com2-stb">118.20</div>
+            </div>
+            
+            <div class="header-box" style="padding:0; gap:0;">
+                <div style="flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer;" data-act="switchMode" data-arg='["XPDR_MODE"]'>
+                    <div class="header-label" style="color:var(--text-cyan); margin-bottom:1px;">XPDR2</div>
+                    <div class="green-ind" id="top-xpdr-mode">AUTO</div>
+                </div>
+                <div style="width:80%; height:1px; background:#333;"></div>
+                <div style="flex:1; width:100%; display:flex; align-items:center; justify-content:center; cursor:pointer;" data-act="switchMode" data-arg='["XPDR_CODE"]'>
+                    <div class="freq-act" id="top-xpdr-code" style="color:var(--text-green); font-size:12px;">1234</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mode-title-bar" id="modeTitle">Home</div>
+        <div id="mainContentArea"></div>
+        <div class="footer-nav" id="footerNav"></div>
+    </div>
+</div>
+      </div>
+    </div>
+
+  </div><!-- end #right-panel -->
+</div><!-- end #app -->
+
+<!-- 앱 코드 — 클래식 스크립트(모듈 아님)라 전역 스코프를 공유한다.
+     순서가 곧 실행 순서이므로 임의로 바꾸지 말 것. -->
+  <!-- AIP 데이터 — 코드보다 먼저 로드한다 -->
+  <script src="js/data/terminal-fixes.js"></script>
+  <script src="js/data/ifr-fixes.js"></script>
+  <script src="js/data/ifr-procedures.js"></script>
+  <script src="js/data/airfield-info.js"></script>
+  <script src="js/data/enr-vors.js"></script>
+  <script src="js/data/enr-routes.js"></script>
+  <script src="js/data/airspace.js"></script>
+  <!-- 앱 코드 -->
+  <script src="js/00-ui.js"></script>
+  <script src="js/01-state.js"></script>
+  <script src="js/02-math.js"></script>
+  <script src="js/03-pfd.js"></script>
+  <script src="js/04-map.js"></script>
+  <script src="js/05-gps.js"></script>
+  <script src="js/06-nav.js"></script>
+  <script src="js/07-sim.js"></script>
+  <script src="js/08-ifrdb.js"></script>
+  <script src="js/09-cdu.js"></script>
+  <script src="js/10-tools.js"></script>
+  <script src="js/11-charts.js"></script>
+
+<input type="file" id="zipFileInput" accept=".zip,application/zip,application/x-zip-compressed,application/octet-stream" style="display:none" onchange="handleZipFile(this.files[0]); this.value='';"></body>
+</html>

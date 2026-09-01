@@ -1,0 +1,12 @@
+{
+  "name": "vfr-flight-simulator",
+  "private": true,
+  "description": "단일 파일 HTML5 헬기 비행 시뮬레이터 (GitHub Pages 배포). 이 package.json 은 테스트용 개발 의존성만 담는다 — 앱 자체는 빌드가 없다.",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "check": "node tests/check-syntax.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.0"
+  }
+}
