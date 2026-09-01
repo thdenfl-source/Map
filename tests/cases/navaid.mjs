@@ -75,6 +75,20 @@ export async function run(page, t) {
   t.eq(tap.saved, 'cdu', '마지막으로 본 창을 기억한다');
   t.ok(tap.cduW > 0, `CDU 가 실제로 자리를 차지한다 (${tap.cduW}px)`);
 
+  // 켤 때 설명 창이 첫 화면을 가리지 않는다 — 열자마자 위치가 보여야 한다.
+  // 안내 자체는 CDU 설정에서 열 수 있으므로, 자동으로 뜨지 않는지만 본다.
+  const help = await phone.evaluate(() => {
+    const ov = document.getElementById('help-overlay');
+    const shown = getComputedStyle(ov).display !== 'none';
+    CDU_ACT.showHelpOverlay();                           // 설정에서 부르는 길
+    const opened = getComputedStyle(ov).display !== 'none';
+    closeHelp();
+    return { shown, opened, closed: getComputedStyle(ov).display === 'none' };
+  });
+  t.eq(help.shown, false, '켜자마자 설명 창이 뜨지 않는다');
+  t.eq(help.opened, true, '설정에서 부르면 그때는 열린다');
+  t.eq(help.closed, true, '닫기로 닫힌다');
+
   // ── ② 조종 조작부가 화면에 없다 ────────────────────────────────
   // getBoundingClientRect 로 본다 — display:none 이면 0×0 이다.
   const hidden = await phone.evaluate(() => {
@@ -333,7 +347,8 @@ export async function run(page, t) {
     const px = el => parseFloat(getComputedStyle(el).fontSize);
     return { air: (air.textContent || ''), nav: (nav.textContent || ''),
              srcCount: nav.querySelectorAll('.pi-src').length,
-             airPx: px(air.querySelector('b')), navPx: px(nav.querySelector('.pi-id')),
+             airPx: px(air.querySelector('b')), airLblPx: px(air.querySelector('i')),
+             navPx: px(nav.querySelector('.pi-id')), brgPx: px(nav.querySelector('.pi-brg')),
              h: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height) };
   });
   for (const k of ['TAS', 'GS', 'OAT', 'ISA']) {
@@ -342,11 +357,14 @@ export async function run(page, t) {
   t.eq(info.srcCount, 3, 'NAV 소스 세 가지(FMS·NAV1·NAV2)가 모두 있다');
   t.ok(/FMS/.test(info.nav) && /NAV1/.test(info.nav) && /NAV2/.test(info.nav),
     '세 소스의 이름이 다 보인다');
-  t.ok(info.h > 10 && info.h < 140, `글자판이 지나치게 자라지 않았다 (${info.h}px)`);
-  // NAV 소스는 어디로·어느 방위·몇 마일을 읽는 줄이다. 나머지 글자의 두 배로
-  // 두기로 했다 — 작으면 비행 중에 못 읽는다.
-  t.ok(info.navPx >= info.airPx * 1.8,
-    `NAV 소스 글자가 나머지의 두 배쯤이다 (${info.navPx}px vs ${info.airPx}px)`);
+  t.ok(info.h > 10 && info.h < 170, `글자판이 지나치게 자라지 않았다 (${info.h}px)`);
+  // 글자판의 값은 모두 같은 크기로 읽는다. 한 화면에 있는 값인데 하나만 작으면
+  // 그것만 못 읽고 지나친다 — TAS·GS·OAT·ISA 를 NAV 줄의 방위 숫자에 맞춘다.
+  t.eq(info.airPx, info.brgPx,
+    `TAS·GS·OAT·ISA 가 방위 숫자와 같은 크기다 (${info.airPx}px vs ${info.brgPx}px)`);
+  t.ok(info.airPx >= 18, `그 크기가 비행 중에 읽을 만하다 (${info.airPx}px)`);
+  t.ok(info.airLblPx >= 14 && info.airLblPx < info.airPx,
+    `이름표는 값보다 조금 작다 (${info.airLblPx}px vs ${info.airPx}px)`);
 
   // ── ⑩ CRHT 가 없어졌는가 · 갈색이 줄었는가 ───────────────────
   const crht = await phone.evaluate(() => {

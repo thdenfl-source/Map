@@ -1620,7 +1620,8 @@ body.night-mode::after {
   display: flex; justify-content: space-between; align-items: center;
   padding: 9px 14px; background: #101a28; border-top: 1px solid #24405e;
 }
-#help-foot label { color: #99a; font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#help-foot span { color: #99a; font-size: 11px; }
+#help-foot span b { color: #7fffb0; }
 #help-foot button {
   background: #14324f; border: 1px solid #4a90d9; color: #8ac6ff;
   font-size: 12px; font-weight: bold; padding: 7px 20px; border-radius: 5px; cursor: pointer;
@@ -1733,8 +1734,10 @@ body.phone-mode #map-full-btn { min-width: 54px; }
   line-height: 1.25;
 }
 .pi { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
-.pi i { font-style: normal; color: #888; font-size: 9px; letter-spacing: 0.3px; }
-.pi b { font-size: 12px; font-weight: bold; }
+/* TAS·GS·OAT·ISA 도 아래 NAV 줄의 방위 숫자와 같은 크기로 읽는다.
+   한 화면에 있는 값인데 하나만 작으면 그것만 못 읽고 지나친다. */
+.pi i { font-style: normal; color: #888; font-size: 18px; letter-spacing: 0.3px; }
+.pi b { font-size: 22px; font-weight: bold; }
 /* NAV 소스 한 덩어리 — 식별자 · 방위 · 거리 */
 /* NAV 소스 줄은 비행 중 가장 자주 읽는 숫자다(어디로 · 어느 방위 · 몇 마일).
    나머지 글자의 두 배로 키운다 — 폰에서는 세 소스가 한 줄에 안 들어가므로
@@ -1761,8 +1764,8 @@ body.phone-mode #map-full-btn { min-width: 54px; }
 .pi-src.dim .pi-id, .pi-src.dim .pi-brg, .pi-src.dim .pi-dst { color: #666; }
 body.phone-mode #pfd-info { padding: 1px 3px 2px; }
 body.phone-mode .pi-row { gap: 1px 7px; }
-body.phone-mode .pi b { font-size: 11px; }
-body.phone-mode .pi i { font-size: 8px; }
+body.phone-mode .pi b { font-size: 20px; }
+body.phone-mode .pi i { font-size: 16px; }
 body.phone-mode .pi-src i { font-size: 16px; }
 body.phone-mode .pi-src .pi-id { font-size: 22px; }
 body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-rad,
@@ -2172,8 +2175,8 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
       ※ DeX·데스크톱에서 물리 키보드로 입력할 때 계기가 움직이면 <b>설정 → 키보드 단축키</b>를 끄십시오.</div>
     </div>
     <div id="help-foot">
-      <label><input type="checkbox" id="help-dontshow"> 다시 보지 않기</label>
-      <button data-act="closeHelp">시작하기</button>
+      <span>CDU 설정 → <b>사용 안내 다시 보기</b> 에서 언제든 다시 열 수 있습니다.</span>
+      <button data-act="closeHelp">닫기</button>
     </div>
   </div>
 </div>
