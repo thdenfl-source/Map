@@ -373,5 +373,65 @@ export async function run(page, t) {
   t.ok(crht.hsiH < crht.usableH * 0.42,
     `갈색이 계기의 42% 아래다 (${crht.hsiH}px / ${crht.usableH}px)`);
 
+  // ── ⑪ 하위 창이 그 버튼에서 가지 치는가 ──────────────────────
+  // 옛 가로 툴바 시절 좌표(top:44px·right:8px)에 못 박혀 있어, 라인 셀렉터로
+  // 바꾼 뒤로는 창이 버튼 열을 그대로 덮었다. 이제 누른 버튼 옆에 붙는다.
+  await phone.evaluate(() => navGo('map'));
+  await phone.waitForTimeout(500);
+
+  const panels = [['awy-panel', 'toggleAwyLayer'], ['fix-panel', 'toggleFixPanel'],
+                  ['aspc-panel', 'toggleAspcPanel'], ['pp-menu', 'togglePpMenu'],
+                  ['wx-panel', 'toggleWxPanel']];
+  for (const [id, fn] of panels) {
+    const r = await phone.evaluate(async ([pid, f]) => {
+      new Function('return ' + f)()();                 // 버튼을 누른 것과 같다
+      await new Promise(r2 => requestAnimationFrame(() => requestAnimationFrame(r2)));
+      const W = document.getElementById('map-wrap').getBoundingClientRect();
+      const el = document.getElementById(pid);
+      const e = el.getBoundingClientRect();
+      const btn = _mapPanelBtn(pid);
+      const q = btn.getBoundingClientRect();
+      const branch = el.dataset.branch;
+      // 툴바 버튼을 하나라도 덮으면 안 된다 — 덮으면 그 버튼을 못 누른다
+      const covered = [...document.querySelectorAll('#map-top-bar button')]
+        .filter(x => { const b2 = x.getBoundingClientRect(); return b2.width &&
+          !(b2.right <= e.left || b2.left >= e.right || b2.bottom <= e.top || b2.top >= e.bottom); })
+        .map(x => x.id);
+      return { open: isMapPanelOpen(pid), branch,
+               gap: Math.round(branch === 'right' ? q.left - e.right : e.left - q.right),
+               inside: e.left >= W.left - 1 && e.right <= W.right + 1
+                    && e.top >= W.top - 1 && e.bottom <= W.bottom + 1,
+               covered, lit: btn.classList.contains('branch-open'),
+               // 버튼이 오른쪽 열이면 창도 오른쪽에서 왼쪽(안쪽)으로 펴야 한다
+               rightCol: (q.left + q.width / 2 - W.left) > W.width / 2 };
+    }, [id, fn]);
+    t.eq(r.open, true, `${id} 이 열린다`);
+    t.eq(r.branch, r.rightCol ? 'right' : 'left',
+      `${id} 이 화면 안쪽으로 편다 (${r.branch})`);
+    t.ok(Math.abs(r.gap - 14) <= 1, `${id} 이 버튼에서 줄기 하나 거리다 (${r.gap}px)`);
+    t.eq(r.inside, true, `${id} 이 지도 밖으로 나가지 않는다`);
+    t.eq(r.covered.length, 0,
+      `${id} 이 툴바 버튼을 덮지 않는다${r.covered.length ? ' (' + r.covered.join(',') + ')' : ''}`);
+    t.eq(r.lit, true, `${id} 을 연 버튼이 켜져 보인다`);
+  }
+
+  // 마지막에 연 것(wx-panel)만 남는가 — 같은 열에 둘이 겹치면 어느 버튼에서
+  // 나온 창인지 알 수 없다
+  const onlyOne = await phone.evaluate(() =>
+    ['pp-menu','wx-panel','fix-panel','awy-panel','aspc-panel','geo-panel'].filter(isMapPanelOpen));
+  t.eq(onlyOne.join(','), 'wx-panel', `한 번에 한 창만 열린다 (${onlyOne.join(',') || '없음'})`);
+
+  // 같은 버튼을 한 번 더 누르면 닫히고, 붙였던 자리도 걷힌다
+  const closed = await phone.evaluate(() => {
+    toggleWxPanel();
+    const el = document.getElementById('wx-panel');
+    return { open: isMapPanelOpen('wx-panel'), branch: el.dataset.branch,
+             left: el.style.left, lit: _mapPanelBtn('wx-panel').classList.contains('branch-open') };
+  });
+  t.eq(closed.open, false, '같은 버튼을 한 번 더 누르면 닫힌다');
+  t.eq(closed.lit, false, '그때 버튼 불도 꺼진다');
+  t.eq(closed.branch, undefined, '가지 표시도 걷힌다');
+  t.eq(closed.left, '', '붙였던 자리도 되돌린다');
+
   await pctx.close();
 }
