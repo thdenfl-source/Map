@@ -9,6 +9,9 @@ const GP = [37.56775, 126.780056], ELEV = 59, ANG = 3, CRS = 143;
 const FT_NM = 6076.115;
 
 export async function run(page, t) {
+  // 계기를 화면에 띄운다 — 한 번에 한 창이라, 안 띄우면 캔버스가 0×0 이다
+  await page.evaluate(() => setSolo('pfd'));
+  await page.waitForTimeout(250);
   // 코스 위(접근 쪽) 지정 거리에, 강하선 대비 지정 높이차로 놓는다
   const put = (d, offFt) => page.evaluate(([GP, CRS, d, offFt, ELEV, ANG, FT_NM]) => {
     const p = destPoint(GP[0], GP[1], toTrue(normA(CRS + 180)), d);

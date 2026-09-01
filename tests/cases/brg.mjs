@@ -7,6 +7,9 @@
 export const name = 'BRG 지시침';
 
 export async function run(page, t) {
+  // 계기를 화면에 띄운다 — 한 번에 한 창이라, 안 띄우면 캔버스가 0×0 이다
+  await page.evaluate(() => setSolo('pfd'));
+  await page.waitForTimeout(250);
   // ── 어느 소스에서도 가리킬 국이 있는가 ──
   const st = await page.evaluate(() => {
     const one = () => { const s = brg1Station(); return s ? s.src + ':' + s.id : null; };

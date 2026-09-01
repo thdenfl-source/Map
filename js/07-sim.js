@@ -594,109 +594,44 @@ function scaleCdu() {
   _scaleFrame('fp-wrap',  'fp-scaler');   // Flight Plan도 같은 규격
 }
 
-// ── 패널 선택 시스템: 좌/우 각각 PFD·MAP·CDU 중 하나를 표시 ──
-// pfd-wrap/map-wrap/cdu-wrap 은 각 1개뿐 → 선택된 패널로 DOM 이동.
-// 양쪽에 같은 창은 불가(사용자 클릭은 거부 피드백, 프로그램 호출은 스왑).
-let leftSel = 'pfd', rightSel = 'map';   // 'pfd' | 'map' | 'cdu' | (우측 한정 'plan')
-let midSel  = 'map';                    // 3분할일 때만 사용하는 중앙 패널
-// 처음 켜면 3분할 — 좌 PFD · 중 MAP · 우 CDU 가 기본 구성이다.
-// 사용자가 2분할을 골라 뒀으면(저장값 '0') 그 뜻을 따른다.
-let tripleMode = true;                  // 3분할(PFD·MAP·CDU) 여부
-try {
-  const v = localStorage.getItem('tripleMode');
-  if (v !== null) tripleMode = (v === '1');
-} catch(e) { _swallow(e); }
-if (tripleMode) { leftSel = 'pfd'; midSel = 'map'; rightSel = 'cdu'; }
-
-// 3분할 분할 비율 [좌%, 중%] — null 이면 기본 배분(PFD 호스트 1.4배)
-const TRI_MIN = 12;                     // 한 창의 최소 비율(%)
-let triRatio = null;
-try {
-  const s = JSON.parse(localStorage.getItem('triSplit') || 'null');
-  if (Array.isArray(s) && s.length === 2 && s.every(v => typeof v === 'number')) triRatio = s;
-} catch(e) { _swallow(e); }
-
-// 기본 3분할 배분 — PFD 가 있는 창만 FCP 조작부가 다 보이도록 1.4배
-function triDefaultRatio() {
-  const w = [leftSel, midSel, rightSel].map(s => s === 'pfd' ? 1.4 : 1);
-  const t = w[0] + w[1] + w[2];
-  return [w[0] / t * 100, w[1] / t * 100];
-}
-function applyTriRatio() {
-  const app = document.getElementById('app');
-  if (!app) return;
-  const [l, m] = triRatio || triDefaultRatio();
-  app.style.setProperty('--tri-l', l.toFixed(3) + '%');
-  app.style.setProperty('--tri-m', m.toFixed(3) + '%');
-}
-function saveTriRatio() {
-  try { localStorage.setItem('triSplit', JSON.stringify(triRatio)); } catch(e) { _swallow(e); }
-}
-
-// 3분할 ⇄ 2분할 전환. 3분할 진입 시 PFD·MAP·CDU를 좌·중·우로 배치한다.
-function toggleTriple(on) {
-  tripleMode = (on === undefined) ? !tripleMode : !!on;
-  try { localStorage.setItem('tripleMode', tripleMode ? '1' : '0'); } catch(e) { _swallow(e); }
-  if (tripleMode) { leftSel = 'pfd'; midSel = 'map'; rightSel = 'cdu'; }
-  else {
-    // 2분할 복귀: 가운데 창을 우측으로 접는다(PFD·MAP·CDU → PFD·MAP)
-    if (midSel && midSel !== leftSel) rightSel = midSel;
-    if (rightSel === leftSel) rightSel = leftSel === 'map' ? 'cdu' : 'map';
-  }
-  applyPanels();
-}
+// ── 화면 선택 — 한 번에 한 창만 띄운다 ────────────────────────────
+// 이 앱은 폰·패드를 세로로 들고 쓴다. 그 폭에 창을 둘·셋 세우면 계기가
+// 손바닥만 해져 읽을 수가 없다. 그래서 분할(2·3분할)을 두지 않는다 —
+// PC 에서 열어도 마찬가지다.
+//
+// pfd-wrap / map-wrap / cdu-wrap 은 각 하나뿐이라, 고른 창을 보이는 패널로
+// 옮기고 나머지는 접는다. 좌·우 두 패널이 남아 있는 것은 마크업 구조 때문이며
+// (PFD·MAP 은 좌측, CDU·PLAN 은 우측), 동시에 보이는 일은 없다.
+let leftSel = 'pfd', rightSel = 'map';   // 옛 호출부가 읽는 값(호환용)
 
 function selectPanel(side, sel, force) {
-  const get = k => k === 'left' ? leftSel : k === 'mid' ? midSel : rightSel;
-  const set = (k, v) => { if (k === 'left') leftSel = v; else if (k === 'mid') midSel = v; else rightSel = v; };
-  const sides = tripleMode ? ['left', 'mid', 'right'] : ['left', 'right'];
-  if (!sides.includes(side)) side = 'right';
-  // 같은 창을 이미 다른 패널이 갖고 있으면 서로 맞바꾼다(창이 사라지지 않게)
-  const holder = sides.find(k => k !== side && get(k) === sel);
-  if (holder) set(holder, get(side));
-  set(side, sel);
-  applyPanels();
+  // 어느 쪽을 말하든 결국 그 창 하나를 띄운다(side 는 옛 호출부 호환용)
+  setSolo(sel);
 }
 
+// 보이는 창에 맞춰 wrap 들을 제자리로 옮긴다
 function applyPanels() {
   const L = document.getElementById('left-panel');
-  const M = document.getElementById('mid-panel');
   const R = document.getElementById('right-panel');
-  const app = document.getElementById('app');
-  app.classList.toggle('triple', tripleMode);
-  const btn = document.getElementById('split-toggle');
-  if (btn) btn.textContent = tripleMode ? '⿰ 2분할' : '⿲ 3분할';
-
+  if (!L || !R) return;
+  const cur = _soloCurrent || 'map';
   const wrapIds = { pfd: 'pfd-wrap', map: 'map-wrap', cdu: 'cdu-wrap' };
   ['pfd', 'map', 'cdu'].forEach(k => {
     const el = document.getElementById(wrapIds[k]);
-    const host = leftSel === k ? L : (tripleMode && midSel === k ? M : (rightSel === k ? R : null));
-    if (host && el.parentElement !== host) host.appendChild(el);
-    el.classList.toggle('page-hidden', !host);
+    if (!el) return;
+    const host = (k === 'cdu') ? R : L;
+    if (el.parentElement !== host) host.appendChild(el);
+    el.classList.toggle('page-hidden', k !== cur);
   });
-  // PLAN(fp-wrap)은 우측 전용 내부 페이지(CDU FPL 버튼 등으로 진입)
-  document.getElementById('fp-wrap').classList.toggle('page-hidden', rightSel !== 'plan');
+  const fp = document.getElementById('fp-wrap');
+  if (fp) fp.classList.toggle('page-hidden', cur !== 'plan');
 
-  // PFD 호스트 패널은 FCP 조작부가 다 보이도록 넓게(2분할 55% / 3분할 1.4배)
-  L.classList.toggle('pfd-host', leftSel === 'pfd');
-  M.classList.toggle('pfd-host', tripleMode && midSel === 'pfd');
-  R.classList.toggle('pfd-host', rightSel === 'pfd');
+  // 레거시 상태 동기화(옛 호출부가 읽는다)
+  leftSel  = (cur === 'map') ? 'map' : 'pfd';
+  rightSel = (cur === 'cdu' || cur === 'plan') ? cur : 'map';
+  leftPage = cur === 'map' ? 1 : 0;
+  currentPage = cur === 'map' ? 0 : cur === 'plan' ? 1 : cur === 'cdu' ? 2 : 0;
 
-  // 탭 활성 표시
-  document.querySelectorAll('#left-tabs [data-sel]').forEach(b =>
-    b.classList.toggle('active', b.dataset.sel === leftSel));
-  document.querySelectorAll('#mid-tabs [data-sel]').forEach(b =>
-    b.classList.toggle('active', b.dataset.sel === midSel));
-  document.querySelectorAll('#page-tabs [data-sel]').forEach(b =>
-    b.classList.toggle('active', b.dataset.sel === rightSel));
-
-  // 레거시 상태 동기화(솔로 모드 진입 판단 등에서 사용)
-  leftPage = leftSel === 'map' ? 1 : 0;
-  currentPage = rightSel === 'map' ? 0 : rightSel === 'plan' ? 1 : rightSel === 'cdu' ? 2 : 0;
-
-  // 3분할은 --tri-l/--tri-m 로 배분한다(2분할의 인라인 flex 는 무효화)
-  if (tripleMode) { L.style.flex = ''; applyTriRatio(); }
-  // 크기 재계산
   requestAnimationFrame(() => { resizePFD(); drawPFD(); scaleCdu(); });
   setTimeout(() => {
     try { leafMap.invalidateSize(); } catch(e) { _swallow(e); }
@@ -705,113 +640,13 @@ function applyPanels() {
   }, 60);
 }
 
-// 처음 켤 때 한 번 맞춘다. 마크업의 초기 배치는 2분할(PFD|MAP)이라,
-// 위에서 정한 기본값(3분할 · 좌 PFD · 중 MAP · 우 CDU)을 여기서 화면에 반영한다.
-// 저장된 세션을 복원하면 그쪽에서 다시 applyPanels 를 부르므로 그 뜻이 이긴다.
-try { applyPanels(); } catch(e) { _swallow(e); }
+// 레거시 래퍼 — 기존 호출부(CDU 버튼 등) 호환
+function setLeftPage(n) { setSolo(n === 0 ? 'pfd' : 'map'); }
+function setPage(n) { setSolo(['map', 'plan', 'cdu'][n] || 'map'); }
 
-// 레거시 래퍼 — 기존 호출부(CDU 버튼·솔로 모드 등) 호환
-function setLeftPage(n) { selectPanel('left', n === 0 ? 'pfd' : 'map', true); }
-function setPage(n) { selectPanel('right', ['map', 'plan', 'cdu'][n] || 'map', true); }
 
-// ── 분할 비율 조절: 경계선 그립을 드래그(좌우/위아래) ──
-// 2분할: 좌측 패널에 인라인 flex-basis를 지정(pfd-host 55% 규칙보다 우선)
-// 3분할: 두 경계선을 각각 드래그. 인접한 두 창만 서로 크기를 주고받는다.
-(function initDividerDrag() {
-  const grip  = document.getElementById('divider-grip');
-  const grip2 = document.getElementById('divider-grip-2');
-  const app   = document.getElementById('app');
-  const L     = document.getElementById('left-panel');
-  if (!grip || !app || !L) return;
-
-  // 좌측을 고정폭으로 두고, 우측은 남은 공간을 채우도록(split-custom) 전환
-  const applyRatio = pct => { L.style.flex = `0 0 ${pct}%`; app.classList.add('split-custom'); };
-  const afterResize = () => {
-    requestAnimationFrame(() => { try { resizePFD(); drawPFD(); } catch(e) { _swallow(e); } });
-    setTimeout(() => {
-      try { leafMap.invalidateSize(); } catch(e) { _swallow(e); }
-      try { if (_ml3d) _ml3d.resize(); } catch(e) { _swallow(e); }
-      try { scaleCdu(); } catch(e) { _swallow(e); }
-    }, 60);
-  };
-
-  // 저장된 비율 복원
-  const saved = parseFloat(localStorage.getItem('splitRatio'));
-  if (!isNaN(saved) && saved >= 25 && saved <= 75) applyRatio(saved);
-  if (tripleMode) applyTriRatio();
-  afterResize();
-
-  // 포인터 위치를 앱 기준 0~100% 로
-  const pctOf = e => {
-    const r = app.getBoundingClientRect();
-    return (r.width >= r.height)
-      ? (e.clientX - r.left) / r.width * 100
-      : (e.clientY - r.top) / r.height * 100;
-  };
-
-  // which: 1 = 좌|중 경계, 2 = 중|우 경계(3분할 전용)
-  function bind(el, which) {
-    if (!el) return;
-    let dragging = false;
-    el.addEventListener('pointerdown', e => {
-      if (which === 2 && !tripleMode) return;
-      e.preventDefault(); dragging = true;
-      try { el.setPointerCapture(e.pointerId); } catch(err) { _swallow(err); }
-    });
-    el.addEventListener('pointermove', e => {
-      if (!dragging) return;
-      const pct = pctOf(e);
-      if (!tripleMode) {
-        applyRatio(Math.max(25, Math.min(75, pct)));
-      } else {
-        const cur = triRatio || triDefaultRatio();
-        let [l, m] = cur;
-        if (which === 1) {
-          // 좌|중 경계 — 좌·중이 서로 주고받고 우측 폭은 유지
-          const edge = l + m;
-          l = Math.max(TRI_MIN, Math.min(edge - TRI_MIN, pct));
-          m = edge - l;
-        } else {
-          // 중|우 경계 — 중·우가 서로 주고받고 좌측 폭은 유지
-          const edge = Math.max(l + TRI_MIN, Math.min(100 - TRI_MIN, pct));
-          m = edge - l;
-        }
-        triRatio = [l, m];
-        applyTriRatio();
-      }
-      try { resizePFD(); } catch(err) { _swallow(err); }
-    });
-    const end = () => {
-      if (!dragging) return;
-      dragging = false;
-      if (tripleMode) saveTriRatio();
-      else {
-        const mm = /0 0 ([\d.]+)%/.exec(L.style.flex || '');
-        if (mm) try { localStorage.setItem('splitRatio', mm[1]); } catch(err) { _swallow(err); }
-      }
-      afterResize();
-    };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-    // 더블탭/더블클릭 → 기본 배분으로 되돌리기
-    el.addEventListener('dblclick', () => {
-      if (tripleMode) { triRatio = null; applyTriRatio(); saveTriRatio(); }
-      else { L.style.flex = ''; app.classList.remove('split-custom');
-             try { localStorage.removeItem('splitRatio'); } catch(err) { _swallow(err); } }
-      afterResize();
-    });
-  }
-  bind(grip, 1);
-  bind(grip2, 2);
-})();
-
-// CDU 홈의 MAP 버튼 — 분할/전체화면 모두에서 MAP 창을 연다.
-// 전체화면(solo)에서는 map-wrap이 숨겨진 좌측 패널에 있을 수 있어 setPage(0)로는
-// 검은 화면이 되므로, solo 모드일 때는 solo MAP 화면으로 전환한다.
-function cduOpenMap() {
-  if (_soloActive) setSolo('map');
-  else setPage(0);
-}
+// CDU 홈의 MAP 버튼 — MAP 창으로 갈아 끼운다.
+function cduOpenMap() { setSolo('map'); }
 
 // ══════════════════════════════════════════════════════
 // 화면 터치 잠금 — 비행 중 오조작 방지 (길게 눌러 해제)
@@ -948,80 +783,29 @@ function _rulerRender() {
   el.style.display = 'block';
 }
 
-// ── 단독(전체화면) 진입 ──
-// 들어가기 전 창 배치를 적어 둔다. 나올 때 그대로 되돌리기 위해서다
-// (종전에는 나오면 무조건 2분할 PFD|MAP 이 되어 3분할 배치가 흐트러졌다).
-function enterSolo(screen) {
-  if (!_soloActive) _soloSaved = { l: leftSel, m: midSel, r: rightSel, tri: tripleMode };
-  _soloActive = true;
-  document.getElementById('solo-bar').style.display = 'flex';
-  setSolo(screen);
-}
-
-// 단독 버튼 — 각 창 탭 줄의 오른쪽 끝. 한 번 더 누르면 원래 배치로 돌아온다.
-function panelSolo(screen) {
-  if (_soloActive && _soloCurrent === screen) { exitSolo(); return; }
-  enterSolo(screen);
-}
-function pfdSolo() { panelSolo('pfd'); }        // 종전 이름(좌측 상단 버튼)
-
-// 단독 버튼 라벨(단독 ⇄ 분할) — 지금 단독으로 떠 있는 창의 버튼만 되돌리기가 된다
-const SOLO_BTNS = { pfd: 'pfd-solo-btn', map: 'map-solo-btn', cdu: 'cdu-solo-btn' };
+// 창 전환 뒤에 딸려 오는 일들 — 종전 updateSoloBtn 이 하던 자리다.
+// 분할이 없어져 '단독 ⇄ 분할' 버튼은 사라졌지만, 창이 바뀔 때마다 해야 하는
+// 일은 그대로 남는다(상단 탭 표시 갱신, 지도 라인 셀렉터 다시 재기).
 function updateSoloBtn() {
-  Object.keys(SOLO_BTNS).forEach(k => {
-    const b = document.getElementById(SOLO_BTNS[k]);
-    if (!b) return;
-    const on = (_soloActive && _soloCurrent === k);
-    b.textContent = on ? '✥ 분할' : `⛶ ${k.toUpperCase()} 단독`;
-    b.classList.toggle('active', on);
-  });
-  // 폰 하단 탭도 같은 자리에서 갱신한다 — setSolo/exitSolo 가 모두 여기를 지난다
   try { if (typeof updateNavBar === 'function') updateNavBar(); } catch(e) { _swallow(e); }
   // 지도가 새로 자리를 잡으면 라인 셀렉터 칸도 다시 잰다(접혀 있을 때는 못 잰다)
   try { if (typeof layoutMapLsk === 'function') setTimeout(layoutMapLsk, 80); } catch(e) { _swallow(e); }
 }
 
-// MAP 상단 툴바의 FULL/HALF 토글 — 상황에 맞게 전체화면 진입/분할 복귀
-function toggleMapFull() {
-  if (_soloActive) { exitSolo(); return; }
-  enterSolo('map');
-}
-
 // Flight Plan 하단 Home 버튼 — CDU 홈 화면으로 전환
 function fpGoCduHome() {
-  if (_soloActive) setSolo('cdu');
-  else setPage(2);
+  setSolo('cdu');
   try { switchMode('HOME'); } catch(e) { _swallow(e); }
 }
 
-// CDU 하단 Full 버튼 — 상단 Full Screen 탭과 동일하게 CDU 전체화면 진입
-function cduFullScreen() { enterSolo('cdu'); }
-
-// ── CDU 하단 푸터 표준화 ──
-// 전체화면(solo)일 땐 FULL → HALF(우측 상단 ✕와 동일: exitSolo)
-function cduFullNavBtn() {
-  return _soloActive
-    ? `<div class="nav-btn" data-act="exitSolo"><span>✥</span>Half</div>`
-    : `<div class="nav-btn" data-act="cduFullScreen"><span>✥</span>Full</div>`;
-}
-// PLAN 버튼 — Flight Plan 화면 열기(분할/전체화면 모두 대응)
+// PLAN 버튼 — Flight Plan 화면 열기
 function openFlightPlan() {
   // 직전에 PROC(IFR) 등을 열어 fpMode가 남아있으면 플랜 목록으로 되돌림
   try { fpMode = 'LIST'; fpRender(); } catch(e) { _swallow(e); }
-  if (_soloActive) setSolo('plan'); else setPage(1);
-}
-// Flight Plan 화면의 FULL — 플랜을 전체화면으로
-function planFullScreen() { enterSolo('plan'); }
-// Flight Plan 푸터용 FULL/HALF 버튼(solo 상태 반영)
-function fpFullBtn() {
-  return _soloActive
-    ? `<div class="fp-nav-btn" data-act="exitSolo"><span>✥</span>Half</div>`
-    : `<div class="fp-nav-btn" data-act="planFullScreen"><span>✥</span>Full</div>`;
+  setSolo('plan');
 }
 // Flight Plan 화면의 BACK — CDU(직전 화면)로 복귀
-function fpBackToCdu() {
-  if (_soloActive) setSolo('cdu'); else setPage(2);
-}
+function fpBackToCdu() { setSolo('cdu'); }
 // 표준 CDU 푸터: HOME · FULL/HALF · PLAN · BACK (+ 필요 시 Enter 등 extra)
 // backOnclick이 비어있으면 BACK 버튼은 생략(예: HOME 화면)
 // back 인자는 두 가지를 받는다.
@@ -1030,8 +814,8 @@ function fpBackToCdu() {
 //             전역에 없어 인라인 onclick 으로는 "not defined" 가 나므로 이쪽을 써야 한다.
 let _cduBackFn = null;
 function cduFooter(back, extra) {
+  // FULL/HALF 자리는 없앴다 — 화면은 늘 하나뿐이라 오갈 곳이 없다
   let h = `<div class="nav-btn" data-act="switchMode" data-arg='["HOME"]'><span>🏠</span>Home</div>`
-        + cduFullNavBtn()
         + `<div class="nav-btn" data-act="switchMode" data-arg='["SETTINGS"]'><span>⚙</span>Setting</div>`;
   if (extra) h += extra;
   // BACK은 항상 제일 우측
@@ -1045,109 +829,48 @@ function cduFooter(back, extra) {
 }
 
 // ══════════════════════════════════════════════════════
-// SOLO (단일화면) 모드
+// 화면 전환 — 한 번에 한 창
 // ══════════════════════════════════════════════════════
-let _soloActive = false;
-let _soloSaved = null;          // 단독 진입 전 창 배치
-let _soloCurrent = null;
+// 분할이 없으므로 '단독' 이라는 별도 상태가 없다. 늘 한 창만 떠 있고,
+// setSolo(screen) 이 그 창을 갈아 끼운다. _soloActive 는 늘 참이다 —
+// 옛 호출부가 이 값을 보고 갈래를 나누던 자리가 아직 남아 있어 그대로 둔다.
+const _soloActive = true;
+let _soloCurrent = 'map';
 
 function setSolo(screen) {
   _soloCurrent = screen;
   const leftPanel  = document.getElementById('left-panel');
   const rightPanel = document.getElementById('right-panel');
-  const divider    = document.getElementById('panel-divider');
-  const midPanel   = document.getElementById('mid-panel');
+  if (!leftPanel || !rightPanel) return;
 
-  // 모든 패널 숨기기 — 3분할이면 가운데 창도 함께 접는다
-  leftPanel.classList.remove('solo-panel-visible');
-  rightPanel.classList.remove('solo-panel-visible');
-  leftPanel.style.display  = 'none';
-  rightPanel.style.display = 'none';
-  divider.style.display = 'none';
-  if (midPanel) { midPanel.classList.remove('solo-panel-visible'); midPanel.style.display = 'none'; }
+  // PFD·MAP 은 좌측 패널, CDU·PLAN 은 우측 패널에 들어 있다. 쓰는 쪽만 펴고
+  // 나머지는 접는다(마크업이 그렇게 짜여 있을 뿐, 나란히 보이는 일은 없다).
+  const useRight = (screen === 'cdu' || screen === 'plan');
+  const show = useRight ? rightPanel : leftPanel;
+  const hide = useRight ? leftPanel  : rightPanel;
+  hide.classList.remove('solo-panel-visible');
+  hide.style.display = 'none';
+  show.style.display = '';
+  show.classList.add('solo-panel-visible');
   document.body.classList.add('solo-mode');
 
-  // solo-bar 버튼 강조
-  document.querySelectorAll('#solo-bar button:not(.solo-exit)').forEach(b => {
-    b.classList.toggle('solo-active', b.textContent.trim().toLowerCase() === screen);
-  });
+  applyPanels();
 
   if (screen === 'pfd') {
-    // PFD = left-panel, leftPage=0
-    leftPanel.style.display = '';
-    leftPanel.classList.add('solo-panel-visible');
-    setLeftPage(0);
     void leftPanel.offsetHeight;
     resizePFD();
   } else if (screen === 'map') {
-    // MAP: left-panel에 배치 (setLeftPage(1) 방식)
-    leftPanel.style.display = '';
-    leftPanel.classList.add('solo-panel-visible');
-    setLeftPage(1);
-    setTimeout(() => leafMap.invalidateSize(), 80);
-  } else if (screen === 'plan') {
-    rightPanel.style.display = '';
-    rightPanel.classList.add('solo-panel-visible');
-    setPage(1);
-    setTimeout(() => scaleCdu(), 80);   // Flight Plan도 354×567 규격이라 재스케일 필요
-  } else if (screen === 'cdu') {
-    rightPanel.style.display = '';
-    rightPanel.classList.add('solo-panel-visible');
-    setPage(2);
-    setTimeout(() => scaleCdu(), 80);
+    setTimeout(() => { try { leafMap.invalidateSize(); } catch (e) { _swallow(e); } }, 80);
+  } else {
+    setTimeout(() => { try { scaleCdu(); } catch (e) { _swallow(e); } }, 80);
   }
-  // PFD 전체화면은 하단 푸터가 없으므로 떠 있는 HALF 버튼 표시
-  // (MAP은 상단 툴바의 FULL/HALF 버튼 사용)
-  const halfBtn = document.getElementById('solo-half-btn');
-  if (halfBtn) halfBtn.classList.toggle('show', screen === 'pfd');
-  // MAP 상단 툴바 버튼 라벨: 전체화면(map)일 때 HALF, 그 외 FULL
-  const mapFullBtn = document.getElementById('map-full-btn');
-  if (mapFullBtn) mapFullBtn.textContent = (screen === 'map') ? 'HALF' : 'FULL';
   updateSoloBtn();
-  _refreshCduFooters();   // FULL⇄HALF 라벨 갱신
+  _refreshCduFooters();
 }
 
-// solo 상태 변화 시 CDU/Flight Plan 푸터를 다시 그려 FULL⇄HALF 반영
+// 창이 바뀌면 CDU·Flight Plan 푸터를 다시 그린다
 function _refreshCduFooters() {
   try { renderCduContent(); } catch (e) { _swallow(e); }
   try { if (typeof fpRender === 'function') fpRender(); } catch (e) { _swallow(e); }
-}
-
-function exitSolo() {
-  _soloActive = false;
-  _soloCurrent = null;
-  document.getElementById('solo-bar').style.display = 'none';
-  const halfBtn = document.getElementById('solo-half-btn');
-  if (halfBtn) halfBtn.classList.remove('show');
-  const mapFullBtn = document.getElementById('map-full-btn');
-  if (mapFullBtn) mapFullBtn.textContent = 'FULL';
-  document.body.classList.remove('solo-mode');
-
-  const leftPanel  = document.getElementById('left-panel');
-  const rightPanel = document.getElementById('right-panel');
-  const divider    = document.getElementById('panel-divider');
-
-  leftPanel.classList.remove('solo-panel-visible');
-  rightPanel.classList.remove('solo-panel-visible');
-  leftPanel.style.display  = '';
-  rightPanel.style.display = '';
-  divider.style.display = '';
-  const midPanel = document.getElementById('mid-panel');
-  if (midPanel) { midPanel.classList.remove('solo-panel-visible'); midPanel.style.display = ''; }
-
-  // 들어가기 전 배치로 되돌린다(없으면 종전대로 좌 PFD · 우 MAP)
-  if (_soloSaved) {
-    tripleMode = _soloSaved.tri; leftSel = _soloSaved.l;
-    midSel = _soloSaved.m; rightSel = _soloSaved.r;
-    _soloSaved = null;
-    applyPanels();
-  } else { setLeftPage(0); setPage(0); }
-  updateSoloBtn();
-  _refreshCduFooters();   // FULL⇄HALF 라벨 갱신
-  setTimeout(() => {
-    leafMap.invalidateSize();
-    resizePFD();
-    scaleCdu();
-  }, 80);
 }
 

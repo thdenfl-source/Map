@@ -1,7 +1,7 @@
 // 보조 항법장치 모드 — 이 앱의 성격이 실제로 화면에 나오는가
 //
 // 세 가지를 본다.
-//   ① 스마트폰 크기로 열면 한 화면(MAP) + 상단 탭이 뜬다. 태블릿은 종전 3분할.
+//   ① 열면 한 화면(MAP) + 상단 탭이 뜬다. 분할은 없다 — 어느 폭에서든 한 창이다.
 //   ② 기체를 조종하는 조작부(FCP·AFCS·트림·배속·FLY)가 화면에 없다.
 //   ③ GPS 가 끊기면 추측항법(DR)으로 위치를 이어 그리고, 오래 끊기면 멈춘다.
 export const name = '보조 항법 모드';
@@ -18,7 +18,7 @@ async function open(browser, url, viewport, init) {
   await p.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
   if (init) await p.addInitScript(init);
   await p.goto(url);
-  await p.waitForFunction(() => typeof S === 'object' && typeof isPhoneLayout === 'function',
+  await p.waitForFunction(() => typeof S === 'object' && typeof navGo === 'function',
     null, { timeout: 20000 });
   // 시작 안내 창은 화면을 통째로 덮는다 — 열려 있으면 무엇을 눌러도
   // 그 창이 잡히고, elementFromPoint 도 지도 대신 창을 돌려준다.
@@ -60,7 +60,7 @@ export async function run(page, t) {
     };
   });
   t.eq(ph.phoneClass, true, '폰 크기에서는 body.phone-mode 가 붙는다');
-  t.eq(ph.solo, true, '분할이 아니라 한 화면으로 뜬다');
+  t.eq(ph.solo, true, '한 화면으로 뜬다');
   t.eq(ph.cur, 'map', `첫 화면은 MAP 이다 (${ph.cur})`);
   t.eq(ph.barShown, true, '탭바가 보인다');
   t.eq(ph.activeTab, 'map', `MAP 탭이 눌린 상태로 표시된다 (${ph.activeTab})`);
@@ -143,18 +143,35 @@ export async function run(page, t) {
   t.eq(simOn.flyShown, true, '그때는 FLY 등 조작부가 다시 나온다');
   await sctx.close();
 
-  // ── ③ 태블릿은 종전대로 분할 ──────────────────────────────────
+  // ── ③ 넓게 열어도 한 화면이다 ────────────────────────────────
+  // 이 앱은 폰·패드를 세로로 들고 쓰는 물건이다. PC 에서 열어도 분할하지 않는다 —
+  // 창을 나누면 계기가 그만큼 작아지고, 작아진 계기는 읽히지 않는다.
   const [tctx, tab] = await open(browser, url, TABLET);
   const tv = await tab.evaluate(() => ({
-    phoneClass: document.body.classList.contains('phone-mode'),
     solo: _soloActive,
-    triple: document.getElementById('app').classList.contains('triple'),
+    cur: _soloCurrent,
     barShown: document.getElementById('phone-bar').getBoundingClientRect().height > 0,
+    // 분할에 쓰던 것들이 남아 있지 않은가
+    gone: !document.getElementById('mid-panel') && !document.getElementById('panel-divider')
+       && !document.getElementById('split-toggle') && !document.getElementById('solo-bar')
+       && !document.getElementById('map-full-btn')
+       // 패널마다 붙어 있던 창 전환 탭바도 분할의 물건이다 — 상단 탭 하나로 갈음한다
+       && !document.getElementById('left-tabs') && !document.getElementById('page-tabs')
+       && !document.querySelector('.page-tab'),
+    noFn: ['toggleTriple', 'exitSolo', 'enterSolo', 'panelSolo', 'navToggleSplit']
+      .filter(n => { try { return new Function('return typeof ' + n)() !== 'undefined'; }
+                     catch (e) { return false; } }),
+    // 한 번에 한 창만 보인다
+    shown: ['pfd-wrap', 'map-wrap', 'cdu-wrap']
+      .filter(id => { const e = document.getElementById(id);
+                      return e && e.getBoundingClientRect().width > 0; }),
   }));
-  t.eq(tv.phoneClass, false, '태블릿에서는 폰 모드가 아니다');
-  t.eq(tv.solo, false, '한 화면으로 접지 않는다');
-  t.eq(tv.triple, true, '종전대로 3분할로 뜬다');
-  t.eq(tv.barShown, false, '폰 하단 탭은 나오지 않는다');
+  t.eq(tv.solo, true, '넓은 화면에서도 한 창이다');
+  t.eq(tv.barShown, true, '상단 탭바로 창을 고른다');
+  t.eq(tv.gone, true, '분할에 쓰던 요소(가운데 창·경계선·분할 버튼)가 없다');
+  t.eq(tv.noFn.length, 0,
+    `분할 함수도 남지 않았다${tv.noFn.length ? ' (' + tv.noFn.join(',') + ')' : ''}`);
+  t.eq(tv.shown.length, 1, `한 번에 한 창만 보인다 (${tv.shown.join(',') || '없음'})`);
   await tctx.close();
 
   // ── ④ 추측항법(DR) ───────────────────────────────────────────
@@ -340,13 +357,13 @@ export async function run(page, t) {
     t.eq(f.canvasFits, true, `${L} — 계기 캔버스가 자기 창 크기와 맞는다`);
   }
 
-  // ── ⑦-3 세로로 들면 태블릿도 한 화면으로 ─────────────────────
+  // ── ⑦-3 태블릿도 한 화면으로 ─────────────────────────────────
   // 아이패드를 세로로 들면 폭이 768~834px 다. 여기에 창을 둘·셋 세우면 계기가
-  // 손바닥만 해진다 — 세로일 때는 폰과 같이 한 화면으로 본다. 가로로 눕히면
-  // 그때 분할로 돌아간다.
-  for (const [label, vp, wantPhone] of [
-        ['아이패드 세로', { width: 810, height: 1080 }, true],
-        ['아이패드 가로', { width: 1080, height: 810 }, false]]) {
+  // 손바닥만 해진다. 이 앱은 세로로 들고 쓰는 물건이라 분할 자체를 두지 않는다 —
+  // 가로로 눕혀도, PC 로 열어도 한 화면이다.
+  for (const [label, vp, exactRows] of [
+        ['아이패드 세로', { width: 810, height: 1080 }, 2],
+        ['아이패드 가로', { width: 1080, height: 810 }, 0]]) {
     await phone.setViewportSize(vp);
     await phone.waitForTimeout(500);
     const r = await phone.evaluate(() => {
@@ -363,18 +380,17 @@ export async function run(page, t) {
                bar: document.getElementById('phone-bar').getBoundingClientRect().height > 0,
                rows, labels, susp: document.getElementById('susp-btn').textContent.trim() };
     });
-    t.eq(r.phone, wantPhone, `${label} — ${wantPhone ? '한 화면' : '분할'}로 본다`);
-    t.eq(r.solo, wantPhone, `${label} — solo ${wantPhone}`);
-    t.eq(r.bar, wantPhone, `${label} — 상단 탭바 ${wantPhone ? '있음' : '없음'}`);
-    if (wantPhone) {
-      // 두 줄이다 — 앞줄(CRS·OBS·BRG·SUSP)과 뒷줄(시계·RNP).
-      // 한 번 맞춰 두고 잘 안 건드리는 것을 뒷줄로 내렸다.
-      t.eq(r.rows, 2, `${label} — 조작부가 두 줄이다 (${r.rows}줄)`);
-      // 이름표는 내렸다. RNP 만 남는다 — 버튼이 '4 2 1 0.3' 이라 없으면 못 읽는다.
-      t.eq(r.labels.filter(x => ['AP', 'BRG', 'SUSP', 'NAV SRC'].includes(x)).length, 0,
-        `${label} — 겹치는 이름표를 내렸다 (${r.labels.join(',')})`);
-      t.ok(r.labels.includes('RNP'), `${label} — RNP 이름표는 남는다`);
-    }
+    t.eq(r.phone, true, `${label} — 한 화면으로 본다`);
+    t.eq(r.solo, true, `${label} — solo true`);
+    t.eq(r.bar, true, `${label} — 상단 탭바가 뜬다`);
+    // 앞줄(CRS·OBS·BRG·SUSP)과 뒷줄(시계·RNP). 한 번 맞춰 두고 잘 안 건드리는
+    // 것을 뒷줄로 내렸다. 가로로 눕히면 폭이 남아 한 줄로 붙을 수도 있다.
+    if (exactRows) t.eq(r.rows, exactRows, `${label} — 조작부가 ${exactRows}줄이다 (${r.rows}줄)`);
+    else t.ok(r.rows >= 1 && r.rows <= 2, `${label} — 조작부가 두 줄을 넘지 않는다 (${r.rows}줄)`);
+    // 이름표는 내렸다. RNP 만 남는다 — 버튼이 '4 2 1 0.3' 이라 없으면 못 읽는다.
+    t.eq(r.labels.filter(x => ['AP', 'BRG', 'SUSP', 'NAV SRC'].includes(x)).length, 0,
+      `${label} — 겹치는 이름표를 내렸다 (${r.labels.join(',')})`);
+    t.ok(r.labels.includes('RNP'), `${label} — RNP 이름표는 남는다`);
     t.eq(r.susp, 'SUSP', `${label} — SUSP 버튼 글자가 'SUSP' 다 (${r.susp})`);
   }
   await phone.setViewportSize(PHONE);
@@ -695,7 +711,7 @@ export async function run(page, t) {
   for (const vp of [{ width: 390, height: 844 }, { width: 1180, height: 820 }]) {
     await phone.setViewportSize(vp);
     await phone.waitForTimeout(500);
-    await phone.evaluate(() => { if (!_soloActive) enterSolo('map'); else setSolo('map'); });
+    await phone.evaluate(() => setSolo('map'));
     await phone.waitForTimeout(500);
     const r = await phone.evaluate(() => {
       const W = document.getElementById('map-wrap').getBoundingClientRect();

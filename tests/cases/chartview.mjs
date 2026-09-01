@@ -22,7 +22,7 @@ const mkOverlay = () => {
   const o = ov.getBoundingClientRect();
   const w = document.getElementById('cdu-wrap').getBoundingClientRect();
   const app = document.getElementById('app').getBoundingClientRect();
-  const tabs = document.querySelector('.page-tab').getBoundingClientRect();
+  const tabs = document.querySelector('#phone-bar button').getBoundingClientRect();
   ov.remove();
   const box = r => [r.x, r.y, r.width, r.height].map(Math.round);
   return { ov: box(o), wrap: box(w), app: box(app), tabs: box(tabs) };
@@ -47,10 +47,10 @@ export async function run(page, t) {
     // 그러나 패널 밖으로는 못 나간다 — 상단 탭 줄과 겹치지 않아야 한다
     t.ok(r.ov[1] >= r.tabs[1] + r.tabs[3] - 2,
       `${label} — 상단 탭 줄을 덮지 않음 (차트 위끝 ${r.ov[1]} ≥ 탭 아래끝 ${r.tabs[1] + r.tabs[3]})`);
-    // 좁은 창에서는 패널이 곧 화면 폭이라 폭은 같을 수 있다. 지켜야 할 것은
-    // "패널 밖으로 안 나간다" — 세로로 앱 전체를 덮지 않는지 본다.
-    t.ok(r.ov[3] < r.app[3] - 2,
-      `${label} — 앱 세로 전체를 덮지 않음 (차트 ${r.ov[3]}px < 앱 ${r.app[3]}px)`);
+    // 한 화면이라 CDU 창이 곧 앱 전체다 — 폭도 높이도 같아진다. 지켜야 할 것은
+    // "앱 밖으로 안 나간다" — 위끝·아래끝이 앱 안에 있는지 본다.
+    t.ok(r.ov[1] >= r.app[1] - 2 && r.ov[1] + r.ov[3] <= r.app[1] + r.app[3] + 2,
+      `${label} — 앱 밖으로 나가지 않음 (차트 ${r.ov[1]}~${r.ov[1] + r.ov[3]} ⊂ 앱 ${r.app[1]}~${r.app[1] + r.app[3]})`);
   }
 
   // 창이 바뀌면 따라 움직이는가(분할선 드래그·전체화면 전환·창 크기 변경)
@@ -83,7 +83,7 @@ export async function runExternal(page, t) {
       msg: document.querySelector('.ui-dlg-msg').textContent,
       tag: ok.tagName, target: ok.getAttribute('target'), href: ok.getAttribute('href'),
       overlay: !!document.getElementById('pdfViewerOverlay'),
-      tabsVisible: !!document.querySelector('.page-tab'),
+      tabsVisible: !!document.querySelector('#phone-bar button'),
     };
   });
   t.ok(dlg.msg.includes('저장돼 있지 않습니다'), '무슨 일이 벌어지는지 먼저 알린다');
@@ -95,7 +95,7 @@ export async function runExternal(page, t) {
 
   await page.locator('.ui-dlg-btns button').click();   // 취소
   await page.waitForTimeout(200);
-  t.ok(await page.evaluate(() => !document.querySelector('.ui-dlg') && !!document.querySelector('.page-tab')),
+  t.ok(await page.evaluate(() => !document.querySelector('.ui-dlg') && !!document.querySelector('#phone-bar button')),
     '취소하면 앱에 그대로 머문다');
 
   // CDU 창을 못 찾아도 document.body 에 뷰포트 전체 오버레이를 얹지 않는다
@@ -103,12 +103,17 @@ export async function runExternal(page, t) {
   const noHost = await page.evaluate(async () => {
     const wrap = document.getElementById('cdu-wrap');
     wrap.id = 'cdu-wrap-hidden';
+    // 앱 자체(#app)와 맨 위 탭바도 fixed 라 "덮는 것"으로 세면 안 된다.
+    // 부르기 전에 있던 것들을 적어 두고, 새로 생긴 것만 본다.
+    const before = new Set(document.body.children);
     try {
       await openChart('RKSI', '2-1', '');   // url 없음 → 외부 경로도 안 탄다
       return { overlay: !!document.getElementById('pdfViewerOverlay'),
-               bodyChild: [...document.body.children].some(el =>
-                 getComputedStyle(el).position === 'fixed' &&
-                 el.getBoundingClientRect().width >= innerWidth) };
+               bodyChild: [...document.body.children].some(el => {
+                 if (before.has(el)) return false;
+                 const q = el.getBoundingClientRect();
+                 return getComputedStyle(el).position === 'fixed' && q.width >= innerWidth;
+               }) };
     } finally { wrap.id = 'cdu-wrap'; }
   });
   t.ok(!noHost.overlay && !noHost.bodyChild,
@@ -123,12 +128,7 @@ export async function runRealPdf(page, t) {
   t.eq(await page.evaluate(() => typeof pdfjsLib), 'object', 'pdf.js 가 오프라인에서 로드됨');
 
   await page.setViewportSize({ width: 1400, height: 900 });
-  // 차트는 넓게 놓고 읽는다 — 2분할로 바꿔 CDU 를 넓은 쪽에 둔다.
-  // 기본 배치(3분할)에 기대면 패널이 3분의 1로 좁아져, 보정점을 찍는 자리가
-  // 달라지고 대화상자 흐름까지 바뀐다. 이 검사는 뷰어 배치를 보는 것이지
-  // 그때그때의 기본 배치를 보는 것이 아니므로, 제 환경을 스스로 정한다.
-  await page.evaluate(() => { try { toggleTriple(false); } catch (e) {} });
-  await page.waitForTimeout(200);
+  // 차트는 넓게 놓고 읽는다 — CDU 를 띄우면 그 창이 화면을 다 쓴다.
   await page.evaluate(() => { try { selectPanel('left', 'cdu'); } catch (e) { setPage(2); } });
   await page.waitForTimeout(300);
   await page.evaluate(() => switchMode('CHARTS'));
@@ -168,7 +168,10 @@ export async function runRealPdf(page, t) {
   await page.waitForTimeout(400);
   t.ok(await page.evaluate(() => _pdfCalActive), '📍 로 보정 모드 진입');
 
-  const area = await page.locator('#pdfViewArea').boundingBox();
+  // 점은 그려진 차트(캔버스) 기준으로 찍는다. 창 기준으로 찍으면 여백이
+  // 얼마냐에 따라 같은 비율이 페이지의 다른 자리를 가리켜, 세 점이 서로
+  // 어긋나고 품질 경고가 하나 더 뜬다.
+  const area = await page.locator('#pdfViewArea canvas').first().boundingBox();
   const pts = [[0.3, 0.3, '37.4631', '126.4407'], [0.7, 0.35, '37.4631', '126.6407'],
                [0.5, 0.72, '37.3131', '126.5407']];
   for (const [rx, ry, la, lo] of pts) {
@@ -194,11 +197,11 @@ export async function runRealPdf(page, t) {
   // 닫으면 목록으로 — 앱은 그대로
   await page.locator('[data-act="closePdfViewer"]').click();
   await page.waitForTimeout(300);
-  t.ok(await page.evaluate(() => !document.getElementById('pdfViewerOverlay') && !!document.querySelector('.page-tab')),
+  t.ok(await page.evaluate(() => !document.getElementById('pdfViewerOverlay') && !!document.querySelector('#phone-bar button')),
     '닫으면 목록으로 돌아오고 앱은 그대로');
 
-  // 뒷정리 — 기본 배치(3분할)로 되돌려 다음 검사가 물려받지 않게 한다
-  await page.evaluate(() => { try { toggleTriple(true); } catch (e) {} });
+  // 뒷정리 — 처음 화면(MAP)으로 되돌려 다음 검사가 물려받지 않게 한다
+  await page.evaluate(() => { try { setSolo('map'); } catch (e) {} });
   await page.waitForTimeout(200);
 }
 
