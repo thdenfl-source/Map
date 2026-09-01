@@ -1029,8 +1029,8 @@ function applyNavRadioToPfd() {
     vorObsCrs = toTrue(r.crs);
     try { updateNav(); } catch(e) { _swallow(e); }
   }
-  const lbl = document.getElementById('nav-icao-lbl');
-  if (lbl) { lbl.style.visibility = 'visible'; lbl.textContent = (r.id || '----') + (r.freq ? ' ' + r.freq : ''); }
+  // 튜닝한 국의 이름은 글자판(#pfd-info)의 그 줄이 이미 보여 준다 —
+  // 따로 두던 라벨(nav-icao-lbl)은 같은 말을 두 번 하는 자리라 걷어냈다.
 }
 // BRG1(파란 방위 지시침)이 가리킬 항법시설.
 //
@@ -1258,13 +1258,11 @@ function swReset() {
 // ── NAV source / ICAO / RNP ──
 function setNavSrc(src) {
   navSrc = src;
-  document.querySelectorAll('.nav-src-btn').forEach(b => b.classList.remove('active'));
-  const btn = document.getElementById('nav-' + src.toLowerCase());
-  if (btn) btn.classList.add('active');
-  const lbl = document.getElementById('nav-icao-lbl');
+  // 선택 표시는 글자판(#pfd-info)의 줄 앞 버튼이 낸다. 다시 그리면 반영된다.
+  try { if (typeof updatePfdInfo === 'function') { _piLast = ''; updatePfdInfo(); } }
+  catch (e) { _swallow(e); }
   if (src === 'FMS') {
     navLat = navLon = null; navIcao = '';
-    if (lbl) lbl.style.visibility = 'hidden';
   } else {
     applyNavRadioToPfd();   // NAV1/NAV2 튜닝 VOR를 CDI/BRG에 반영
   }

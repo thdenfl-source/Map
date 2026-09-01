@@ -271,29 +271,14 @@ html, body {
 
 /* ── NAV Source ── */
 .nav-src-group { display: flex; flex-direction: column; align-items: center; gap: 1px; }
-/* NAV SRC 와 RNP 는 한 덩어리로 붙여 둔다 — 사이가 벌어지면 다른 그룹처럼 보인다.
-   튜닝 VOR 라벨(빈 줄일 때가 대부분)이 사이를 벌리던 자리도 같이 줄인다. */
-.nav-src-group .nav-icao-lbl { margin-top: 0; min-height: 10px; line-height: 10px; }
+/* NAV 소스 선택 버튼과 튜닝 라벨은 글자판(#pfd-info)으로 옮겼다.
+   이 무리에는 이제 RNP 만 남는다. */
 .nav-src-group .rnp-lbl { margin-top: -1px; font-size: 9px; line-height: 10px; }
 .nav-src-group .rnp-btns { margin-top: 1px; }
-.nav-src-btns { display: flex; gap: 2px; }
-.nav-src-btn {
-  background: #1a1a2e; border: 1px solid #2a2a5a; color: #ccc;
-  font-size: 11px; padding: 3px 6px; cursor: pointer; border-radius: 2px;
-  touch-action: manipulation; white-space: nowrap;
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-}
-.nav-src-btn.active { background: #0e1e3e; border-color: #4488ff; color: #fff; }
 .nav-icao-sel {
   background: #0e1e2e; border: 1px solid #1a4a6a; color: #fff;
   font-size: 10px; padding: 1px 3px; border-radius: 2px;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; width: 70px;
-}
-/* NAV1/NAV2 튜닝 VOR 표시 라벨(PFD NAV SRC 하단) */
-.nav-icao-lbl {
-  color: #44aaff; font-size: 10px; font-weight: bold; letter-spacing: 0.5px;
-  text-align: center; margin-top: 1px; min-height: 12px; line-height: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /* ── RNP ── */
@@ -527,7 +512,6 @@ html, body {
   display: inline-block;
 }
 /* 3D 모드: 우하단 FDR/REC 버튼을 zoom/tilt 컨트롤 위로 올려 겹침 방지 */
-#map-wrap.map3d-on #fdr-btn-wrap { bottom: calc(20% + 175px); }
 /* Dual-unit map scale bar (km + NM) */
 .vfr-scale {
   background: rgba(0,0,0,0.65);
@@ -553,8 +537,9 @@ html, body {
    #map 높이가 80%라 하단 가장자리가 이미 terrain-cut(하단 20%) 위에 있으므로
    bottom:0 기준 + margin 만 준다(20%를 또 더하면 축척이 좌표 위로 밀려 올라감). */
 /* 좌하단 세로 순서: 축척 → 좌표(20%+44px) */
-#map-wrap .leaflet-bottom.leaflet-left  { margin-bottom: 62px; bottom: 0; }
-#map-wrap .leaflet-bottom.leaflet-right { margin-bottom: 44px; bottom: 0; }
+/* 좌·우 라인 셀렉터가 양옆 66px 을 쓴다. 축척·확대축소를 그 안쪽으로 물린다 */
+#map-wrap .leaflet-bottom.leaflet-left  { margin-bottom: 62px; margin-left: 66px; bottom: 0; }
+#map-wrap .leaflet-bottom.leaflet-right { margin-bottom: 44px; margin-right: 66px; bottom: 0; }
 /* ── Solo (single-screen) mode ── */
 #solo-bar {
   position: fixed;
@@ -677,31 +662,16 @@ body.solo-mode .solo-panel-visible {
 #map-crosshair .ch-v { left: -1px; top: -11px; width: 2px; height: 22px; }
 /* ── 중앙 좌표 표시 (좌하단 최하단: 축척 → 좌표) ── */
 #center-coord {
-  position: absolute; bottom: calc(20% + 44px); left: 10px; z-index: 1100;
+  position: absolute; bottom: calc(20% + 6px); left: 6px; right: 6px; z-index: 1100;
   background: rgba(0,0,0,0.72); border: 1px solid #444; border-radius: 4px;
-  padding: 3px 7px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  font-size: 10px; font-weight: bold; line-height: 1.4; color: #ffd54f; white-space: nowrap;
+  padding: 4px 9px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* 십자(지도 중앙) 좌표 — 읽으라고 띄운 값이다. 10px 로는 못 읽는다. */
+  font-size: 15px; font-weight: bold; line-height: 1.4; color: #ffd54f; white-space: nowrap;
   pointer-events: none;
 }
-/* FDR upload button — above Leaflet zoom control (bottom-right) */
-#fdr-btn-wrap {
-  position: absolute; bottom: calc(20% + 120px); right: 10px; z-index: 1000;
-}
-#fdr-btn {
-  display: block; width: 36px;
-  background: rgba(20,20,20,0.88); border: 1px solid #444; border-radius: 4px;
-  color: #ccc; font-size: 10px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;
-  padding: 6px 2px; text-align: center; cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
-}
-#fdr-btn:hover    { background: rgba(0,30,60,0.92); border-color: #4488ff; color: #88ccff; }
-#rec-btn {
-  display: block; width: 36px; margin-bottom: 4px;
-  background: rgba(20,20,20,0.88); border: 1px solid #444; border-radius: 4px;
-  color: #ccc; font-size: 10px; font-weight: bold; font-family: 'Helvetica Neue', Arial, sans-serif;
-  padding: 6px 2px; text-align: center; cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
-}
+/* REC·FDR 은 지도 아래 라인 셀렉터로 들어갔다 — 규격은 .sim-btn 이 정한다.
+   여기서는 켜졌을 때의 색만 따로 둔다. */
+#fdr-btn:hover  { background: rgba(0,30,60,0.92); border-color: #4488ff; color: #88ccff; }
 #rec-btn:hover  { background: rgba(60,0,0,0.92); border-color: #ff4444; color: #ff8888; }
 #rec-btn.active {
   background: rgba(90,0,0,0.92); border-color: #ff4444; color: #ff6666;
@@ -766,7 +736,7 @@ body.solo-mode .solo-panel-visible {
    컨테이너는 지도 위를 덮으므로 pointer-events 를 끄고 버튼만 되살린다 —
    안 그러면 툴바가 지도 끌기·확대를 통째로 먹는다. */
 #map-top-bar {
-  --lsk-h: 210px;
+  --lsk-h: 224px;   /* 34px 버튼 여섯 개 + 사이 간격 — 열이 반씩 갈린다 */
   position: absolute; top: 8px; left: 6px; right: 6px; z-index: 1000;
   height: var(--lsk-h);
   display: flex; flex-flow: column wrap; align-content: space-between;
@@ -774,7 +744,7 @@ body.solo-mode .solo-panel-visible {
   pointer-events: none;
 }
 #map-top-bar button {
-  flex: 0 0 auto; width: 54px; pointer-events: auto;
+  flex: 0 0 auto; width: 54px; height: 34px; pointer-events: auto;
   background: rgba(20,20,20,0.88); border: 1px solid #444; color: #fff;
   font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: bold;
   padding: 7px 2px; border-radius: 5px; cursor: pointer;
@@ -1038,13 +1008,15 @@ body.solo-mode .solo-panel-visible {
 
 /* GPS 상태창: 하단 좌표창(#center-coord, left:10px) 오른쪽에 나란히 배치 */
 #gps-status {
-  position: absolute; bottom: calc(20% + 44px); left: 235px; z-index: 1100;
+  position: absolute; bottom: calc(20% + 32px); left: 6px; right: 6px; z-index: 1100;
   background: rgba(0,20,0,0.80); border: 1px solid #226622; color: #00cc66;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 9px;
-  padding: 3px 7px; border-radius: 3px; display: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* 실제 위치(GPS) — 관제에 불러 줄 좌표다. 여기가 가장 커야 한다. */
+  font-size: 15px;
+  padding: 4px 9px; border-radius: 3px; display: none;
   text-align: left; line-height: 1.5; white-space: nowrap;
 }
-#map-wrap.tcut-off #gps-status { bottom: 44px; }
+#map-wrap.tcut-off #gps-status { bottom: 32px; }
 #wx-btn.wx-active {
   background: rgba(0,20,40,0.92); border-color: #00aaff; color: #66ccff;
   box-shadow: 0 0 8px rgba(0,170,255,0.4);
@@ -1058,16 +1030,23 @@ body.solo-mode .solo-panel-visible {
   box-shadow: 0 0 8px rgba(68,204,136,0.4);
 }
 
+/* 지도 아래쪽 버튼도 좌·우 라인 셀렉터로 세운다(상단 툴바와 같은 방식).
+   종전에는 가로 한 줄이라 지도 아래를 통째로 가렸고, 폰에서는 버튼 하나가
+   30px 남짓이었다. 아래에서 위로 쌓아 두 칸으로 나눈다.
+   바탕은 지도 조작을 통과시키고 버튼만 받는다. */
 #map-sim-bar {
-  position: absolute; bottom: 20%; left: 0; right: 0; z-index: 1000;
-  display: flex; gap: 3px; padding: 5px 6px;
-  background: rgba(0,0,0,0.82); border-top: 1px solid #2a2a2a;
+  --lsk-h: 262px;   /* REC·FDR 까지 열세 개 — 한 칸에 일곱 개 */
+  position: absolute; bottom: calc(20% + 52px); left: 6px; right: 6px; z-index: 1000;
+  height: var(--lsk-h);
+  display: flex; flex-flow: column wrap; align-content: space-between;
+  gap: 4px;
+  pointer-events: none;
 }
 /* 심바로 옮긴 지도 버튼들의 활성 스타일이 sim-btn 그라데이션 위에서도 보이게 */
 #map-sim-bar #layer-btn.sat {
   background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
 }
-#map-sim-bar .sim-btn { flex: 1; }
+#map-sim-bar .sim-btn { flex: 0 0 auto; width: 54px; height: 34px; pointer-events: auto; }
 /* ── TERRAIN CUT (전방 20NM 지형 단면, 맵 높이의 1/5) ── */
 #terrain-cut {
   position: absolute; left: 0; right: 0; bottom: 0; height: 20%;
@@ -1079,11 +1058,9 @@ body.solo-mode .solo-panel-visible {
 #map-wrap.tcut-off #terrain-cut { display: none; }
 #map-wrap.tcut-off #map, #map-wrap.tcut-off #map3d { height: 100%; }
 #map-wrap.tcut-off #map-crosshair { top: 50%; }
-#map-wrap.tcut-off #map-sim-bar { bottom: 0; }
-#map-wrap.tcut-off #center-coord { bottom: 44px; }
-#map-wrap.tcut-off #fdr-btn-wrap { bottom: 120px; }
+#map-wrap.tcut-off #map-sim-bar { bottom: 52px; }
+#map-wrap.tcut-off #center-coord { bottom: 6px; }
 #map-wrap.tcut-off #fdr-panel { bottom: 165px; }
-#map-wrap.tcut-off.map3d-on #fdr-btn-wrap { bottom: 175px; }
 #map-tcut-btn.active { color: #00e5ff; border-color: #00e5ff; box-shadow: 0 0 6px rgba(0,229,255,0.35); }
 /* ── HOLD ENTRY (홀딩 진입 판정 레이어) ── */
 #map-hold-btn.active { color: #ffb74d; border-color: #ffb74d; box-shadow: 0 0 6px rgba(255,183,77,0.35); }
@@ -1693,14 +1670,10 @@ body.phone-mode.solo-mode #app {
 body.phone-mode #solo-bar,
 body.phone-mode #map-full-btn,
 body.phone-mode #solo-half-btn { display: none !important; }
-/* 지도 툴바 — 폰 폭에서는 한 줄에 밀어 넣지 않고 접어 내린다.
-   flex:1 로 11개를 한 줄에 두면 버튼 하나가 30px 남짓이 되어 누를 수가 없다. */
-body.phone-mode #map-top-bar,
-body.phone-mode #map-sim-bar { flex-wrap: wrap; }
+/* 지도 툴바는 폰·태블릿 모두 좌·우 라인 셀렉터다(위 #map-top-bar 규칙).
+   폰에서는 글자만 조금 줄인다 — flex 를 건드리면 칸 나눔이 망가진다. */
 body.phone-mode #map-top-bar button,
-body.phone-mode #map-sim-bar .sim-btn {
-  flex: 1 0 auto; min-width: 54px; min-height: 32px; font-size: 11px;
-}
+body.phone-mode #map-sim-bar .sim-btn { font-size: 10px; }
 body.phone-mode #map-full-btn { min-width: 54px; }
 
 /* ── 지도 하위 창 — 버튼에서 가지 친 모양 ──────────────────────
@@ -1767,7 +1740,20 @@ body.phone-mode #map-full-btn { min-width: 54px; }
 .pi-src i       { font-size: 18px; }
 .pi-src .pi-id  { color: #fff; font-size: 24px; font-weight: bold; }
 .pi-src .pi-brg { font-size: 22px; font-weight: bold; }
+/* 래디얼 — 관제에 위치를 알릴 때 쓰는 값("OOO 의 090 래디얼 12마일").
+   방위와 헷갈리지 않게 R 을 앞에 붙이고 색을 달리 둔다. */
+.pi-src .pi-rad { color: #ff9f5a; font-size: 22px; font-weight: bold; }
 .pi-src .pi-dst { color: #cccc66; font-size: 22px; font-weight: bold; }
+/* 줄 앞의 소스 선택 버튼 — 이 버튼이 곧 종전의 NAV SRC 다 */
+.pi-sel {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 16px; font-weight: bold; letter-spacing: 0.5px;
+  min-width: 56px; padding: 3px 8px; border-radius: 4px; cursor: pointer;
+  background: #14161c; border: 1px solid #39404d; color: #8f9aa8;
+  touch-action: manipulation; white-space: nowrap;
+}
+.pi-sel:active { background: #1e2430; }
+.pi-sel.on { background: #0e2a16; border-color: #00cc44; color: #4dffa0; }
 .pi-src.dim .pi-id, .pi-src.dim .pi-brg, .pi-src.dim .pi-dst { color: #666; }
 body.phone-mode #pfd-info { padding: 1px 3px 2px; }
 body.phone-mode .pi-row { gap: 1px 7px; }
@@ -1775,7 +1761,9 @@ body.phone-mode .pi b { font-size: 11px; }
 body.phone-mode .pi i { font-size: 8px; }
 body.phone-mode .pi-src i { font-size: 16px; }
 body.phone-mode .pi-src .pi-id { font-size: 22px; }
-body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-dst { font-size: 20px; }
+body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-rad,
+body.phone-mode .pi-src .pi-dst { font-size: 20px; }
+body.phone-mode .pi-sel { font-size: 14px; min-width: 50px; padding: 3px 6px; }
 
 /* ── 폰: PFD 아래 조작부를 낮춘다 ──────────────────────────────────
    PFD 는 (패널높이 − .ctrl-bar 높이) 안에 그려진다(03-pfd.js drawPFD).
@@ -1816,12 +1804,9 @@ body.phone-mode .susp-btn { font-size: 10px; min-width: 38px; padding: 3px 7px; 
 body.phone-mode .brg-tog-btn { font-size: 9px; padding: 2px 5px; }
 body.phone-mode .brg-tog-btn.brg-bdp { font-size: 8px; padding: 2px 4px; }
 body.phone-mode .brg-tog-btns { gap: 2px; }
-body.phone-mode .nav-src-btn { font-size: 10px; padding: 2px 5px; }
 body.phone-mode .rnp-btn { font-size: 10px; padding: 2px 4px; }
 /* NAV SRC · RNP 무리는 세로로 쌓인 이름표·여백이 많다. 가로로 눕히면서
    자리만 잡고 있던 것들(빈 튜닝 VOR 라벨, 위아래 밀어내기)을 걷어낸다. */
-body.phone-mode .nav-src-group .nav-icao-lbl { margin: 0; min-height: 0; line-height: 1; font-size: 9px; }
-body.phone-mode .nav-src-group .nav-icao-lbl[style*="hidden"] { display: none; }
 body.phone-mode .nav-src-group .rnp-lbl { margin: 0; font-size: 9px; line-height: 1; }
 body.phone-mode .nav-src-group .rnp-btns { margin: 0; }
 /* 'AP' · 'BRG' · 'NAV SRC' · 'SUSP' 는 버튼 글자(OBS·BRG1·FMS·On)가 곧 이름이라
@@ -1829,8 +1814,7 @@ body.phone-mode .nav-src-group .rnp-btns { margin: 0; }
    ('On' 만으로는 무슨 스위치인지 모르므로 SUSP 만 버튼 글자를 바꿔 준다) */
 body.phone-mode .brg-tog-group > .ctrl-lbl,
 body.phone-mode .susp-group > .ctrl-lbl,
-body.phone-mode .ctrl-group > .ctrl-lbl:not(.ctrl-lbl-btn):not([id]),
-body.phone-mode .nav-src-group > .ctrl-lbl:first-child { display: none; }
+body.phone-mode .ctrl-group > .ctrl-lbl:not(.ctrl-lbl-btn):not([id]) { display: none; }
 body.phone-mode .susp-btn { font-size: 0; min-width: 0; padding: 3px 7px; }
 body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spacing: 1px; }
 </style>
@@ -2323,6 +2307,8 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
         <div class="ctrl-group">
           <div class="ctrl-lbl">AP</div>
           <div style="display:flex;gap:4px;align-items:center;">
+            <button class="obs-btn" id="ahrs-btn" data-act="toggleAhrs"
+                    title="지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다">AHRS</button>
             <button class="obs-btn" id="obs-btn" data-act="toggleObs">OBS</button>
             <button class="obs-btn sim-only" id="nav-ap-btn" data-act="toggleNavAp">NAV</button>
             <button class="obs-btn sim-only" id="icpt-btn" data-act="cycleIntercept"
@@ -2337,13 +2323,6 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
           <div class="brg-tog-btns">
             <button class="brg-tog-btn brg1-on" id="brg1-tog" data-act="toggleBrg1">BRG1</button>
             <button class="brg-tog-btn brg2-on" id="brg2-tog" data-act="toggleBrg2">BRG2</button>
-          </div>
-          <!-- 이름표(방위·거리) 시현 — 기본은 끔. 니들만 필요할 때가 있다 -->
-          <div class="brg-tog-btns">
-            <button class="brg-tog-btn brg-bdp" id="brg1-bdp" data-act="toggleBrg1Lbl"
-                    title="BRG1 선·방위·거리를 지도에 시현">#1BDP</button>
-            <button class="brg-tog-btn brg-bdp" id="brg2-bdp" data-act="toggleBrg2Lbl"
-                    title="BRG2 선·방위·거리를 지도에 시현">#2BDP</button>
           </div>
         </div>
 
@@ -2373,15 +2352,10 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
       <!-- 3행: NAV SOURCE / RNP -->
       <div class="ctrl-sub-row" style="border-top:1px solid #1e1e1e;">
 
+        <!-- NAV 소스 선택 버튼은 여기 없다. 글자판(#pfd-info)의 각 줄 앞
+             버튼이 그 일을 한다 — 이름·방위·래디얼·거리를 보면서 고르는 편이
+             버튼만 따로 두는 것보다 낫다. -->
         <div class="nav-src-group">
-          <div class="ctrl-lbl">NAV SRC</div>
-          <div class="nav-src-btns">
-            <button class="nav-src-btn active" id="nav-fms" data-act="setNavSrc" data-arg='["FMS"]'>FMS</button>
-            <button class="nav-src-btn" id="nav-nav1" data-act="setNavSrc" data-arg='["NAV1"]'>NAV1</button>
-            <button class="nav-src-btn" id="nav-nav2" data-act="setNavSrc" data-arg='["NAV2"]'>NAV2</button>
-          </div>
-          <div class="nav-icao-lbl" id="nav-icao-lbl" style="visibility:hidden">----</div>
-          <!-- RNP 는 NAV SRC 아래로 — 비행 중 바꿀 일이 드문 설정이다 -->
           <div class="ctrl-lbl rnp-lbl">RNP</div>
           <div class="rnp-btns">
             <button class="rnp-btn" id="rnp-4" data-act="setRnp" data-arg='[4]'>4</button>
@@ -2490,6 +2464,9 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
         <button id="notam-btn" data-act="toggleNotamLayer">NOTAM</button>
         <button id="fix-btn" data-act="toggleFixPanel">FIX</button>
         <button id="awy-btn" data-act="toggleAwyLayer">AWY</button>
+        <!-- BRG 이름표(선·방위·거리) — 지도에 그리는 것이라 지도 버튼으로 옮겼다 -->
+        <button id="brg1-bdp" data-act="toggleBrg1Lbl" title="BRG1 선·방위·거리를 지도에 시현">#1BDP</button>
+        <button id="brg2-bdp" data-act="toggleBrg2Lbl" title="BRG2 선·방위·거리를 지도에 시현">#2BDP</button>
         <button id="aspc-btn" data-act="toggleAspcPanel">공역</button>
         <button id="map-ruler-btn" data-act="toggleRuler" title="거리·방위 측정">📏</button>
         <button id="map-full-btn" data-act="toggleMapFull" title="전체화면/분할 전환">FULL</button>
@@ -2523,10 +2500,6 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
       <div id="map-crosshair"><div class="ch-h"></div><div class="ch-v"></div></div>
       <div id="center-coord"></div>
       <!-- FDR upload button + panel (above Leaflet zoom) -->
-      <div id="fdr-btn-wrap">
-        <button id="rec-btn" data-act="toggleTrackRec">REC</button>
-        <button id="fdr-btn" data-act="toggleFdrPanel">FDR</button>
-      </div>
       <div id="fdr-panel">
         <div id="fdr-panel-title">
           <span>⏺ FDR REPLAY</span>
@@ -2600,6 +2573,9 @@ body.phone-mode .susp-btn::before { content: 'SUSP'; font-size: 10px; letter-spa
         <button class="sim-btn sat" id="layer-btn" data-act="toggleLayer">MAP</button>
         <button class="sim-btn" id="layer-btn-3d" data-act="toggle3dMap">3D</button>
         <button class="sim-btn" id="lock-btn" data-act="lockScreen" title="화면 터치 잠금">🔒</button>
+        <!-- REC·FDR — 따로 떠 있으면 오른쪽 칸과 겹친다. 같은 칸에 세운다 -->
+        <button class="sim-btn" id="rec-btn" data-act="toggleTrackRec">REC</button>
+        <button class="sim-btn" id="fdr-btn" data-act="toggleFdrPanel">FDR</button>
       </div>
 
       <!-- Weather Overlay Panel -->

@@ -2193,6 +2193,7 @@ appRegister({
   toggleMapOrient,
   toggleNavAp,
   toggleNotamLayer,
+  toggleAhrs,
   toggleObs,
   togglePpMenu,
   openGeoSearch,

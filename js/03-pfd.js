@@ -1259,17 +1259,26 @@ function updatePfdInfo() {
 
   const navHtml = rows.map(rw => {
     const has = rw.lat !== null;
+    // 방위(BRG) — 항공기에서 그 지점을 본 방향
     const brg = has ? fmtA(toMag(bearing(S.lat, S.lon, rw.lat, rw.lon))) + '°' : '---°';
+    // 래디얼(R) — 그 지점에서 항공기를 본 방향. 관제에 위치를 알릴 때 쓰는 값이
+    // 이쪽이다("OOO VOR 의 090 래디얼 12마일"). 방위의 반대편이지만 반대로
+    // 뒤집어 쓰지 않고 곧장 낸다 — 먼 거리에서는 정확히 180° 가 아니다.
+    const rad = has ? 'R' + fmtA(toMag(bearing(rw.lat, rw.lon, S.lat, S.lon))) : 'R---';
     // VOR/DME 는 경사거리(항공기↔국 직선거리), FMS 는 GPS 수평거리다
     const dNM = !has ? 0
               : rw.dme ? dmeDist(rw.lat, rw.lon, rw.elev)
               : distance(S.lat, S.lon, rw.lat, rw.lon);
     const dst = has ? uDist(dNM, 1) : '--.-';
     const sel = navSrc === rw.src;
+    // 줄 앞의 버튼이 곧 소스 선택이다. 이름·방위·래디얼·거리를 보면서 고르는
+    // 편이, 버튼만 따로 떼어 두는 것보다 손이 덜 간다.
     return `<span class="pi pi-src${sel ? ' on' : ''}${has ? '' : ' dim'}">`
-         + `<i style="${sel ? 'color:' + rw.color : ''}">${rw.src}</i>`
+         + `<button class="pi-sel${sel ? ' on' : ''}" data-act="setNavSrc" `
+         + `data-arg='["${rw.src}"]' title="${rw.src} 를 항법 소스로">${rw.src}</button>`
          + `<span class="pi-id">${rw.ident}</span>`
          + `<span class="pi-brg" style="${has ? 'color:' + rw.color : ''}">${brg}</span>`
+         + `<span class="pi-rad">${rad}</span>`
          + `<span class="pi-dst">${dst}</span></span>`;
   }).join('');
 

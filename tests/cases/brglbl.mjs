@@ -31,23 +31,25 @@ export async function run(page, t) {
              on2: document.getElementById('brg2-bdp').classList.contains('brg2-on') };
   });
 
-  // ── 버튼이 BRG1/BRG2 아래에 있는가 ──
+  // ── 버튼이 지도 툴바에 있는가 ──
+  // 선·방위·거리를 지도에 그리는 기능이라, 계기 조작부가 아니라 지도 버튼이다.
+  // (BRG1·BRG2 니들 토글은 계기 쪽에 그대로 있다 — 그것은 나침반 바늘 이야기다)
   const ui = await page.evaluate(() => {
-    const box = id => {
+    const info = id => {
       const e = document.getElementById(id);
       if (!e) return null;
-      const r = e.getBoundingClientRect();
-      return { top: r.top, left: r.left, txt: e.textContent.trim() };
+      return { txt: e.textContent.trim(),
+               inMapBar: !!e.closest('#map-top-bar'),
+               shown: e.getBoundingClientRect().width > 0 };
     };
-    return { b1: box('brg1-tog'), b2: box('brg2-tog'),
-             d1: box('brg1-bdp'), d2: box('brg2-bdp') };
+    return { d1: info('brg1-bdp'), d2: info('brg2-bdp'),
+             needle: !!document.getElementById('brg1-tog') };
   });
   t.ok(ui.d1 && ui.d2, '#1BDP · #2BDP 버튼이 있다');
   t.eq(ui.d1.txt + ' ' + ui.d2.txt, '#1BDP #2BDP', `이름이 그대로다 (${ui.d1.txt} ${ui.d2.txt})`);
-  t.ok(ui.d1.top > ui.b1.top && ui.d2.top > ui.b2.top,
-    'BRG1·BRG2 버튼 아래 줄에 있다');
-  t.ok(Math.abs(ui.d1.left - ui.b1.left) < 6 && Math.abs(ui.d2.left - ui.b2.left) < 6,
-    '각각 위 버튼과 같은 열에 선다');
+  t.eq(ui.d1.inMapBar && ui.d2.inMapBar, true, '둘 다 지도 툴바에 있다');
+  t.eq(ui.d1.shown && ui.d2.shown, true, '지도에서 눌러 쓸 수 있다');
+  t.eq(ui.needle, true, 'BRG1 니들 토글은 계기 쪽에 그대로 있다');
 
   // ── 기본은 미시현 ──
   await setup();
