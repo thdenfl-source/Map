@@ -30,6 +30,12 @@ export function buildEnv() {
 export async function openApp(browser, { cdu = false } = {}) {
   const { url } = buildEnv();
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  // 앱은 켜지면 GPS 를 스스로 붙인다(14-navaid.js). 검사 환경에는 위치 권한이 없어
+  // 언젠가 거부 오류가 돌아오는데, 그 시점이 검사 도중이면 gpsMode 가 제멋대로
+  // 켜졌다 꺼진다 — 비행 물리는 gpsMode 에서 멈추므로 시뮬 계산 검사가 흔들린다.
+  // '이미 거부한 사용자' 상태로 두어 자동 연결을 아예 하지 않게 한다.
+  // (GPS·DR 자체의 동작은 cases/navaid.mjs 에서 따로 본다)
+  await page.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.errors = errors;

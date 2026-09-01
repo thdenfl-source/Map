@@ -1,8 +1,8 @@
 {
   "id": "/index.html",
-  "name": "Flight Simulator",
-  "short_name": "FlightSim",
-  "description": "iPad Flight Simulator with PFD, HSI, Map and GPS",
+  "name": "GPS 보조 항법장치",
+  "short_name": "NavAid",
+  "description": "GPS 기반 보조 항법장치 — 이동지도·PFD·항법 데이터베이스 (스마트폰 기본, 태블릿 2·3분할)",
   "lang": "ko",
   "dir": "ltr",
   "start_url": "./index.html",
@@ -11,7 +11,7 @@
   "display_override": ["fullscreen", "standalone"],
   "background_color": "#000000",
   "theme_color": "#000000",
-  "orientation": "landscape",
+  "orientation": "any",
   "categories": ["navigation", "travel", "utilities"],
   "icons": [
     { "src": "icon.png",     "sizes": "192x192", "type": "image/png", "purpose": "any" },

@@ -57,11 +57,11 @@ export async function run(page, t) {
     const b = document.getElementById('susp-btn');
     const grp = b.closest('.susp-group');
     const lbl = grp && grp.querySelector('.ctrl-lbl');
-    const spd = document.getElementById('simspd-1').closest('.simspd-group');
-    const spdLbl = spd && spd.querySelector('.ctrl-lbl');
     const box = e => e.getBoundingClientRect();
     // 켜진 SUSP 와 켜진 NAV 의 실제 색을 나란히 잰다.
     // 색은 0.15초에 걸쳐 바뀐다 — 바꾸자마자 읽으면 옛 색이 나온다.
+    // NAV 버튼은 조종 기능이라 화면에는 없다(sim-only). 색만 견주는 자리라
+    // 보이지 않아도 계산된 색은 그대로 읽을 수 있어 기준으로 쓴다.
     const nav = document.getElementById('nav-ap-btn');
     const navWasOn = nav.classList.contains('on');
     nav.classList.add('on');
@@ -71,26 +71,20 @@ export async function run(page, t) {
     const onCol = cs(b), navCol = cs(nav);
     if (!navWasOn) nav.classList.remove('on');
     return { lbl: lbl ? lbl.textContent.trim() : null,
-             spdLbl: spdLbl ? spdLbl.textContent.trim() : null,
              txt: b.textContent.trim(), onCol, navCol,
              lblAbove: lbl ? box(lbl).bottom <= box(b).top + 1 : false,
-             spdAbove: spdLbl ? box(spdLbl).bottom <= box(document.getElementById('simspd-1')).top + 1 : false,
-             rightOfSpd: box(b).left > box(document.getElementById('simspd-8')).left,
-             // ×1 ×2 / ×4 ×8 두 줄인가
-             twoRows: box(document.getElementById('simspd-4')).top > box(document.getElementById('simspd-1')).top + 3,
-             sameCol: Math.abs(box(document.getElementById('simspd-1')).left -
-                               box(document.getElementById('simspd-4')).left) < 2 };
+             shown: box(b).height > 0 };
   });
   t.eq(ui.lbl, 'SUSP', `버튼 위에 SUSP 이름표가 따로 선다 (${ui.lbl})`);
-  t.eq(ui.spdLbl, 'SIM SPD', `배속 이름표도 제 버튼 위에 있다 (${ui.spdLbl})`);
-  t.ok(ui.lblAbove && ui.spdAbove, '두 이름표가 각각 자기 버튼 위에 있다');
+  t.eq(ui.shown, true, 'SUSP 은 항법용이라 보조 항법 모드에서도 화면에 남는다');
+  t.ok(ui.lblAbove, '이름표가 자기 버튼 위에 있다');
   t.eq(ui.txt, 'On', `버튼 글자는 늘 On 이다 (${ui.txt})`);
   // 켜짐은 AP 의 NAV·OBS 버튼과 같은 녹색으로 보인다 — 실제로 칠해진 색을 잰다
   t.ok(/^rgb\(0, 2[0-9][0-9], /.test(ui.onCol.border) && ui.onCol.border === ui.navCol.border,
     `켜지면 NAV 버튼과 같은 녹색이다 (${ui.onCol.border} · NAV ${ui.navCol.border})`);
   t.eq(ui.onCol.text, ui.navCol.text, `글자색도 같다 (${ui.onCol.text})`);
-  t.ok(ui.twoRows && ui.sameCol, '배속은 ×1 ×2 / ×4 ×8 두 줄이다');
-  t.eq(ui.rightOfSpd, true, 'SUSP 는 배속 오른쪽에 있다');
+  // 배속(SIM SPD)은 시뮬 조작부라 화면에서 내렸다 — 그 배치를 여기서 재던 검사는
+  // 더 볼 것이 없어졌다(배속 동작 자체는 cases/simspd.mjs 에서 그대로 본다).
 
   // ── 풀면 그때 다음 지점으로 넘어간다 ──
   const rel = await page.evaluate(async () => {
