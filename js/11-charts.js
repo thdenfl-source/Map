@@ -2134,6 +2134,8 @@ appRegister({
   fpHoldNum,
   fpConfirmHoldNum,
   fpHoldOpen,
+  fpGeoPick,
+  fpGeoSearch,
   fpGoCduHome,
   fpHoldApply,
   fpHoldRemove,
