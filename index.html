@@ -1298,7 +1298,10 @@ body.phone-mode #phone-bar { display: flex; }
   flex: 1; min-width: 0;
   background: transparent; border: none; border-right: 1px solid #1c1c1c;
   color: #667; font-family: 'Helvetica Neue', Arial, sans-serif;
-  font-size: 11px; font-weight: bold; letter-spacing: 1px;
+  /* 창을 고르는 네 글자(PLAN)가 가장 좁은 폰(320px)의 칸(45px) 안에서
+     한 줄로 안 넘치는 최대 크기다 — 16px 부터는 3px 넘친다. 넷을 같은
+     크기로 둔다(하나만 커지면 줄이 들쭉날쭉해 보인다). */
+  font-size: 15px; font-weight: bold; letter-spacing: 1px;
   /* 손가락으로 누르는 자리다 — 48px 아래로는 내리지 않는다 */
   height: 50px; cursor: pointer; touch-action: manipulation;
 }

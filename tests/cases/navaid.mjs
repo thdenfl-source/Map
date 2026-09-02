@@ -668,6 +668,36 @@ export async function run(page, t) {
   const spreadW = Math.max(...bar7.widths) - Math.min(...bar7.widths);
   t.ok(spreadW <= 1, `일곱 칸의 폭이 같다 (편차 ${spreadW}px · ${bar7.widths.join('/')})`);
 
+  // ── 창을 고르는 네 버튼(PFD·MAP·PLAN·CDU)의 글씨 크기 ────────
+  // 가장 좁은 폰(320px)에서도 칸을 벗어나지 않는 한 최대로 키운다.
+  // 넷 중 'PLAN'(넉 자)이 가장 빡빡해 그 값이 나머지 셋의 크기도 정한다.
+  await phone.setViewportSize({ width: 320, height: 900 });
+  await phone.waitForTimeout(300);
+  const navFs = await phone.evaluate(() => {
+    const navBtns = [...document.querySelectorAll('#phone-bar [data-nav]')];
+    return {
+      sizes: navBtns.map(b => parseFloat(getComputedStyle(b).fontSize)),
+      overflow: navBtns.some(b => b.scrollWidth > b.clientWidth + 0.5
+                                || b.scrollHeight > b.clientHeight + 0.5),
+    };
+  });
+  t.eq(navFs.overflow, false, '320px 폭에서도 글씨가 칸을 벗어나지 않는다');
+  t.ok(navFs.sizes.every(v => v === navFs.sizes[0]),
+    `네 버튼의 글씨 크기가 같다 (${navFs.sizes.join(',')}px)`);
+  t.ok(navFs.sizes[0] >= 15, `종전(11px)보다 뚜렷이 커졌다 (${navFs.sizes[0]}px)`);
+  // 한 칸이라도 더 키우면(=16px) 넘친다는 것도 확인한다 — '최대' 라는 주장의 근거
+  const oneUp = await phone.evaluate(() => {
+    const b = document.querySelector('#phone-bar [data-nav="plan"]');
+    const was = b.style.fontSize;
+    b.style.fontSize = (parseFloat(getComputedStyle(b).fontSize) + 1) + 'px';
+    const overflow = b.scrollWidth > b.clientWidth + 0.5;
+    b.style.fontSize = was;
+    return overflow;
+  });
+  t.eq(oneUp, true, '한 단계만 더 키우면 PLAN 이 320px 폭에서 넘친다(더는 못 키운다)');
+  await phone.setViewportSize(PHONE);
+  await phone.waitForTimeout(300);
+
   // ── 지도에서 내린 것들 ────────────────────────────────────────
   // 늘 떠 있어야 하는 것(좌표·GPS 상태)에 귀퉁이를 내주고, 손이 잘 가지 않던
   // 스위치는 걷었다. 확대·축소는 손가락 두 개로 한다.
