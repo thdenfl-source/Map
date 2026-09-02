@@ -395,11 +395,17 @@ function applyGPS(pos) {
   try { if (typeof drReset === 'function') drReset(); } catch(e) { _swallow(e); }
   const _st = document.getElementById('gps-status');
   _st.style.borderColor = ''; _st.style.color = '';
-  // 좌표창 오른쪽에 한 줄로 표시(높이 통일)
+  // 지도 오른쪽 아래, 좌표창 바로 위에 붙는다. 폰 폭에서는 한 줄에 다 못
+  // 들어가 접히므로, 끊겨서는 안 되는 덩이(좌표 한 벌·속도·고도…)를 묶는다 —
+  // 가운뎃점(·) 자리에서만 접힌다(gs-part, index.html).
   document.getElementById('gps-status').innerHTML =
-    `● ${decToDMS(S.lat, true)} ${decToDMS(S.lon, false)} · ` +
-    `${uSpd(S.spd)} · ${uAlt(S.alt)} · ${fmtA(toMag(S.hdg))}° · ±${acc}`;
+    `${_gsPart('● ' + decToDMS(S.lat, true) + ' ' + decToDMS(S.lon, false))} · ` +
+    `${_gsPart(uSpd(S.spd))} · ${_gsPart(uAlt(S.alt))} · ` +
+    `${_gsPart(fmtA(toMag(S.hdg)) + '°')} · ${_gsPart('±' + acc)}`;
 }
+
+// GPS 상태줄에서 접히면 안 되는 덩이 하나. 좌표는 한 벌이 붙어 있어야 읽힌다.
+function _gsPart(txt) { return `<span class="gs-part">${txt}</span>`; }
 
 function decToDMS(deg, isLat) {
   const abs = Math.abs(deg);

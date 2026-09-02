@@ -1019,6 +1019,45 @@ export async function run(page, t) {
   await phone.evaluate(() => navGo('map'));
   await phone.waitForTimeout(300);
 
+  // ── ⑮ 좌표·GPS 창은 오른쪽 아래에 선다 ────────────────────────
+  // 종전에는 좌·우 폭을 다 쓰고(left:6px right:6px) 글자를 왼쪽에 붙였다.
+  // 그 자리가 곧 왼쪽 버튼 줄 아래라, 줄 맨 끝 버튼과 좌표가 같은 세로선에서
+  // 맞물려 보였다. 이제 상자째 오른쪽으로 붙이고 글자도 오른쪽으로 몬다.
+  const coord = await phone.evaluate(() => {
+    const st = document.getElementById('gps-status');
+    st.style.display = 'block';
+    // 가장 긴 모습 — 좌표에 속도·고도·방위·오차까지 붙는다
+    st.innerHTML = `${_gsPart('● 37°23′23″N 126°39′17″E')} · ${_gsPart('120kt')} · ` +
+                   `${_gsPart('12500ft')} · ${_gsPart('049°')} · ${_gsPart('±5m')}`;
+    const cc = document.getElementById('center-coord');
+    const W = document.getElementById('map-wrap').getBoundingClientRect();
+    const rail = document.getElementById('map-lsk').getBoundingClientRect();
+    const box = el => { const q = el.getBoundingClientRect();
+      return { l: q.left - W.left, r: q.right - W.left,
+               align: getComputedStyle(el).textAlign }; };
+    return { wrapW: W.width, railR: rail.right - W.left,
+             coord: box(cc), gps: box(st),
+             // 접으면 왼쪽 띠가 비므로 폭을 다 쓴다
+             wide: (() => { toggleMapRail(false);
+               const q = st.getBoundingClientRect();
+               const w = q.width; toggleMapRail(true); return w; })() };
+  });
+  for (const [k, name] of [['coord', '좌표창(＋)'], ['gps', 'GPS 좌표창']]) {
+    t.eq(coord[k].align, 'right', `${name} 글자가 오른쪽으로 붙는다 (${coord[k].align})`);
+    t.ok(coord[k].r >= coord.wrapW - 8,
+      `${name} 이 오른쪽 끝에 선다 (오른변 ${Math.round(coord[k].r)} / ${Math.round(coord.wrapW)}px)`);
+    // 왼쪽 버튼 줄과 겹치지 않는다 — 이것이 옮긴 까닭이다
+    t.ok(coord[k].l >= coord.railR - 1,
+      `${name} 이 버튼 줄 아래로 들어가지 않는다 ` +
+      `(왼변 ${Math.round(coord[k].l)} ≥ 줄 오른변 ${Math.round(coord.railR)}px)`);
+  }
+  t.ok(coord.wide > coord.gps.r - coord.gps.l,
+    `줄을 접으면 좌표창이 폭을 다 쓴다 (${Math.round(coord.wide)}px)`);
+  await phone.evaluate(() => {
+    document.getElementById('gps-status').style.display = '';
+    document.getElementById('gps-status').innerHTML = '';
+  });
+
   await phone.setViewportSize(PHONE);
   await phone.waitForTimeout(500);
 
