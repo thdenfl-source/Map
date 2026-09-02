@@ -28,14 +28,15 @@ export async function run(page, t) {
   }, [trk, spdMs, lat, lon]);
 
   // 검사 사이에 상태를 처음으로 되돌린다
-  const reset = (dev = true) => page.evaluate(devOk => {
+  const reset = () => page.evaluate(() => {
     gpsMode = true; ahrsOn = false; _gpsPrev = null;
-    _hdgBias = 0; _hdgSrc = null;
+    _hdgBias = 0; _hdgBiasSet = false; _hdgSrc = null;
+    _devHdgHasAbs = false; _devHdgRel = null;
     S.hdg = 0; S.bnk = 0;
-    _devHdg = devOk ? null : null;
+    _devHdg = null;
     _devHdgAt = 0;
     _devHdgLastApply = 0;
-  }, dev);
+  });
 
   // ── ① 나침반이 화면을 돌린다 — GPS 와 상관없이 ────────────────
   // 종전에는 20km/h 를 넘으면 나침반을 놓았고, 그래서 GPS 가 오기 전까지
@@ -132,10 +133,91 @@ export async function run(page, t) {
   t.eq(bound.slow, true, '느릴 때 나침반을 듣는다');
   t.eq(bound.fast, true, '빨라져도 계속 듣는다');
 
+  // ── ⑨ 갤럭시(안드로이드) — 북쪽은 다른 이벤트로 온다 ────────
+  // 아이폰은 deviceorientation 에 webkitCompassHeading(진북)이 실려 온다.
+  // 안드로이드는 그 값이 없고, deviceorientation 의 absolute 도 false 다 —
+  // 그 이벤트는 '켤 때의 자세' 기준이라 북쪽을 모른다. 북쪽을 아는 값은
+  // deviceorientationabsolute 로 따로 온다.
+  //
+  // 종전에는 그 이벤트를 듣지 않았다. 그래서 갤럭시에서는 방위가 늘 null 이라
+  // HDG 가 멈춰 있었고, 기울기는 그보다 앞에서 처리되므로 자세계만 움직였다.
+  await reset();
+  const andr = await page.evaluate(() => {
+    // 안드로이드의 평범한 deviceorientation — 북쪽을 모른다(absolute:false)
+    _devHdgLastApply = 0;
+    _onDevOrientation({ alpha: 260, beta: 0, gamma: 0, absolute: false });
+    const afterRel = { hdg: S.hdg, dev: _devHdg, rel: _devHdgRel };
+    // 절대 이벤트가 오면 그것으로 돈다 (alpha 260 → 방위 100)
+    for (let i = 0; i < 30; i++) {
+      _devHdgLastApply = 0;
+      _onDevOrientationAbs({ alpha: 260, beta: 0, gamma: 0, absolute: true });
+    }
+    return { afterRel, hdg: S.hdg, dev: _devHdg, hasAbs: _devHdgHasAbs, src: _hdgSrc };
+  });
+  t.eq(andr.afterRel.dev, null,
+    '북쪽을 모르는 값(absolute:false)만으로는 방위를 정하지 않는다');
+  t.ok(andr.afterRel.rel !== null,
+    `그래도 버리지 않고 들고 있는다 (${andr.afterRel.rel}°)`);
+  t.eq(andr.hasAbs, true, 'deviceorientationabsolute 가 오면 그것을 절대 방위로 쓴다');
+  t.ok(Math.abs(andr.hdg - 100) < 0.5,
+    `alpha 260° 는 방위 100° 다 (${andr.hdg.toFixed(1)}°)`);
+
+  // 절대값을 한 번 받은 뒤에는 상대값이 섞여 들어와도 무시한다(섞이면 튄다)
+  const mixed = await page.evaluate(() => {
+    const before = S.hdg;
+    for (let i = 0; i < 10; i++) {
+      _devHdgLastApply = 0;
+      _onDevOrientation({ alpha: 10, beta: 0, gamma: 0, absolute: false });
+    }
+    return { before, after: S.hdg };
+  });
+  t.ok(Math.abs(mixed.after - mixed.before) < 0.01,
+    `절대값을 받은 뒤에는 상대값에 흔들리지 않는다 (${mixed.before.toFixed(1)}° → ${mixed.after.toFixed(1)}°)`);
+
+  // ── ⑩ 절대 이벤트가 아예 없는 기기 — 항적으로 0 도를 잡아 준다 ─
+  // 지자기 센서가 없거나 꺼져 있으면 절대 이벤트가 오지 않는다. 그때도
+  // 상대값의 '회전' 자체는 맞으므로, 항적으로 0 도만 맞춰 주면 쓸 수 있다.
+  await reset();
+  const relOnly = await page.evaluate(() => {
+    _devHdgLastApply = 0;
+    _onDevOrientation({ alpha: 300, beta: 0, gamma: 0, absolute: false });   // 상대 60°
+    const before = { dev: _devHdg, rel: _devHdgRel };
+    // 항적 90° 로 움직이는 중 — 여기서 상대값의 0 도를 90° 에 맞춘다
+    applyGPS({ coords: { latitude: 37.5, longitude: 127.0, speed: 30, heading: 90,
+                         altitude: 300, accuracy: 8 }, timestamp: Date.now() });
+    const anchored = { bias: _hdgBias, set: _hdgBiasSet };
+    // 이제부터는 상대값으로 돈다 — 30° 돌면 화면도 30° 돈다
+    for (let i = 0; i < 40; i++) {
+      _devHdgLastApply = 0;
+      _onDevOrientation({ alpha: 270, beta: 0, gamma: 0, absolute: false });  // 상대 90°
+    }
+    return { before, anchored, hdg: S.hdg, dev: _devHdg };
+  });
+  t.eq(relOnly.before.dev, null, '맞춰지기 전에는 상대값을 쓰지 않는다');
+  t.eq(relOnly.anchored.set, true, '항적이 들어오면 상대값의 0 도를 거기에 맞춘다');
+  t.ok(Math.abs(relOnly.anchored.bias - 30) < 0.5,
+    `상대 60° 가 항적 90° 였으니 보정은 30° 다 (${relOnly.anchored.bias.toFixed(1)}°)`);
+  t.ok(Math.abs(relOnly.hdg - 120) < 1,
+    `그 뒤 상대값이 30° 더 돌면 화면도 30° 돈다 (${relOnly.hdg.toFixed(1)}°)`);
+
+  // ── ⑪ 두 이벤트를 다 걸어 둔다 ───────────────────────────────
+  const bind2 = await page.evaluate(() => {
+    const seen = [];
+    const add = window.addEventListener;
+    window.addEventListener = function (type) { seen.push(type); return add.apply(this, arguments); };
+    _devHdgBound = false;
+    try { _bindDevOrientation(); } finally { window.addEventListener = add; }
+    return { seen, bound: _devHdgBound, hasAbsEvt: 'ondeviceorientationabsolute' in window };
+  });
+  t.ok(bind2.seen.includes('deviceorientation'), '평범한 방향 이벤트를 듣는다');
+  t.eq(bind2.seen.includes('deviceorientationabsolute'), bind2.hasAbsEvt,
+    `절대 방향 이벤트도 있으면 함께 듣는다 (지원 ${bind2.hasAbsEvt})`);
+
   // 뒷정리 — 다음 검사가 이 상태를 물려받지 않게 한다
   await page.evaluate(() => {
     gpsMode = false; _gpsPrev = null; _devHdg = null; _devHdgAt = 0;
-    _hdgBias = 0; _hdgSrc = null;
+    _hdgBias = 0; _hdgBiasSet = false; _hdgSrc = null;
+    _devHdgHasAbs = false; _devHdgRel = null;
     try { stopDevOrientation(); } catch (e) {}
   });
 }
