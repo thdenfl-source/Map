@@ -35,7 +35,9 @@ function startGPS() {
   gpsMode = true;
   lastGpsMs = 0;
   _gpsPrev = null;
-  _hdgBias = 0; _hdgSrc = null;   // 나침반 보정은 이번 비행에서 다시 잡는다
+  // 나침반 보정은 이번 비행에서 다시 잡는다
+  _hdgBias = 0; _hdgBiasSet = false; _hdgSrc = null;
+  _devHdgHasAbs = false; _devHdgRel = null;
   startDevOrientation();   // 저속(10kt 미만) 헤딩용 기기 나침반(권한은 이 제스처에서 요청)
   updateGpsBtn();
   const status = document.getElementById('gps-status');
@@ -121,7 +123,10 @@ const HDG_BIAS_MAX_STEP = 20;     // 한 번에 이보다 크게는 안 돌린�
 const HDG_SMOOTH        = 0.35;   // 화면 헤딩이 목표를 따라가는 비율(센서 한 번당)
 const HDG_DEV_STALE_MS  = 2000;   // 이만큼 나침반이 조용하면 없는 것으로 친다
 let _hdgBias = 0;                 // 나침반 → 항적 보정값(°)
+let _hdgBiasSet = false;          // 항적으로 한 번이라도 맞춰 봤는가
 let _hdgSrc  = null;              // 'HYBRID' | 'DEV' | 'GPS' | null — 무엇으로 그리는가
+let _devHdgHasAbs = false;        // 북쪽을 아는 값을 받은 적이 있는가
+let _devHdgRel = null;            // 아직 못 쓰는 상대 방위(맞춰지면 쓴다)
 
 function _devHdgFresh() {
   return _devHdg !== null && (Date.now() - _devHdgAt) < HDG_DEV_STALE_MS;
@@ -187,7 +192,7 @@ function updateAhrsBtn() {
                    : '지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다';
 }
 
-function _onDevOrientation(e) {
+function _onDevOrientation(e, absoluteEvt) {
   // ── 자세 ──
   const t = _tiltFromEvent(e);
   if (t) {
@@ -199,14 +204,24 @@ function _onDevOrientation(e) {
       S.bnk = cl(normAS(t.roll - ahrsRef.roll), AHRS_BNK_MAX);
     }
   }
-  let h = null;
-  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
-    h = e.webkitCompassHeading;                    // iOS: 진북 기준 시계방향
-  } else if (e.absolute === true && e.alpha !== null && !isNaN(e.alpha)) {
-    h = 360 - e.alpha;                             // 표준: alpha(반시계) → 방위
-  }
-  if (h === null) return;
-  _devHdg = normA(h);
+  // ── 방위 ──
+  // 아이폰은 deviceorientation 이 webkitCompassHeading(진북 기준)을 함께 준다.
+  // 안드로이드(갤럭시)는 그 값이 없고, deviceorientation 의 absolute 도 false 다
+  // — 그 이벤트는 '켤 때의 자세' 기준이라 북쪽을 모른다. 북쪽을 아는 값은
+  // 별도 이벤트인 deviceorientationabsolute 로 온다.
+  // 종전에는 그 이벤트를 듣지 않아, 갤럭시에서 h 가 늘 null 이었다. 기울기는
+  // 위에서 이미 처리한 뒤라 자세계만 움직이고 HDG 는 멈춰 있었다.
+  const hh = _headingFromEvent(e, absoluteEvt);
+  if (hh === null) return;
+  // 절대 방위를 한 번이라도 받았으면 상대값은 더 보지 않는다(섞이면 튄다)
+  if (hh.abs) _devHdgHasAbs = true;
+  else if (_devHdgHasAbs) return;
+  // 상대값은 0 도가 '앱을 켠 그때의 방향' 이라 그대로는 방위가 아니다.
+  // GPS 항적으로 한 번이라도 맞춰진 뒤에야 쓴다 — 그때부터는 보정값(_hdgBias)이
+  // 그 임의의 0 도를 북쪽으로 옮겨 준다.
+  else if (!_hdgBiasSet) { _devHdgRel = hh.h; return; }
+
+  _devHdg = hh.h;
   _devHdgAt = Date.now();
   // 속도와 상관없이 나침반이 화면을 돌린다(0.1초 스로틀). GPS 는 이 값을
   // 항적 쪽으로 맞추는 데만 쓴다 — applyGPS 의 _hdgBias.
@@ -216,27 +231,52 @@ function _onDevOrientation(e) {
     _hdgGlide(_devHdg + _hdgBias);
   }
 }
+// 이벤트에서 방위를 뽑는다 — { h, abs } · 없으면 null
+//   abs=true  북쪽을 아는 값(아이폰의 나침반, deviceorientationabsolute)
+//   abs=false 켤 때의 자세가 0 도인 상대값(안드로이드의 deviceorientation)
+function _headingFromEvent(e, absoluteEvt) {
+  if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
+    return { h: normA(e.webkitCompassHeading), abs: true };   // iOS: 진북 기준 시계방향
+  }
+  if (e.alpha === null || e.alpha === undefined || isNaN(e.alpha)) return null;
+  return { h: normA(360 - e.alpha),                           // alpha(반시계) → 방위
+           abs: absoluteEvt === true || e.absolute === true };
+}
+// 절대 방위 이벤트(안드로이드) — 같은 처리로 넘긴다
+function _onDevOrientationAbs(e) { _onDevOrientation(e, true); }
+
 function startDevOrientation() {
   if (_devHdgBound) return;
-  const bind = () => {
-    window.addEventListener('deviceorientation', _onDevOrientation);
-    _devHdgBound = true;
-  };
   try {
     if (typeof DeviceOrientationEvent !== 'undefined' &&
         typeof DeviceOrientationEvent.requestPermission === 'function') {
       // iOS 13+: 사용자 제스처(GPS 버튼) 안에서 권한 요청
       DeviceOrientationEvent.requestPermission()
-        .then(res => { if (res === 'granted') bind(); })
+        .then(res => { if (res === 'granted') _bindDevOrientation(); })
         .catch(() => {});
     } else {
-      bind();
+      _bindDevOrientation();
     }
   } catch(e) { _swallow(e); }
 }
+// 둘 다 듣는다. 아이폰은 deviceorientation 에 나침반이 실려 오고, 안드로이드는
+// deviceorientationabsolute 에만 북쪽이 실린다 — 어느 쪽이 오든 받으려면 둘 다
+// 걸어 두어야 한다. (기울기는 두 이벤트가 같은 값을 주므로 어느 쪽이든 된다)
+function _bindDevOrientation() {
+  if (_devHdgBound) return;
+  window.addEventListener('deviceorientation', _onDevOrientation);
+  if ('ondeviceorientationabsolute' in window) {
+    window.addEventListener('deviceorientationabsolute', _onDevOrientationAbs);
+  }
+  _devHdgBound = true;
+}
 function stopDevOrientation() {
-  if (_devHdgBound) { window.removeEventListener('deviceorientation', _onDevOrientation); _devHdgBound = false; }
-  _devHdg = null;
+  if (_devHdgBound) {
+    window.removeEventListener('deviceorientation', _onDevOrientation);
+    window.removeEventListener('deviceorientationabsolute', _onDevOrientationAbs);
+    _devHdgBound = false;
+  }
+  _devHdg = null; _devHdgRel = null; _devHdgHasAbs = false;
 }
 // 종전에는 발열을 줄이려고 12kt 를 넘으면 나침반 이벤트를 놓았다. 그런데
 // 헤딩을 나침반으로 돌리게 된 지금은 그 속도야말로 센서가 있어야 하는 구간이다
@@ -297,13 +337,20 @@ function applyGPS(pos) {
       const step = Math.max(-HDG_BIAS_MAX_STEP,
                             Math.min(HDG_BIAS_MAX_STEP, err * HDG_BIAS_GAIN));
       _hdgBias = normA(_hdgBias + step);
+      _hdgBiasSet = true;
       _hdgSrc = 'HYBRID';
     } else if (_hdgSrc !== 'HYBRID') {
       _hdgSrc = 'DEV';
     }
     _hdgGlide(_devHdg + _hdgBias);
   } else if (track !== null) {
-    // 나침반이 없다 — 종전처럼 항적을 그대로 쓴다(3초마다 끊긴다)
+    // 나침반의 절대 방위가 없다 — 항적을 그대로 쓴다(3초마다 끊긴다).
+    // 다만 상대 방위(안드로이드의 deviceorientation)라도 들어오고 있다면,
+    // 그 임의의 0 도를 지금 항적에 맞춰 두면 다음 값부터는 그것으로 돌릴 수 있다.
+    if (trackOk && _devHdgRel !== null && !_devHdgHasAbs) {
+      _hdgBias = normA(track - _devHdgRel);
+      _hdgBiasSet = true;
+    }
     _hdgSrc = 'GPS';
     S.hdg = normA(track);
     bankTarget = 0; _rollRate = 0; syncHdgBug();
