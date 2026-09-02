@@ -482,17 +482,21 @@ export async function run(page, t) {
     const rail = document.getElementById('map-lsk');
     const R = rail.getBoundingClientRect();
     const W = document.getElementById('map-wrap').getBoundingClientRect();
-    const xs = new Set(); let minW = 999, minH = 999, n = 0;
+    const xs = new Set();
+    let minW = 999, minH = 999, minFs = 999, n = 0, overflow = false;
     rail.querySelectorAll('button').forEach(b => {
       const q = b.getBoundingClientRect();
       if (!q.width) return;                        // 감춘 것(시뮬 전용 FLY 등)
       n++; minW = Math.min(minW, q.width); minH = Math.min(minH, q.height);
+      minFs = Math.min(minFs, parseFloat(getComputedStyle(b).fontSize));
+      if (b.scrollWidth > b.clientWidth + 0.5) overflow = true;
       xs.add(Math.round(q.left - W.left));
     });
     // 줄 오른쪽은 지도가 그대로 보이고 만져진다
     const mid = document.elementFromPoint(W.left + W.width / 2, W.top + 120);
     const st = getComputedStyle(rail);
     return { xs: [...xs], n, minW: Math.round(minW), minH: Math.round(minH),
+             minFs, overflow,
              railW: Math.round(R.width), wrapW: Math.round(W.width),
              overflowY: st.overflowY, overscroll: st.overscrollBehaviorY,
              inside: R.top >= W.top - 1 && R.bottom <= W.bottom + 1,
@@ -501,9 +505,13 @@ export async function run(page, t) {
   t.eq(lsk.xs.length, 1, `버튼이 한 줄로 선다 (x ${lsk.xs.join(',')})`);
   t.ok(lsk.xs[0] <= 12, `그 줄이 왼쪽 끝에 붙는다 (${lsk.xs[0]}px)`);
   t.ok(lsk.n >= 14, `버튼을 줄이지 않았다 (${lsk.n}개)`);
-  t.ok(lsk.minW >= 44 && lsk.minH >= 30,
-    `버튼이 손가락으로 누를 크기다 (${lsk.minW}×${lsk.minH}px)`);
-  t.ok(lsk.railW <= lsk.wrapW * 0.25,
+  // 종전 54×34px·글씨 10px 에서 두 배로 키웠다 — 흔들리는 기내에서 장갑 낀
+  // 손으로도 누를 크기다. 그만큼 지도를 가리므로 접기·펼치기를 함께 두었다.
+  t.ok(lsk.minW >= 108 && lsk.minH >= 68,
+    `버튼이 종전의 두 배다 (${lsk.minW}×${lsk.minH}px)`);
+  t.ok(lsk.minFs >= 20, `글씨도 두 배다 (${lsk.minFs}px)`);
+  t.eq(lsk.overflow, false, '키운 글씨가 버튼을 넘치지 않는다');
+  t.ok(lsk.railW <= lsk.wrapW * 0.34,
     `줄이 지도의 한 귀퉁이만 쓴다 (${lsk.railW}px / ${lsk.wrapW}px)`);
   t.eq(lsk.midIsMap, true, '줄 오른쪽은 지도가 그대로 보인다');
   t.eq(lsk.inside, true, '줄이 지도 밖으로 나가지 않는다');
@@ -522,15 +530,77 @@ export async function run(page, t) {
     rail.scrollTop = 9999;
     const last = rail.querySelector('#rec-btn').getBoundingClientRect();
     const R = rail.getBoundingClientRect();
+    const tg = rail.querySelector('#map-lsk-toggle').getBoundingClientRect();
     return { over: rail.scrollHeight > rail.clientHeight + 1,
              moved: rail.scrollTop > 0, n: before, btnH: h,
+             toggleSeen: tg.top >= R.top - 1 && tg.bottom <= R.bottom + 1,
              lastSeen: last.bottom <= R.bottom + 1 && last.top >= R.top - 1 };
   });
   t.eq(roll.over, true, '세로가 모자라면 줄이 화면을 넘는다');
   t.eq(roll.moved, true, '그때 줄이 굴러간다');
   t.eq(roll.lastSeen, true, '굴리면 맨 아래 버튼(REC)까지 보인다');
-  t.eq(roll.btnH, 34, `버튼 높이는 어느 화면에서나 같다 (${roll.btnH}px)`);
+  t.eq(roll.btnH, 68, `버튼 높이는 어느 화면에서나 같다 (${roll.btnH}px)`);
   t.ok(roll.n >= 14, `굴리는 대신 버튼을 감추지 않는다 (${roll.n}개)`);
+  // 접기 버튼은 줄을 굴려 내려도 맨 위에 붙어 있는다(sticky) —
+  // 굴린 채로는 접을 수 없다면 있으나 마나다.
+  t.eq(roll.toggleSeen, true, '줄을 끝까지 굴려도 접기 버튼이 맨 위에 남는다');
+
+  // ── ⑧-2 접기·펼치기 ─────────────────────────────────────────
+  // 버튼을 두 배로 키운 뒤로 줄이 지도 왼쪽을 넉넉히 가린다. 지형을 볼
+  // 때는 걷어내고, 만질 때만 편다.
+  const fold = await phone.evaluate(async () => {
+    const rail = document.getElementById('map-lsk');
+    const btn  = document.getElementById('map-lsk-toggle');
+    const W = document.getElementById('map-wrap').getBoundingClientRect();
+    const vis = () => [...rail.querySelectorAll('button')]
+      .filter(b => b.getBoundingClientRect().width > 0).map(b => b.textContent.trim());
+    const openTxt = btn.textContent.trim(), openN = vis().length;
+    // 하위 창을 하나 열어 둔다 — 접으면 함께 닫혀야 한다(가지 뻗을 버튼이 사라진다)
+    toggleFixPanel();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const panelWasOpen = isMapPanelOpen('fix-panel');
+    btn.click();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const R = rail.getBoundingClientRect();
+    const mid = document.elementFromPoint(W.left + 30, W.top + W.height / 2);
+    const shut = { txt: btn.textContent.trim(), vis: vis(),
+                   railH: Math.round(R.height),
+                   panelOpen: isMapPanelOpen('fix-panel'),
+                   leftIsMap: !!(mid && (mid.id === 'map' || mid.closest('#map'))) };
+    // 다시 펴면 그대로 돌아온다
+    btn.click();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const back = { txt: btn.textContent.trim(), n: vis().length };
+    return { openTxt, openN, panelWasOpen, shut, back };
+  });
+  t.eq(fold.openTxt, '접기', `펴 있을 때는 '접기' 라 적힌다 (${fold.openTxt})`);
+  t.eq(fold.panelWasOpen, true, '접기 전에 하위 창(FIX)이 열려 있었다');
+  t.eq(fold.shut.txt, '펼치기', `접으면 '펼치기' 로 바뀐다 (${fold.shut.txt})`);
+  t.eq(fold.shut.vis.join(','), '펼치기',
+    `접으면 그 버튼만 남는다 (${fold.shut.vis.join(',') || '없음'})`);
+  t.ok(fold.shut.railH <= 80,
+    `통도 그 버튼만큼만 자리를 차지한다 (${fold.shut.railH}px)`);
+  t.eq(fold.shut.leftIsMap, true, '접으면 그 아래는 지도가 그대로 만져진다');
+  t.eq(fold.shut.panelOpen, false, '접을 때 열려 있던 하위 창도 함께 닫힌다');
+  t.eq(fold.back.txt, '접기', '다시 누르면 펴진다');
+  t.eq(fold.back.n, fold.openN, `펴면 버튼이 그대로 돌아온다 (${fold.back.n}개)`);
+
+  // 접힌 채로 지도의 공항을 눌러 WX 를 열면 — 버튼을 거치지 않는 길이다 —
+  // 붙을 자리가 없으므로 줄을 먼저 편다.
+  const viaMap = await phone.evaluate(async () => {
+    toggleMapRail(false);
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const wasShut = !mapRailOpen;
+    openWxPanel();
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const out = { wasShut, opened: mapRailOpen, wx: isMapPanelOpen('wx-panel') };
+    closeWxPanel();
+    return out;
+  });
+  t.eq(viaMap.wasShut, true, '접은 상태에서 시작한다');
+  t.eq(viaMap.opened, true, '버튼을 거치지 않고 창이 열리면 줄이 저절로 펴진다');
+  t.eq(viaMap.wx, true, '그 창은 정상으로 열린다');
+
   await phone.setViewportSize(PHONE);
   await phone.waitForTimeout(500);
 

@@ -1419,6 +1419,11 @@ function mapPanelOpened(panelId, open) {
   if (btn) btn.classList.toggle('branch-open', !!open);
   if (!panel) return;
   if (open) {
+    // 줄이 접혀 있으면 먼저 편다. 창은 자기를 연 버튼에서 가지를 뻗은 모양으로
+    // 자리를 잡는데(anchorMapPanel), 그 버튼이 감춰져 있으면 붙을 데가 없다.
+    // 지도의 공항을 눌러 WX 를 여는 길처럼 버튼을 거치지 않는 경로가 있다.
+    try { if (typeof mapRailOpen !== 'undefined' && !mapRailOpen) toggleMapRail(true); }
+    catch (e) { _swallow(e); }
     MAP_PANELS.forEach(([id]) => {
       if (id !== panelId && isMapPanelOpen(id)) { try { _mapPanelClose(id); } catch(e) { _swallow(e); } }
     });
@@ -1455,3 +1460,34 @@ function mapPanelOpened(panelId, open) {
 //
 // 지금은 왼쪽 한 줄이고, 넘치면 그 줄을 굴린다(#map-lsk 의 overflow-y).
 // 브라우저가 알아서 하는 일이라 잴 것도, 다시 부를 자리도 없다.
+//
+// ── 접기 · 펼치기 ────────────────────────────────────────────────
+// 버튼과 글씨를 두 배로 키운 뒤로 줄이 지도 왼쪽을 넉넉히 가린다. 지형을
+// 볼 때는 걷어내고, 만질 때만 펴는 편이 낫다 — 그래서 줄 맨 위에 여닫는
+// 버튼 하나를 둔다. 접으면 그 버튼만 남는다.
+//
+// 접을 때 열려 있던 하위 창(WX·FIX·AWY·공역·＋)은 함께 닫는다. 그 창들은
+// 자기를 연 버튼에서 가지를 뻗은 모양으로 자리를 잡는데(anchorMapPanel),
+// 그 버튼이 사라지면 가지가 허공에서 나온다.
+let mapRailOpen = true;
+try { mapRailOpen = localStorage.getItem('mapRailOpen') !== '0'; } catch (e) { _swallow(e); }
+
+function _mapRailRender() {
+  const rail = document.getElementById('map-lsk');
+  const btn  = document.getElementById('map-lsk-toggle');
+  if (!rail || !btn) return;
+  rail.classList.toggle('collapsed', !mapRailOpen);
+  btn.textContent = mapRailOpen ? '접기' : '펼치기';
+  btn.title = mapRailOpen ? '지도 버튼 줄 접기' : '지도 버튼 줄 펼치기';
+}
+
+function toggleMapRail(force) {
+  mapRailOpen = (force === undefined) ? !mapRailOpen : !!force;
+  if (!mapRailOpen) {
+    // 열려 있던 하위 창부터 닫는다 — 가지를 뻗어 나온 버튼이 사라지므로
+    MAP_PANELS.forEach(([id]) => { if (isMapPanelOpen(id)) _mapPanelClose(id); });
+  }
+  try { localStorage.setItem('mapRailOpen', mapRailOpen ? '1' : '0'); } catch (e) { _swallow(e); }
+  _mapRailRender();
+}
+_mapRailRender();
