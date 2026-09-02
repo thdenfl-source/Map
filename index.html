@@ -472,8 +472,8 @@ body.solo-mode .solo-panel-visible {
    overscroll-behavior: contain 은 줄 끝까지 굴린 뒤에도 그 힘이 지도로
    넘어가지 않게 한다. */
 #map-lsk {
-  --lsk-btn-h: 68px;                /* 종전 34px 의 두 배 — 장갑 낀 손으로도 누른다 */
-  --lsk-btn-w: 108px;               /* 종전 54px 의 두 배 */
+  --lsk-btn-h: 51px;                /* 종전 34px 의 1.5 배 — 장갑 낀 손으로도 누른다 */
+  --lsk-btn-w: 81px;                /* 종전 54px 의 1.5 배 */
   position: absolute; top: 8px; left: 6px; z-index: 1000;
   bottom: calc(20% + 8px);          /* 아래 20% 는 TERRAIN CUT 자리 */
   display: flex; flex-direction: column; gap: 12px;
@@ -495,10 +495,10 @@ body.solo-mode .solo-panel-visible {
    굴린 채로는 접을 수 없다면 접기 버튼이 있으나 마나다. */
 #map-lsk-toggle {
   position: sticky; top: 0; z-index: 2;
-  flex: 0 0 auto; width: var(--lsk-btn-w, 108px); height: var(--lsk-btn-h, 68px);
+  flex: 0 0 auto; width: var(--lsk-btn-w, 81px); height: var(--lsk-btn-h, 51px);
   background: rgba(0,26,48,0.94); border: 1px solid #4488ff; color: #9fd0ff;
-  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 22px; font-weight: bold;
-  padding: 14px 4px; border-radius: 10px; cursor: pointer;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 16px; font-weight: bold;
+  padding: 10px 3px; border-radius: 7px; cursor: pointer;
   touch-action: manipulation; text-align: center; white-space: nowrap;
 }
 #map-lsk-toggle:active { background: rgba(0,44,80,0.96); }
@@ -507,10 +507,10 @@ body.solo-mode .solo-panel-visible {
   flex: 0 0 auto;
 }
 #map-top-bar button {
-  flex: 0 0 auto; width: var(--lsk-btn-w, 108px); height: var(--lsk-btn-h, 68px);
+  flex: 0 0 auto; width: var(--lsk-btn-w, 81px); height: var(--lsk-btn-h, 51px);
   background: rgba(20,20,20,0.88); border: 1px solid #444; color: #fff;
-  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 22px; font-weight: bold;
-  padding: 14px 4px; border-radius: 10px; cursor: pointer;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 16px; font-weight: bold;
+  padding: 10px 3px; border-radius: 7px; cursor: pointer;
   touch-action: manipulation; text-align: center; white-space: nowrap;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
@@ -526,7 +526,7 @@ body.solo-mode .solo-panel-visible {
    폭은 다른 라인 셀렉터 버튼과 같아야 한다. 혼자 넓으면 그 칸만 4px 밀려
    줄이 어긋나 보인다. */
 /* 거리·방위 측정자(Ruler) */
-#map-ruler-btn { flex: 0 0 auto; min-width: 80px; font-size: 28px; padding: 10px 4px; }
+#map-ruler-btn { flex: 0 0 auto; min-width: 60px; font-size: 21px; padding: 8px 3px; }
 #map-ruler-btn.ruler-active {
   background: rgba(60,45,0,0.92); border-color: #ffd54f; color: #ffd54f;
   box-shadow: 0 0 8px rgba(255,213,79,0.4);
@@ -739,8 +739,8 @@ body.solo-mode .solo-panel-visible {
   background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
 }
 #map-sim-bar .sim-btn {
-  flex: 0 0 auto; width: var(--lsk-btn-w, 108px); height: var(--lsk-btn-h, 68px);
-  padding: 12px 4px; border-radius: 8px; white-space: nowrap;
+  flex: 0 0 auto; width: var(--lsk-btn-w, 81px); height: var(--lsk-btn-h, 51px);
+  padding: 9px 3px; border-radius: 6px; white-space: nowrap;
 }
 /* ── TERRAIN CUT (전방 20NM 지형 단면, 맵 높이의 1/5) ── */
 #terrain-cut {
@@ -1355,9 +1355,9 @@ body.phone-mode.solo-mode #app {
 }
 /* 지도 툴바는 폰·태블릿 모두 왼쪽 한 줄이다(위 #map-lsk 규칙).
    폰에서는 글자만 조금 줄인다 — flex 를 건드리면 칸 나눔이 망가진다.
-   (버튼과 글씨를 두 배로 키우면서 이 값도 10 → 20px 로 함께 올렸다) */
+   (버튼과 글씨를 1.5 배로 키우면서 이 값도 10 → 15px 로 함께 올렸다) */
 body.phone-mode #map-top-bar button,
-body.phone-mode #map-sim-bar .sim-btn { font-size: 20px; }
+body.phone-mode #map-sim-bar .sim-btn { font-size: 15px; }
 
 /* ── 지도 하위 창 — 버튼에서 가지 친 모양 ──────────────────────
    창은 누른 버튼 옆(화면 안쪽)에 붙고, 그 사이를 짧은 줄기가 잇는다.
