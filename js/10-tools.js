@@ -1446,59 +1446,12 @@ function mapPanelOpened(panelId, open) {
 })();
 
 // ══════════════════════════════════════════════════════
-// 지도 라인 셀렉터 — 좌·우 두 칸으로만 세운다
+// 지도 버튼 줄 — 왼쪽 한 줄, 넘치면 굴려 본다
 // ══════════════════════════════════════════════════════
-// 칸 나눔은 CSS 의 flex-flow:column wrap 이 한다. 넘칠 지점을 컨테이너 높이로
-// 정하는데, 그 높이를 CSS 에 못 박아 두면 버튼 수가 달라지는 순간 어긋난다.
-// 실제로 넓은 화면에서 위 툴바가 열세 개(HALF 포함)가 되자 세 칸으로 갈렸고,
-// align-content:space-between 이 가운데 칸을 화면 한복판에 세워 버렸다.
-// 버튼 수는 화면에 따라 달라진다(폰에서는 HALF 를 감춘다) — 그러니 세어서 맞춘다.
+// 종전에는 여기에 layoutMapLsk() 가 있었다. 버튼을 좌·우 두 칸으로 갈라
+// 세우느라 버튼 수를 세어 컨테이너 높이를 넣고, 세로가 모자라면 버튼 높이를
+// 34px 에서 26px 까지 낮췄다. 화면 크기·버튼 수·시뮬 모드가 바뀔 때마다
+// 다시 재야 해서 부르는 자리가 세 곳이었고, 그중 하나만 빠져도 칸이 어긋났다.
 //
-// 두 툴바를 위아래로 잇는다. 그래야 아래쪽 버튼이 위쪽 칸에 이어져 내려온다
-// (왼쪽은 왼쪽대로, 오른쪽은 오른쪽대로 한 줄기다).
-const LSK_BTN_H = 34, LSK_GAP = 4, LSK_TOP = 8, LSK_BAR_GAP = 12, LSK_BTN_MIN = 26;
-
-function layoutMapLsk() {
-  const wrap = document.getElementById('map-wrap');
-  if (!wrap) return;
-  const wrapH = wrap.clientHeight;
-  if (!wrapH) return;                       // 지도가 접혀 있으면 잴 것이 없다
-
-  const bars = ['map-top-bar', 'map-sim-bar']
-    .map(id => document.getElementById(id))
-    .filter(Boolean);
-  // 화면에 나오는 버튼만 센다(폰에서 감춘 HALF 등은 자리를 차지하지 않는다)
-  const counts = bars.map(b => [...b.querySelectorAll('button')]
-    .filter(x => getComputedStyle(x).display !== 'none').length);
-  const rows = counts.map(n => Math.max(1, Math.ceil(n / 2)));
-  const totalRows = rows.reduce((a, b) => a + b, 0);
-
-  // 두 칸이 세로로 다 들어가는가. 안 들어가면 버튼을 낮춰 맞춘다(26px 까지).
-  const avail = wrapH - LSK_TOP * 2 - LSK_BAR_GAP;
-  let h = LSK_BTN_H;
-  const need = r => r * h + (r - 1) * LSK_GAP;
-  if (need(totalRows) > avail) {
-    h = Math.max(LSK_BTN_MIN, Math.floor((avail - (totalRows - 1) * LSK_GAP) / totalRows));
-  }
-
-  let y = LSK_TOP;
-  bars.forEach((bar, i) => {
-    const barH = rows[i] * h + (rows[i] - 1) * LSK_GAP;
-    bar.style.setProperty('--lsk-h', barH + 'px');
-    bar.style.setProperty('--lsk-btn-h', h + 'px');
-    bar.style.top = y + 'px';
-    bar.style.bottom = 'auto';
-    y += barH + LSK_BAR_GAP;
-  });
-}
-
-// 버튼이 보였다 숨었다 하거나(폰↔태블릿) 지도 크기가 바뀌면 다시 잰다
-(function initMapLsk() {
-  const again = () => { try { layoutMapLsk(); } catch (e) { _swallow(e); } };
-  let t = null;
-  const soon = () => { clearTimeout(t); t = setTimeout(again, 120); };
-  window.addEventListener('resize', soon);
-  window.addEventListener('orientationchange', soon);
-  requestAnimationFrame(again);
-  setTimeout(again, 400);                   // 지도가 자리를 잡은 뒤 한 번 더
-})();
+// 지금은 왼쪽 한 줄이고, 넘치면 그 줄을 굴린다(#map-lsk 의 overflow-y).
+// 브라우저가 알아서 하는 일이라 잴 것도, 다시 부를 자리도 없다.

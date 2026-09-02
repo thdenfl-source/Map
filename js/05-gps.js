@@ -855,48 +855,15 @@ function toggleTcut() {
 // 지도 영역이 80%로 바뀌었으므로 Leaflet 리사이즈 강제(초기 렌더 보정)
 setTimeout(() => { try { leafMap.invalidateSize(); } catch(e) { _swallow(e); } try { updateTerrainCut(); } catch(e) { _swallow(e); } }, 300);
 
-// ── BRG1/BRG2 베어링 라인 (HSI 사이드패널과 동일 소스·색) ──
-//  BRG1(파랑): 항공기 → 선택 항법시설(VOR/ILS)
-//  BRG2(초록): 항공기 → FMS 활성 웨이포인트
-let brg1Line = L.polyline([],{color:'#44aaff',weight:2,opacity:0.85}).addTo(leafMap);
-let brg2Line = L.polyline([],{color:'#00cc44',weight:2,opacity:0.85}).addTo(leafMap);
+// ── 지도 BRG 선·이름표는 내렸다 ──────────────────────────────────
+// 종전에는 항공기에서 BRG1(항법시설)·BRG2(활성 웨이포인트)로 선을 긋고 그
+// 가운데에 방위·거리를 적었다. 켜고 끄는 자리는 지도 툴바의 #1BDP·#2BDP
+// 였는데, 기본이 꺼짐이라 대개는 아무것도 없는 채로 버튼 두 칸만 차지했다.
+// 같은 값(방위·거리)은 나침반 모서리 글자판이 늘 보여 주고, 어느 쪽인지는
+// 나침반의 BRG1(파랑)·BRG2(초록) 니들이 가리킨다 — 지도에 선과 글자를
+// 겹쳐 그리면 지형과 항로를 가릴 뿐이었다.
+// (니들과 BRG 버튼은 그대로다. 내린 것은 지도 시현뿐이다)
 
-function _brgLabelMarker(color) {
-  const icon = L.divIcon({
-    html: `<div style="color:${color};font-size:9px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;font-weight:bold;white-space:nowrap;text-shadow:1px 1px 2px #000,-1px -1px 2px #000;transform:translate(6px,-6px);"></div>`,
-    iconSize: [0, 0], className: ''
-  });
-  return L.marker([0, 0], { icon, interactive: false }).addTo(leafMap);
-}
-function _setBrgLine(line, mkRef, show, tLat, tLon, tag, brg, dist, color) {
-  if (!show || tLat == null) {
-    line.setLatLngs([]);
-    if (mkRef.mk) { leafMap.removeLayer(mkRef.mk); mkRef.mk = null; }
-    return;
-  }
-  line.setLatLngs([[S.lat, S.lon], [tLat, tLon]]);
-  if (!mkRef.mk) mkRef.mk = _brgLabelMarker(color);
-  const midLat = (S.lat + tLat) / 2, midLon = (S.lon + tLon) / 2;
-  mkRef.mk.setLatLng([midLat, midLon]);
-  const el = mkRef.mk.getElement();
-  if (el && el.firstChild) el.firstChild.textContent = `${tag} ${fmtA(toMag(brg))}° ${dist.toFixed(1)}NM`;
-}
-const _brg1Ref = { mk: null }, _brg2Ref = { mk: null };
-function updateBrgLines() {
-  // 지도 시현은 #1BDP·#2BDP 가 정한다 — 선과 이름표가 함께 켜지고 함께 꺼진다.
-  // (BRG1·BRG2 버튼은 계기의 니들, 여기 토글은 지도에 그릴지 말지)
-  // BRG1: 항법시설(VOR/ILS) — HSI BRG1 패널과 같은 국을 쓴다(brg1Station)
-  const b1 = (brg1Visible && brg1LblOn) ? brg1Station() : null;
-  _setBrgLine(brg1Line, _brg1Ref, !!b1, b1?.lat, b1?.lon, 'BRG1',
-    b1 ? bearing(S.lat, S.lon, b1.lat, b1.lon) : 0,
-    b1 ? dmeDist(b1.lat, b1.lon, b1.elev) : 0, '#44aaff');   // DME 는 경사거리
-  // BRG2: FMS 활성 웨이포인트 — HSI BRG2 패널과 동일
-  const wpOk = S.awp >= 0 && S.awp < S.wps.length;
-  const wp = wpOk ? S.wps[S.awp] : null;
-  _setBrgLine(brg2Line, _brg2Ref, brg2Visible && brg2LblOn && wpOk, wp?.lat, wp?.lon, 'BRG2',
-    wp ? bearing(S.lat, S.lon, wp.lat, wp.lon) : 0,
-    wp ? distance(S.lat, S.lon, wp.lat, wp.lon) : 0, '#00cc44');
-}
 let vorStationMarker = null;
 let wpMarkers = [];
 

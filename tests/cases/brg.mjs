@@ -56,23 +56,6 @@ export async function run(page, t) {
     `FMS 소스에서도 BRG1 이 그려진다 (켤 때만 생기는 파란 화소 ${px.on - px.off}개)`);
   t.eq(px.back, px.on, '껐다 켜면 그대로 돌아온다');
 
-  // ── 지도 BRG1 선도 같은 국을 쓰는가 ──
-  // 계기와 지도가 다른 국을 가리키면 둘 중 하나는 거짓말이다.
-  const map = await page.evaluate(() => {
-    setNavSrc('FMS');
-    if (!brg1Visible) toggleBrg1();
-    if (!brg1LblOn) toggleBrg1Lbl();      // 지도 시현은 #1BDP 가 정한다
-    updateBrgLines();
-    const pts = brg1Line.getLatLngs();
-    const s = brg1Station();
-    const end = pts.length ? pts[pts.length - 1] : null;
-    return { n: pts.length,
-             dist: (end && s) ? distance(end.lat, end.lng, s.lat, s.lon) : null };
-  });
-  t.ok(map.n >= 2, `지도에 BRG1 선이 그려진다 (점 ${map.n}개)`);
-  t.ok(map.dist !== null && map.dist < 0.1,
-    `지도 BRG1 선이 계기와 같은 국에서 끝난다 (${map.dist === null ? '-' : map.dist.toFixed(2)}NM)`);
-
   // ── 튜닝된 무선이 하나도 없으면 조용히 비운다 ──
   // 없는 것을 있는 척하면 그게 더 나쁘다.
   const none = await page.evaluate(() => {
@@ -82,12 +65,11 @@ export async function run(page, t) {
     setNavSrc('FMS');
     const s = brg1Station();
     let threw = false;
-    try { drawPFD(); updateBrgLines(); } catch (e) { threw = true; }
-    const pts = brg1Line.getLatLngs().length;
+    try { drawPFD(); } catch (e) { threw = true; }
     navRadios.NAV1 = bk.NAV1; navRadios.NAV2 = bk.NAV2;
-    applyNavRadioToPfd(); updateBrgLines();
-    return { s, threw, pts };
+    applyNavRadioToPfd();
+    return { s, threw };
   });
   t.eq(none.s, null, '튜닝된 무선이 없으면 가리킬 국도 없다');
-  t.ok(!none.threw && none.pts === 0, '그때도 예외 없이 지도 선만 비운다');
+  t.ok(!none.threw, '그때도 예외 없이 계기를 그린다');
 }

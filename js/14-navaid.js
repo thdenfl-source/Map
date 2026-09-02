@@ -100,7 +100,6 @@ function fitAppViewport() {
   try { if (typeof leafMap === 'object' && leafMap) leafMap.invalidateSize(); } catch (e) { _swallow(e); }
   try { if (typeof _ml3d !== 'undefined' && _ml3d) _ml3d.resize(); } catch (e) { _swallow(e); }
   try { scaleCdu(); } catch (e) { _swallow(e); }
-  try { if (typeof layoutMapLsk === 'function') layoutMapLsk(); } catch (e) { _swallow(e); }
 }
 // 주소창이 접히거나 키보드가 올라오면 visualViewport 만 바뀐다(resize 가 안 온다)
 if (window.visualViewport) {

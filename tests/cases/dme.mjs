@@ -67,26 +67,15 @@ export async function run(page, t) {
   t.ok(!nmTxt.includes('0.0 NM'),
     '종전처럼 0.0 NM 으로 떨어지지 않는다');
 
-  // ── 지도 BRG1 이름표도 같은 값이다 ──
-  // 계기와 지도가 다른 거리를 말하면 둘 중 하나는 거짓말이다.
-  const lbl = await page.evaluate(() => {
-    brg1Visible = true; brg1LblOn = true; updateNav();
-    const el = _brg1Ref.mk && _brg1Ref.mk.getElement();
-    return el ? el.firstChild.textContent : '';
-  });
-  t.ok(/1\.0NM$/.test(lbl), `지도 BRG1 이름표도 경사거리다 (${lbl})`);
-
   // ── FMS(GPS) 거리는 수평거리 그대로다 ──
   const fms = await page.evaluate(([SEL]) => {
     S.alt = 6000; S.lat = SEL[0]; S.lon = SEL[1];
     S.wps = [{ ident: 'OVER', lat: SEL[0], lon: SEL[1] }];
     S.awp = 0; navSrc = 'FMS'; applyNavRadioToPfd(); updateNav();
-    return { dtw: S.dtw, brg2: (() => {
-      brg2Visible = true; brg2LblOn = true; updateBrgLines();
-      const el = _brg2Ref.mk && _brg2Ref.mk.getElement();
-      return el ? el.firstChild.textContent : '';
-    })() };
+    return { dtw: S.dtw,
+             // 나침반 모서리 FMS 자리도 같은 값이어야 한다
+             corner: navInfoRows().find(r => r.src === 'FMS').dst };
   }, [SEL]);
   t.ok(fms.dtw < 0.001, `FMS 거리는 수평거리다 — 상공에서 0 (${fms.dtw.toFixed(4)}NM)`);
-  t.ok(/0\.0NM$/.test(fms.brg2), `BRG2(FMS)도 수평거리다 (${fms.brg2})`);
+  t.ok(/^0\.0\b/.test(fms.corner), `모서리 FMS 자리도 수평거리다 (${fms.corner})`);
 }

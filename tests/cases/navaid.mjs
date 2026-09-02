@@ -472,38 +472,67 @@ export async function run(page, t) {
   await phone.setViewportSize(PHONE);
   await phone.waitForTimeout(500);
 
-  // ── ⑧ MAP 상단 버튼이 좌·우 라인 셀렉터로 서는가 ────────────
-  // 한 줄에 열한 개를 밀어 넣으면 폰에서 버튼 하나가 30px 남짓이라 못 누른다.
-  // 지도 양옆에 세로로 세우되, 지도를 덮어 끌기·확대를 먹지 않아야 한다.
+  // ── ⑧ MAP 버튼이 왼쪽 한 줄로 서는가 ────────────────────────
+  // 한 줄에 열한 개를 가로로 밀어 넣던 것을 좌·우 두 칸으로 갈랐다가, 이제
+  // 왼쪽 한 줄로 모았다. 두 칸은 눈이 좌우를 오가야 했고 오른쪽 칸은 지도를
+  // 끌 때 손에 걸렸다. 세로가 모자라면 버튼을 낮추는 대신 줄을 굴려 본다.
   await phone.evaluate(() => navGo('map'));
   await phone.waitForTimeout(500);
   const lsk = await phone.evaluate(() => {
-    const bar = document.getElementById('map-top-bar');
-    const cols = {};
-    let minW = 999;
-    bar.querySelectorAll('button').forEach(b => {
-      const r = b.getBoundingClientRect();
-      if (r.height === 0) return;                       // 폰에서 감춘 것(FULL)
-      minW = Math.min(minW, r.width);
-      const k = r.left < window.innerWidth / 2 ? 'L' : 'R';
-      (cols[k] = cols[k] || []).push(b.id);
+    const rail = document.getElementById('map-lsk');
+    const R = rail.getBoundingClientRect();
+    const W = document.getElementById('map-wrap').getBoundingClientRect();
+    const xs = new Set(); let minW = 999, minH = 999, n = 0;
+    rail.querySelectorAll('button').forEach(b => {
+      const q = b.getBoundingClientRect();
+      if (!q.width) return;                        // 감춘 것(시뮬 전용 FLY 등)
+      n++; minW = Math.min(minW, q.width); minH = Math.min(minH, q.height);
+      xs.add(Math.round(q.left - W.left));
     });
-    // 툴바가 지도를 먹지 않는가 — 컨테이너는 통과시키고 버튼만 받아야 한다
-    // (GPS 는 맨 위 탭바로 올라갔으므로 첫 버튼으로 잰다)
-    const barPe = getComputedStyle(bar).pointerEvents;
-    const btnPe = getComputedStyle(bar.querySelector('button')).pointerEvents;
-    // 두 칸 사이 가운데는 지도가 그대로 보여야 한다
-    const mid = document.elementFromPoint(window.innerWidth / 2, 120);
-    return { left: (cols.L || []).length, right: (cols.R || []).length,
-             minW: Math.round(minW), barPe, btnPe,
+    // 줄 오른쪽은 지도가 그대로 보이고 만져진다
+    const mid = document.elementFromPoint(W.left + W.width / 2, W.top + 120);
+    const st = getComputedStyle(rail);
+    return { xs: [...xs], n, minW: Math.round(minW), minH: Math.round(minH),
+             railW: Math.round(R.width), wrapW: Math.round(W.width),
+             overflowY: st.overflowY, overscroll: st.overscrollBehaviorY,
+             inside: R.top >= W.top - 1 && R.bottom <= W.bottom + 1,
              midIsMap: !!(mid && (mid.id === 'map' || mid.closest('#map'))) };
   });
-  t.ok(lsk.left >= 3 && lsk.right >= 3,
-    `버튼이 좌·우 두 칸으로 갈린다 (좌 ${lsk.left} · 우 ${lsk.right})`);
-  t.ok(lsk.minW >= 44, `버튼 폭이 손가락으로 누를 크기다 (${lsk.minW}px)`);
-  t.eq(lsk.barPe, 'none', '툴바 바탕은 지도 조작을 통과시킨다');
-  t.eq(lsk.btnPe, 'auto', '버튼만 터치를 받는다');
-  t.eq(lsk.midIsMap, true, '두 칸 사이 가운데는 지도가 그대로 보인다');
+  t.eq(lsk.xs.length, 1, `버튼이 한 줄로 선다 (x ${lsk.xs.join(',')})`);
+  t.ok(lsk.xs[0] <= 12, `그 줄이 왼쪽 끝에 붙는다 (${lsk.xs[0]}px)`);
+  t.ok(lsk.n >= 14, `버튼을 줄이지 않았다 (${lsk.n}개)`);
+  t.ok(lsk.minW >= 44 && lsk.minH >= 30,
+    `버튼이 손가락으로 누를 크기다 (${lsk.minW}×${lsk.minH}px)`);
+  t.ok(lsk.railW <= lsk.wrapW * 0.25,
+    `줄이 지도의 한 귀퉁이만 쓴다 (${lsk.railW}px / ${lsk.wrapW}px)`);
+  t.eq(lsk.midIsMap, true, '줄 오른쪽은 지도가 그대로 보인다');
+  t.eq(lsk.inside, true, '줄이 지도 밖으로 나가지 않는다');
+  t.eq(lsk.overflowY, 'auto', '넘치면 굴려 볼 수 있다');
+  t.eq(lsk.overscroll, 'contain',
+    '줄 끝까지 굴려도 그 힘이 지도로 넘어가지 않는다');
+
+  // 세로가 모자란 화면에서 실제로 굴러가는가 — 버튼을 감추거나 낮추지 않는다
+  await phone.setViewportSize({ width: 412, height: 620 });
+  await phone.waitForTimeout(500);
+  const roll = await phone.evaluate(() => {
+    const rail = document.getElementById('map-lsk');
+    const before = [...rail.querySelectorAll('button')]
+      .filter(b => b.getBoundingClientRect().width).length;
+    const h = Math.round(rail.querySelector('button').getBoundingClientRect().height);
+    rail.scrollTop = 9999;
+    const last = rail.querySelector('#rec-btn').getBoundingClientRect();
+    const R = rail.getBoundingClientRect();
+    return { over: rail.scrollHeight > rail.clientHeight + 1,
+             moved: rail.scrollTop > 0, n: before, btnH: h,
+             lastSeen: last.bottom <= R.bottom + 1 && last.top >= R.top - 1 };
+  });
+  t.eq(roll.over, true, '세로가 모자라면 줄이 화면을 넘는다');
+  t.eq(roll.moved, true, '그때 줄이 굴러간다');
+  t.eq(roll.lastSeen, true, '굴리면 맨 아래 버튼(REC)까지 보인다');
+  t.eq(roll.btnH, 34, `버튼 높이는 어느 화면에서나 같다 (${roll.btnH}px)`);
+  t.ok(roll.n >= 14, `굴리는 대신 버튼을 감추지 않는다 (${roll.n}개)`);
+  await phone.setViewportSize(PHONE);
+  await phone.waitForTimeout(500);
 
   // ── ⑨ 값도 고르는 것도 나침반 모서리에서 ──────────────────────
   // 값이 놓인 자리가 세 번 옮겨 다녔다. 나침반 좌·우 여백(캔버스) → 조작부
@@ -859,56 +888,36 @@ export async function run(page, t) {
   t.ok(Math.abs(((radN - brgN + 360) % 360) - 180) < 3,
     `래디얼이 방위의 반대편이다 (방위 ${brgN}° · 래디얼 ${radN}°)`);
 
-  // ── ⑭ #1BDP·#2BDP 가 지도 버튼으로 옮겨졌는가 ────────────────
+  // ── ⑭ 지도 버튼에서 내린 것들 ──────────────────────────────────
+  // #1BDP·#2BDP(지도 BRG 시현)와 CLR(비행계획 지우기)을 내렸다.
+  //   · BRG 선·글자는 기본이 꺼짐이라 대개 아무것도 없는 채로 두 칸만 먹었고,
+  //     같은 값(방위·거리)은 나침반 모서리 글자판이 늘 보여 준다.
+  //   · CLR 은 비행계획을 통째로 지우는 버튼이라 지도를 보다 스칠 자리가
+  //     아니다. 지우는 자리는 PLAN 창 아래 Clr 하나로 둔다.
   await phone.evaluate(() => navGo('map'));
   await phone.waitForTimeout(400);
-  const bdp = await phone.evaluate(() => {
-    const inMap = id => !!document.querySelector('#map-top-bar #' + id);
-    const cols = sel => { const L = [], R = []; document.querySelectorAll(sel + ' button').forEach(x => {
-      const r = x.getBoundingClientRect(); if (!r.width) return;
-      (r.left + r.width / 2 < window.innerWidth / 2 ? L : R).push(x.id); }); return [L.length, R.length]; };
-    return { bdp1: inMap('brg1-bdp'), bdp2: inMap('brg2-bdp'),
-             top: cols('#map-top-bar'), bottom: cols('#map-sim-bar'),
-             coordPx: parseFloat(getComputedStyle(document.getElementById('center-coord')).fontSize),
-             gpsPx: parseFloat(getComputedStyle(document.getElementById('gps-status')).fontSize),
-             simPe: getComputedStyle(document.getElementById('map-sim-bar')).pointerEvents };
-  });
-  t.eq(bdp.bdp1 && bdp.bdp2, true, '#1BDP·#2BDP 가 지도 버튼으로 옮겨졌다');
-  t.ok(Math.abs(bdp.top[0] - bdp.top[1]) <= 1,
-    `위쪽 버튼이 좌·우로 고르게 갈린다 (${bdp.top.join(':')})`);
-  t.ok(bdp.bottom[0] >= 4 && bdp.bottom[1] >= 4 && Math.abs(bdp.bottom[0] - bdp.bottom[1]) <= 1,
-    `아래쪽 버튼도 좌·우로 갈린다 (${bdp.bottom.join(':')})`);
+  const gone = await phone.evaluate(() => ({
+    bdp: !document.getElementById('brg1-bdp') && !document.getElementById('brg2-bdp'),
+    bdpAct: !document.querySelector('[data-act="toggleBrg1Lbl"],[data-act="toggleBrg2Lbl"]'),
+    bdpFn: typeof toggleBrg1Lbl === 'undefined' && typeof toggleBrg2Lbl === 'undefined',
+    mapLines: typeof brg1Line === 'undefined' && typeof brg2Line === 'undefined',
+    clrOnMap: !document.querySelector('#map-lsk [data-act="clearFP"]'),
+    // 비행계획을 지우는 자리는 PLAN 창에 그대로 남는다
+    clrOnPlan: (() => { fpGo('LIST'); return /Clr/.test(document.getElementById('fp-wrap').textContent); })(),
+    coordPx: parseFloat(getComputedStyle(document.getElementById('center-coord')).fontSize),
+    gpsPx: parseFloat(getComputedStyle(document.getElementById('gps-status')).fontSize),
+  }));
+  t.eq(gone.bdp, true, '#1BDP·#2BDP 버튼이 없다');
+  t.eq(gone.bdpAct, true, '그 버튼을 부르던 data-act 도 없다');
+  t.eq(gone.bdpFn, true, '토글 함수도 남지 않았다');
+  t.eq(gone.mapLines, true, '지도에 BRG 선을 그리던 코드도 없다');
+  t.eq(gone.clrOnMap, true, '지도 버튼에 CLR 이 없다');
+  t.eq(gone.clrOnPlan, true, '비행계획을 지우는 자리는 PLAN 창에 남는다');
+  t.ok(gone.coordPx >= 11 && gone.gpsPx >= 11,
+    `좌표·GPS 글씨는 그대로 읽힌다 (${gone.coordPx}px · ${gone.gpsPx}px)`);
+  await phone.evaluate(() => navGo('map'));
+  await phone.waitForTimeout(300);
 
-  // ── ⑮ 칸은 좌·우 둘뿐이고, 아래 버튼이 위 칸에 이어진다 ──────
-  // 버튼이 하나 늘면 세 칸으로 갈리고 align-content 가 가운데 칸을 화면
-  // 한복판에 세운다 — 넓은 화면에서 실제로 그랬다. 버튼 수를 세어 칸 높이를
-  // 맞추므로(layoutMapLsk), 어느 폭에서든 x 자리는 딱 둘이어야 한다.
-  for (const vp of [{ width: 390, height: 844 }, { width: 1180, height: 820 }]) {
-    await phone.setViewportSize(vp);
-    await phone.waitForTimeout(500);
-    await phone.evaluate(() => setSolo('map'));
-    await phone.waitForTimeout(500);
-    const r = await phone.evaluate(() => {
-      const W = document.getElementById('map-wrap').getBoundingClientRect();
-      const xs = new Set();
-      document.querySelectorAll('#map-top-bar button, #map-sim-bar .sim-btn').forEach(x => {
-        const q = x.getBoundingClientRect();
-        if (q.width) xs.add(Math.round(q.left - W.left));
-      });
-      const top = document.getElementById('map-top-bar').getBoundingClientRect();
-      const bot = document.getElementById('map-sim-bar').getBoundingClientRect();
-      const h = parseFloat(getComputedStyle(document.querySelector('#map-top-bar button')).height);
-      return { xs: [...xs].sort((a, b) => a - b),
-               // 아래 툴바가 위 툴바 바로 밑에 이어지는가(화면 아래에 따로 떨어져 있지 않은가)
-               follows: bot.top >= top.bottom - 1 && bot.top - top.bottom < 40,
-               btnH: Math.round(h) };
-    });
-    const w = vp.width;
-    t.eq(r.xs.length, 2, `${w}px 폭에서 칸이 좌·우 둘뿐이다 (x ${r.xs.join(',')})`);
-    t.eq(r.follows, true, `${w}px 폭에서 아래 버튼이 위 칸에 이어진다`);
-    // 세로가 모자라면 버튼을 낮춰서라도 두 칸을 지킨다(26px 아래로는 안 내린다)
-    t.ok(r.btnH >= 26 && r.btnH <= 34, `${w}px 폭에서 버튼 높이가 26~34px 다 (${r.btnH}px)`);
-  }
   await phone.setViewportSize(PHONE);
   await phone.waitForTimeout(500);
 

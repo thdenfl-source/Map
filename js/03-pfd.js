@@ -55,7 +55,7 @@ function drawPFD() {
   const CTRL_H = ctrlEl ? ctrlEl.offsetHeight : 80;
   const usableH = H - CTRL_H;
   // 좌우 기둥(속도·고도 테이프와 승강계)은 걷어냈다. 폭이 가로의 8.2% 로 묶여
-  // 있어 그 안에서는 숫자를 키울 수가 없었고, 정확한 값은 맨 윗줄 상자(GS·ALT·VS)
+  // 있어 그 안에서는 숫자를 키울 수가 없었고, 정확한 값은 맨 윗줄 상자(GS·HDG·ALT·VS)
   // 에서 읽는다. 그만큼 자세계와 나침반이 화면 폭을 통째로 쓴다.
   const aiX = 0, aiW = W;
   // 나침반 칸은 비율이 아니라 실제로 차지할 높이로 잡는다. 위·아래 두 띠에
@@ -84,7 +84,7 @@ function drawPFD() {
 function hsiBandH() { return Math.round(38 * pfdFontScale); }
 
 // ────────────────────────────────────────
-// 맨 윗줄 — 지금 값 세 가지 (GS · ALT · VS)
+// 맨 윗줄 — 지금 값 네 가지 (GS · HDG · ALT · VS)
 // ────────────────────────────────────────
 // 종전에는 여기가 FMA(오토파일럿 모드 표시줄)였다. ALT | HDG | IAS 세 칸에
 // 어느 축을 자동조종이 잡고 있는지 적었는데, 이 앱에는 자동조종이 없다 —
@@ -112,7 +112,8 @@ function fmaStripH() { return Math.round(FMA_BOX_H * pfdFontScale); }
 
 function drawTopReadout(x, y, w) {
   const MARGIN = FMA_MARGIN, GAP = FMA_GAP;
-  const cellW = Math.floor((w - MARGIN * 2 - GAP * 2) / 3);
+  const N = 4;                                   // GS · HDG · ALT · VS
+  const cellW = Math.floor((w - MARGIN * 2 - GAP * (N - 1)) / N);
   const lblH  = Math.round(FMA_LBL_H * pfdFontScale);
   const valH  = Math.round(FMA_VAL_H * pfdFontScale);
   const Y0    = y + MARGIN;
@@ -125,6 +126,9 @@ function drawTopReadout(x, y, w) {
                     : String(Math.round(vsShown / 10) * 10);   // fpm 은 10 단위로 — 1 단위는 떨림만 보인다
   const cells = [
     { lbl: 'GS',  unit: S_LBL(), val: String(Math.round(S.spd * S_CV())), col: '#00e07a' },
+    // 기수방위 — 나침반 꼭대기 삼각형이 가리키는 눈금과 같은 값이다.
+    // 눈금은 '어느 쪽인가' 를 보는 것이고, 정확한 숫자는 여기서 읽는다.
+    { lbl: 'HDG', unit: '°M', val: fmtA(toMag(S.hdg)), col: '#ffffff' },
     { lbl: 'ALT', unit: A_LBL(), val: String(Math.round(S.alt * A_CV())), col: '#ffffff' },
     { lbl: 'VS',  unit: met ? 'M/S' : 'FPM',
       val: (Math.abs(S.vs) < 10 ? '0' : (S.vs > 0 ? '+' : '') + vsTxt), col: vsCol },
@@ -143,12 +147,14 @@ function drawTopReadout(x, y, w) {
     return wide <= room ? want : Math.max(min, Math.floor(want * room / wide));
   };
   // 계기에서 가장 자주 읽는 숫자들이다 — 이름표 22 · 값 26 을 목표로 잡고,
-  // 칸에 안 들어가면 그만큼만 줄인다. 단위(KT·FT·FPM)는 한 단계 작게 둔다.
+  // 칸에 안 들어가면 그만큼만 줄인다. 단위(KT·°M·FT·FPM)는 한 단계 작게 둔다.
+  // 칸이 셋에서 넷으로 늘어 폭이 3/4 로 줄었으므로, 좁은 폰에서는 여기서
+  // 재서 줄인 크기가 실제로 쓰인다.
   const valFs  = fit(26, cells.map(c => c.val), cellW - 6, 11);
   const lblFs  = fit(22, cells.map(c => c.lbl + ' ' + c.unit), cellW - 4, 8);
   const unitFs = Math.max(7, Math.round(lblFs * 0.72));
 
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < N; i++) {
     const bx = x + MARGIN + i * (cellW + GAP);
 
     // 이름표 — 값보다 작게, 단위를 옆에 붙여 적는다
@@ -187,7 +193,7 @@ function drawTopReadout(x, y, w) {
 // ATTITUDE INDICATOR
 // ────────────────────────────────────────
 function drawAI(x, y, w, h) {
-  const FMA_H = FMA_MARGIN + fmaStripH();   // 맨 윗줄(GS·ALT·VS)이 차지하는 높이
+  const FMA_H = FMA_MARGIN + fmaStripH();   // 맨 윗줄(GS·HDG·ALT·VS)이 차지하는 높이
   const aiY   = y + FMA_H;               // AI content starts below AFCS strip
   const aiH   = h - FMA_H;
   const cx = x + w/2, cy = aiY + aiH * 0.47;
