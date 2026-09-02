@@ -560,7 +560,7 @@ export async function run(page, t) {
              navHasValues: /°|NM/.test(nav.textContent),
              infoH: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height),
              fms: corner('FMS'), nav1: corner('NAV1'), nav2: corner('NAV2'),
-             tas: corner('TAS'), gs: corner('GS'), oat: corner('OAT'),
+             oat: corner('OAT'), tas: corner('TAS'),
              all: seen.map(e => e.t) };
   });
   t.eq(info.sels.join(','), 'FMS,NAV1,NAV2', `조작부에 고르는 버튼 셋이 있다 (${info.sels.join(',')})`);
@@ -568,10 +568,9 @@ export async function run(page, t) {
   t.eq(info.navHasValues, false, '조작부에는 숫자가 없다 — 값은 계기로 갔다');
   t.ok(info.infoH > 10 && info.infoH < 60, `고르는 줄이 한 줄 높이다 (${info.infoH}px)`);
 
-  // 네 모서리 — 왼쪽 위 FMS · 오른쪽 위 NAV1 · 오른쪽 아래 NAV2 · 왼쪽 아래 TAS·GS·OAT
+  // 네 모서리 — 왼쪽 위 FMS · 오른쪽 위 NAV1 · 오른쪽 아래 NAV2 · 왼쪽 아래 OAT
   const where = [['FMS', info.fms, 'top', 'left'], ['NAV1', info.nav1, 'top', 'right'],
-                 ['NAV2', info.nav2, 'bot', 'right'], ['TAS', info.tas, 'bot', 'left'],
-                 ['GS', info.gs, 'bot', 'left'], ['OAT', info.oat, 'bot', 'left']];
+                 ['NAV2', info.nav2, 'bot', 'right'], ['OAT', info.oat, 'bot', 'left']];
   for (const [name, c, vert, horz] of where) {
     t.ok(c, `${name} 가 계기에 그려진다`);
     if (!c) continue;
@@ -580,6 +579,35 @@ export async function run(page, t) {
   }
   // ISA 는 내렸다 — 고도만 넣으면 나오는 표준대기 값이라 읽을 것이 없다
   t.ok(!info.all.includes('ISA'), '계기에 ISA 가 없다');
+  // TAS 도 내렸다 — 대기속도계가 없는 이 앱에서는 대지속도에 고도 보정을
+  // 먹인 값이라, 맨 윗줄의 GS 와 거의 같은 숫자가 나란히 떴다.
+  t.eq(info.tas, null, '나침반 모서리에 TAS 가 없다');
+
+  // 모서리 글씨는 1.3 배로 키웠고, OAT 도 NAV 자리와 같은 크기다.
+  // 자세계 한가운데 녹색 원(비행경로 벡터)은 내렸다 — 편류는 지금 나침반을
+  // GPS 항적으로 맞춰 쓰는 탓에 센서 보정 잔차에 가깝고, 경로각도 대기속도가
+  // 없어 대지속도로 대신 낸 값이다. 자세를 보는 자리 한복판에서 그런 값이
+  // 떠다니면 읽기만 방해한다.
+  const corners = await phone.evaluate(() => {
+    S.spd = 90; S.vs = 500; S.hdg = 40;
+    const g = ctx, orig = g.fillText, seen = [];
+    g.fillText = function (txt, x, y) {
+      seen.push({ t: String(txt), y, f: this.font }); return orig.apply(this, arguments); };
+    // 자세계 한가운데의 원은 stroke 로 그렸다 — 그 색이 나오는지 본다
+    const os = ctx.stroke, cols = [];
+    ctx.stroke = function () { cols.push(String(this.strokeStyle).toLowerCase()); return os.apply(this, arguments); };
+    try { resizePFD(); drawPFD(); } finally { g.fillText = orig; ctx.stroke = os; }
+    const px = f => parseFloat(String(f).match(/(\d*\.?\d+)px/)[1]);
+    const top = 2 + fmaStripH();
+    const at = t => { const a2 = seen.filter(q => q.t === t && q.y > top); return a2.length ? px(a2[0].f) : null; };
+    return { oat: at('OAT'), fms: at('FMS'), nav1: at('NAV1'),
+             fpv: cols.includes('#00ff88') };
+  });
+  t.eq(corners.oat, corners.fms,
+    `OAT 이름표가 FMS 와 같은 크기다 (${corners.oat}px vs ${corners.fms}px)`);
+  t.eq(corners.nav1, corners.fms, 'NAV1 도 같은 크기다');
+  t.ok(corners.fms >= 14, `모서리 글씨를 1.3 배로 키웠다 (${corners.fms}px)`);
+  t.eq(corners.fpv, false, '자세계 한가운데 녹색 원(비행경로 벡터)이 없다');
 
   // ── AHRS·GPS 는 맨 위 탭바에 있다 ───────────────────────────
   // AHRS 는 조작부 구석에 있었다. 계기를 보다가 자세를 잡으려면 창을 옮겨야
@@ -781,15 +809,19 @@ export async function run(page, t) {
     try { drawPFD(); } finally { g.fillText = orig; }
     return { before, after, lit,
              brg: row.brg, rad: row.rad, dst: row.dst, ident: row.ident,
-             drawn: [row.ident, row.brg, row.rad, row.dst].every(v => seen.includes(v)),
+             drawn: [row.ident, row.brg, row.dst].every(v => seen.includes(v)),
+             radDrawn: seen.includes(row.rad),
              oldBtns: !document.getElementById('nav-fms') && !document.querySelector('.nav-src-btn') };
   });
   t.eq(src.oldBtns, true, '종전 NAV SRC 버튼은 없어졌다');
   t.eq(src.before, 'FMS', '누르기 전에는 FMS 였다');
   t.eq(src.after, 'NAV1', '버튼을 누르면 그 소스가 선택된다');
   t.eq(src.lit.join(','), 'NAV1', `고른 버튼만 켜져 보인다 (${src.lit.join(',')})`);
-  t.eq(src.drawn, true, '이름·방위·래디얼·거리가 나침반 모서리에 그려진다');
-  t.ok(/^R\d{3}$/.test(src.rad), `래디얼은 R 을 앞에 붙여 방위와 구분한다 (${src.rad})`);
+  t.eq(src.drawn, true, '이름·방위·거리가 나침반 모서리에 그려진다');
+  // 래디얼은 계산에는 남기고 화면에서는 뺐다 — 방위의 반대편이라 한쪽만
+  // 읽으면 나머지는 머릿속에서 나오고, 글씨를 키운 지금은 모서리를 넘는다.
+  t.eq(src.radDrawn, false, '래디얼은 화면에 적지 않는다');
+  t.ok(/^R\d{3}$/.test(src.rad), `계산에는 남아 있다 (${src.rad})`);
   // 래디얼은 그 지점에서 항공기를 본 방향 — 방위의 반대편이다
   const brgN = parseInt(src.brg, 10), radN = parseInt(src.rad.slice(1), 10);
   t.ok(Math.abs(((radN - brgN + 360) % 360) - 180) < 3,

@@ -81,6 +81,26 @@ export async function run(page, t) {
   t.ok(three[0].px > r.lblPx,
     `값이 이름표보다 크다 (${three[0].px}px vs ${r.lblPx}px)`);
 
+  // ③-2 나침반 위 HDG·CRS 상자와 같은 크기로 읽는다 ─────────────
+  // 계기에서 가장 자주 읽는 숫자들이 서로 다른 크기로 서 있으면 눈이 그때마다
+  // 다시 맞춘다. 자리가 넉넉한 화면에서는 두 자리가 정확히 같아야 한다.
+  const vs2 = await page.evaluate(() => {
+    const g = ctx, orig = g.fillText, seen = [];
+    g.fillText = function (txt, x, y) {
+      seen.push({ t: String(txt), y, f: this.font }); return orig.apply(this, arguments); };
+    try { drawPFD(); } finally { g.fillText = orig; }
+    const px = f => parseFloat(String(f).match(/(\d*\.?\d+)px/)[1]);
+    const top = 2 + fmaStripH();
+    const upper = t => { const e = seen.find(q => q.t === t && q.y > 0 && q.y <= top + 2); return e ? px(e.f) : null; };
+    const lower = t => { const a2 = seen.filter(q => q.t === t && q.y > top); return a2.length ? px(a2[a2.length - 1].f) : null; };
+    return { gsLbl: upper('GS'), altVal: upper(String(Math.round(S.alt * A_CV()))),
+             hdgLbl: lower('HDG'), hdgVal: lower(fmtA(toMag(S.hdg)) + '°') };
+  });
+  t.eq(vs2.gsLbl, vs2.hdgLbl,
+    `윗줄 이름표가 HDG 이름표와 같은 크기다 (${vs2.gsLbl}px vs ${vs2.hdgLbl}px)`);
+  t.eq(vs2.altVal, vs2.hdgVal,
+    `윗줄 값도 HDG 값과 같은 크기다 (${vs2.altVal}px vs ${vs2.hdgVal}px)`);
+
   // ── ④ 오름·내림을 색으로 가른다 ─────────────────────────────
   // 승강계 바늘과 같은 규칙 — 오르면 초록, 내리면 빨강, 그 사이는 회색.
   const down = val('-420').col.toLowerCase();
@@ -118,9 +138,13 @@ export async function run(page, t) {
     await page.setViewportSize({ width: w, height: h });
     await page.waitForTimeout(200);
     const q = await strip(120, 12500, -1250);
-    const v = q.vals.map(x => x.span).sort((a, b) => a[0] - b[0]);
-    t.ok(v.length >= 3 && v[0][1] < v[1][0] && v[1][1] < v[2][0],
-      `${w}px — 값 셋이 겹치지 않는다`);
+    // 세 값만 골라 본다. 자세계 피치 눈금(10·20)도 이 높이에 들어오는데,
+    // 그것은 자세계의 글자라 이 줄과 겹쳐도 상관이 없다.
+    const v = ['120', '12500', '-1250']
+      .map(x => (q.vals.find(e => e.txt === x) || {}).span)
+      .filter(Boolean).sort((a, b) => a[0] - b[0]);
+    t.ok(v.length === 3 && v[0][1] < v[1][0] && v[1][1] < v[2][0],
+      `${w}px — 값 셋이 겹치지 않는다 (${v.map(a => a.map(Math.round).join('~')).join(' ')})`);
     t.ok(v[0][0] > 0 && v[v.length - 1][1] < q.canvasW,
       `${w}px — 값이 화면 안에 있다 (${v[0][0].toFixed(0)}~${v[v.length - 1][1].toFixed(0)} / ${q.canvasW}px)`);
   }

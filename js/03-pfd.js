@@ -101,8 +101,10 @@ function hsiBandH() { return Math.round(38 * pfdFontScale); }
 // ── 칸 크기 (drawAI 와 CDU 의 터치 판정이 함께 쓴다) ──
 const FMA_MARGIN = 2;
 const FMA_GAP    = 3;
-const FMA_LBL_H  = 13;                    // 이름표 줄
-const FMA_VAL_H  = 27;                    // 값 상자
+// HDG·CRS 상자와 같은 규격으로 읽는다(라벨 22 · 값 26). 계기에서 가장 자주
+// 읽는 숫자들이 서로 다른 크기로 서 있으면 눈이 그때마다 다시 맞춘다.
+const FMA_LBL_H  = 26;                    // 이름표 줄
+const FMA_VAL_H  = 34;                    // 값 상자
 const FMA_BOX_H  = FMA_LBL_H + FMA_VAL_H; // 배율 1 일 때의 줄 높이
 // 글씨가 배율을 따라 커지므로(pfdFontScale) 칸도 함께 커져야 한다.
 // 종전에는 높이만 20px 로 못 박아 두어, 폰에서 글씨가 상자를 넘었다.
@@ -140,11 +142,11 @@ function drawTopReadout(x, y, w) {
     const wide = Math.max(...texts.map(tx => ctx.measureText(tx).width));
     return wide <= room ? want : Math.max(min, Math.floor(want * room / wide));
   };
-  const valFs  = fit(Math.max(11, Math.round(FMA_VAL_H * 0.70)),
-                     cells.map(c => c.val), cellW - 6, 9);
-  const lblFs  = fit(Math.max(8, Math.round(FMA_LBL_H * 0.72)),
-                     cells.map(c => c.lbl + ' ' + c.unit), cellW - 4, 7);
-  const unitFs = Math.max(6, Math.round(lblFs * 0.84));
+  // HDG·CRS 와 같은 크기(라벨 22 · 값 26)를 목표로 잡고, 칸에 안 들어가면
+  // 그만큼만 줄인다. 단위(KT·FT·FPM)는 이름표보다 한 단계 작게 둔다.
+  const valFs  = fit(26, cells.map(c => c.val), cellW - 6, 11);
+  const lblFs  = fit(22, cells.map(c => c.lbl + ' ' + c.unit), cellW - 4, 8);
+  const unitFs = Math.max(7, Math.round(lblFs * 0.72));
 
   for (let i = 0; i < 3; i++) {
     const bx = x + MARGIN + i * (cellW + GAP);
@@ -273,24 +275,12 @@ function drawAI(x, y, w, h) {
   ctx.restore();
 
 
-  // ── Flight Path Vector (FPV) ──
-  {
-    const driftDeg = normAS(computeTrack() - S.hdg);
-    const fpaDeg = Math.atan2(-S.vs / 60, Math.max(5, S.spd) * 1.6878) / D2R;
-    const fpvX = cx + driftDeg * ppd;
-    const fpvY = cy - fpaDeg * ppd;
-    const fr = Math.max(7, w * 0.038);
-    if (fpvX > x + fr + 2 && fpvX < x + w - fr - 2 &&
-        fpvY > aiY + fr && fpvY < aiY + aiH - fr - 10) {
-      ctx.save();
-      ctx.strokeStyle = '#00ff88'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(fpvX, fpvY, fr, 0, Math.PI * 2); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(fpvX - fr * 2.3, fpvY); ctx.lineTo(fpvX - fr, fpvY); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(fpvX + fr, fpvY); ctx.lineTo(fpvX + fr * 2.3, fpvY); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(fpvX, fpvY - fr); ctx.lineTo(fpvX, fpvY - fr * 1.7); ctx.stroke();
-      ctx.restore();
-    }
-  }
+  // ── 비행경로 벡터(FPV)는 내렸다 ──────────────────────────────
+  // 자세계 한가운데 녹색 원으로 '지금 가고 있는 방향'(편류·경로각)을 그렸다.
+  // 편류는 항적과 기수방위의 차이인데, 지금 기수방위는 나침반을 GPS 항적으로
+  // 맞춰 쓰므로(HYBRID) 둘의 차이가 센서 보정 잔차에 가깝다 — 바람이 만든
+  // 편류가 아니다. 경로각도 대기속도가 없어 대지속도로 대신 낸 값이다.
+  // 자세를 보는 자리 한복판에서 그런 값이 떠다니면 읽기만 방해한다.
   ctx.restore();  // end inner clip (AI content area)
 
   // AFCS strip drawn last in outer clip — sky/horizon cannot overwrite it
@@ -1045,10 +1035,10 @@ function updatePfdInfo() {
 function drawHsiCorners(x, y, w, h, bandH) {
   const rows = navInfoRows();
   const air  = airInfo();
-  const sl   = S_LBL().toLowerCase();
 
-  const lblFs = Math.max(9,  Math.round(13 * 0.85));   // 이름표
-  const valFs = Math.max(11, 16);                      // 값
+  // 글씨를 1.3 배로 키웠다 — 나침반을 보는 눈이 고개를 돌리지 않고 읽는 값이다
+  const lblFs = Math.round(11 * 1.3);                  // 이름표 (11 → 14)
+  const valFs = Math.round(16 * 1.3);                  // 값     (16 → 21)
   const pad   = 6;
   const l1 = bandH * 0.40, l2 = bandH * 0.82;          // 두 줄의 베이스라인
 
@@ -1085,7 +1075,7 @@ function drawHsiCorners(x, y, w, h, bandH) {
     // 그만큼만 — 넉넉히 잡으면 빈 회색 띠가 나침반 옆에 덩그러니 남는다.
     if (rw.sel) {
       ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
-      const w2 = ctx.measureText(`${rw.brg} ${rw.rad} ${rw.dst}`).width + 8;
+      const w2 = ctx.measureText(`${rw.brg} ${rw.dst}`).width + 8;
       ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
       const w1 = ctx.measureText(rw.src).width + 6;
       ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
@@ -1093,10 +1083,11 @@ function drawHsiCorners(x, y, w, h, bandH) {
       ctx.fillStyle = 'rgba(255,255,255,0.09)';
       ctx.fillRect(align === 'left' ? bx - 4 : bx - wBox + 4, by + 1, wBox, bandH - 2);
     }
+    // 래디얼(R###)은 뺐다. 방위의 반대편이라 한쪽만 읽으면 나머지는 머릿속에서
+    // 나오고, 글씨를 키운 지금은 세 값이 한 줄에 서면 모서리를 넘는다.
     block(bx, by, align, rw.src, rw.has ? rw.color : '#667', {
       ident: rw.ident,
       line2: [{ t: rw.brg, c: rw.has ? rw.color : '#667' },
-              { t: rw.rad, c: rw.has ? '#ff9f5a' : '#667' },
               { t: rw.dst, c: rw.has ? '#cccc66' : '#667' }],
     });
   };
@@ -1106,29 +1097,21 @@ function drawHsiCorners(x, y, w, h, bandH) {
   navBlock(rows[1], x + w - pad, y,             'right');  // 오른쪽 위 — NAV1
   navBlock(rows[2], x + w - pad, y + h - bandH, 'right');  // 오른쪽 아래 — NAV2
 
-  // 왼쪽 아래 — TAS · GS · OAT
+  // 왼쪽 아래 — OAT 하나.
+  // TAS·GS 는 뺐다. 맨 윗줄에 GS 가 이미 크게 서 있고, TAS 는 대기속도계가
+  // 없는 이 앱에서는 대지속도에 고도 보정을 먹인 값이라 GS 와 거의 같은
+  // 숫자가 나란히 뜬다 — 어느 쪽이 실제인지 헷갈리기만 했다.
+  //
+  // OAT 는 지금 고도의 기온이다. 받아 둔 지면 기온(기상청 격자 → METAR)에
+  // 표준 감률(1000ft 당 2°C)을 먹여 낸다 — oatNow(). 자료가 없으면 '---' 로
+  // 비운다. 누르면 어디서 온 값인지 알려 준다(09-cdu.js 의 onPfdTap).
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   const by = y + h - bandH, bx = x + pad;
-  const pairs = [
-    ['TAS', `${Math.round(air.tas * S_CV())}${sl}`, '#88ccff'],
-    ['GS',  `${Math.round(air.gs  * S_CV())}${sl}`, '#00cc44'],
-  ];
-  let cx3 = bx;
-  pairs.forEach(([lb, v, col]) => {
-    ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
-    ctx.fillStyle = '#8fa3b8'; ctx.fillText(lb, cx3, by + l1);
-    cx3 += ctx.measureText(lb).width + 4;
-    ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
-    ctx.fillStyle = col; ctx.fillText(v, cx3, by + l1);
-    cx3 += ctx.measureText(v).width + 10;
-  });
-  // OAT — 자료가 없으면 '---' 로 비운다. 누르면 어디서 온 값인지 알려 준다
-  // (09-cdu.js 의 onPfdTap 이 이 띠를 받는다).
   ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
   ctx.fillStyle = '#8fa3b8'; ctx.fillText('OAT', bx, by + l2);
   const ow = ctx.measureText('OAT').width;
   ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
   ctx.fillStyle = air.oat.c === null ? '#777' : '#ffd54f';
-  ctx.fillText(uTemp(air.oat.c), bx + ow + 4, by + l2);
+  ctx.fillText(uTemp(air.oat.c), bx + ow + 5, by + l2);
   ctx.restore();
 }

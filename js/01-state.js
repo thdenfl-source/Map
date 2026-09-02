@@ -1143,8 +1143,10 @@ window._oatSurfaceC  = window._oatSurfaceC ?? 15;   // METAR 지면 온도(°C)
 window._oatSurfaceAt = window._oatSurfaceAt ?? 0;   // 그 METAR 를 받은 시각(0=없음)
 window._oatKma       = window._oatKma ?? null;      // { c, elevFt, lat, lon, at, src, name }
 
-// 표준 감률 — 대류권에서 1000ft 오를 때마다 약 1.98°C 내려간다
-const OAT_LAPSE_C_PER_1000FT = 1.98;
+// 표준 감률 — 1000ft 오를 때마다 2°C 내려간다.
+// (ISA 의 정확한 값은 6.5°C/km = 1.98°C/1000ft 인데, 조종석에서 쓰는 어림은
+//  '1000ft 당 2도' 다. 만 피트에서 0.2°C 차이라 표시 자리수 아래로 묻힌다)
+const OAT_LAPSE_C_PER_1000FT = 2;
 // 이보다 오래된 값은 지금 날씨라고 볼 수 없다
 const OAT_MAX_AGE_MS = 3 * 60 * 60 * 1000;
 

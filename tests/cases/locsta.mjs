@@ -212,17 +212,20 @@ export async function run(page, t) {
     const row = navInfoRows().find(r => r.src === 'NAV1');
     if (!row) return { txt: '', drawn: false };
     const txt = [row.src, row.ident, row.brg, row.rad, row.dst].join(' ');
+    // 화면에는 래디얼을 빼고 그린다 — 방위의 반대편이라 한쪽만 읽으면 된다
     // 화면에도 같은 글자가 나오는지 — 계산만 맞고 안 그려지면 없는 것과 같다
     setSolo('pfd'); resizePFD();
     const g = ctx, orig = g.fillText, seen = [];
     g.fillText = function (tx) { seen.push(String(tx)); return orig.apply(this, arguments); };
     try { drawPFD(); } finally { g.fillText = orig; }
-    return { txt, drawn: [row.ident, row.brg, row.rad, row.dst].every(v => seen.includes(v)) };
+    return { txt, drawn: [row.ident, row.brg, row.dst].every(v => seen.includes(v)),
+             radDrawn: seen.includes(row.rad) };
   });
   // 이름 · 방위 · 래디얼(R###) · 거리 순이다
   t.ok(/^NAV1 IYAN \d{3}° R\d{3} [\d.]+ NM$/.test(pfd.txt),
     `PFD NAV1 자리에 명칭·방위·래디얼·거리가 나온다 (${pfd.txt || '없음'})`);
-  t.eq(pfd.drawn, true, '그 네 값이 실제로 나침반 모서리에 그려진다');
+  t.eq(pfd.drawn, true, '이름·방위·거리가 실제로 나침반 모서리에 그려진다');
+  t.eq(pfd.radDrawn, false, '래디얼은 화면에 적지 않는다 — 방위의 반대편이다');
 
   // ── CDU 주파수 입력창에 명칭이 뜨는가 ──
   // 종전에는 VOR 목록만 뒤져서 ILS 주파수를 넣으면 명칭 칸이 빈 채로 남았다.
