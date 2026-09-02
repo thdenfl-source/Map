@@ -472,7 +472,8 @@ body.solo-mode .solo-panel-visible {
    overscroll-behavior: contain 은 줄 끝까지 굴린 뒤에도 그 힘이 지도로
    넘어가지 않게 한다. */
 #map-lsk {
-  --lsk-btn-h: 34px;
+  --lsk-btn-h: 68px;                /* 종전 34px 의 두 배 — 장갑 낀 손으로도 누른다 */
+  --lsk-btn-w: 108px;               /* 종전 54px 의 두 배 */
   position: absolute; top: 8px; left: 6px; z-index: 1000;
   bottom: calc(20% + 8px);          /* 아래 20% 는 TERRAIN CUT 자리 */
   display: flex; flex-direction: column; gap: 12px;
@@ -483,16 +484,34 @@ body.solo-mode .solo-panel-visible {
 }
 #map-lsk::-webkit-scrollbar { display: none; }
 #map-wrap.tcut-off #map-lsk { bottom: 8px; }
+/* 접으면 '펼치기' 한 개만 남는다. 통도 그만큼만 차지해야 한다 — 높이를
+   그대로 두면 보이지 않는 띠가 지도 왼쪽을 계속 덮고 있다(스크롤을 받으려고
+   pointer-events 를 살려 둔 통이다). */
+#map-lsk.collapsed { bottom: auto; overflow: visible; }
+#map-wrap.tcut-off #map-lsk.collapsed { bottom: auto; }
+#map-lsk.collapsed #map-top-bar,
+#map-lsk.collapsed #map-sim-bar { display: none; }
+/* 접기·펼치기 — 줄 맨 위에 붙어 있는다(sticky). 줄을 굴려 내려도 따라온다:
+   굴린 채로는 접을 수 없다면 접기 버튼이 있으나 마나다. */
+#map-lsk-toggle {
+  position: sticky; top: 0; z-index: 2;
+  flex: 0 0 auto; width: var(--lsk-btn-w, 108px); height: var(--lsk-btn-h, 68px);
+  background: rgba(0,26,48,0.94); border: 1px solid #4488ff; color: #9fd0ff;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 22px; font-weight: bold;
+  padding: 14px 4px; border-radius: 10px; cursor: pointer;
+  touch-action: manipulation; text-align: center; white-space: nowrap;
+}
+#map-lsk-toggle:active { background: rgba(0,44,80,0.96); }
 #map-top-bar, #map-sim-bar {
   display: flex; flex-direction: column; gap: 4px;
   flex: 0 0 auto;
 }
 #map-top-bar button {
-  flex: 0 0 auto; width: 54px; height: var(--lsk-btn-h, 34px);
+  flex: 0 0 auto; width: var(--lsk-btn-w, 108px); height: var(--lsk-btn-h, 68px);
   background: rgba(20,20,20,0.88); border: 1px solid #444; color: #fff;
-  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 11px; font-weight: bold;
-  padding: 7px 2px; border-radius: 5px; cursor: pointer;
-  touch-action: manipulation; text-align: center;
+  font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 22px; font-weight: bold;
+  padding: 14px 4px; border-radius: 10px; cursor: pointer;
+  touch-action: manipulation; text-align: center; white-space: nowrap;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 #orient-btn.hdg-up {
@@ -507,7 +526,7 @@ body.solo-mode .solo-panel-visible {
    폭은 다른 라인 셀렉터 버튼과 같아야 한다. 혼자 넓으면 그 칸만 4px 밀려
    줄이 어긋나 보인다. */
 /* 거리·방위 측정자(Ruler) */
-#map-ruler-btn { flex: 0 0 auto; min-width: 40px; font-size: 14px; padding: 5px 2px; }
+#map-ruler-btn { flex: 0 0 auto; min-width: 80px; font-size: 28px; padding: 10px 4px; }
 #map-ruler-btn.ruler-active {
   background: rgba(60,45,0,0.92); border-color: #ffd54f; color: #ffd54f;
   box-shadow: 0 0 8px rgba(255,213,79,0.4);
@@ -719,7 +738,10 @@ body.solo-mode .solo-panel-visible {
 #map-sim-bar #layer-btn.sat {
   background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
 }
-#map-sim-bar .sim-btn { flex: 0 0 auto; width: 54px; height: var(--lsk-btn-h, 34px); }
+#map-sim-bar .sim-btn {
+  flex: 0 0 auto; width: var(--lsk-btn-w, 108px); height: var(--lsk-btn-h, 68px);
+  padding: 12px 4px; border-radius: 8px; white-space: nowrap;
+}
 /* ── TERRAIN CUT (전방 20NM 지형 단면, 맵 높이의 1/5) ── */
 #terrain-cut {
   position: absolute; left: 0; right: 0; bottom: 0; height: 20%;
@@ -1332,9 +1354,10 @@ body.phone-mode.solo-mode #app {
   bottom: 0;
 }
 /* 지도 툴바는 폰·태블릿 모두 왼쪽 한 줄이다(위 #map-lsk 규칙).
-   폰에서는 글자만 조금 줄인다 — flex 를 건드리면 칸 나눔이 망가진다. */
+   폰에서는 글자만 조금 줄인다 — flex 를 건드리면 칸 나눔이 망가진다.
+   (버튼과 글씨를 두 배로 키우면서 이 값도 10 → 20px 로 함께 올렸다) */
 body.phone-mode #map-top-bar button,
-body.phone-mode #map-sim-bar .sim-btn { font-size: 10px; }
+body.phone-mode #map-sim-bar .sim-btn { font-size: 20px; }
 
 /* ── 지도 하위 창 — 버튼에서 가지 친 모양 ──────────────────────
    창은 누른 버튼 옆(화면 안쪽)에 붙고, 그 사이를 짧은 줄기가 잇는다.
@@ -1551,7 +1574,9 @@ body.phone-mode .ctrl-bar .sw-display {
             접근절차 픽스(주황 ◇)는 태안 RNP 16 / RNP 34 / 태안 IFR 로 나뉘며, 탭하면 기준점 라디얼·거리가 함께 뜹니다.</li>
         <li><b>공역 → 서산 반경권</b>: 서산비행장 기준 <b>5 / 10 / 15 / 18NM</b> 거리권.
             태안 절차상 해미 APPROACH 허가 없이는 서산 <b>10NM</b> 안에서 비행이 금지되므로 그 확인용입니다.</li>
-        <li>버튼은 지도 <b>왼쪽에 한 줄</b>로 섭니다 — 화면에 다 안 들어가면 그 줄을 위아래로 굴려 봅니다.</li>
+        <li>버튼은 지도 <b>왼쪽에 한 줄</b>로 섭니다 — 화면에 다 안 들어가면 그 줄을 위아래로 굴려 봅니다.
+            줄 맨 위의 <b>접기</b> 를 누르면 <b>펼치기</b> 한 개만 남아 지도가 통째로 드러나고,
+            다시 <b>펼치기</b> 를 누르면 그대로 돌아옵니다. 접은 채로 앱을 닫아도 그 상태를 기억합니다.</li>
         <li><b>N↑ / HDG↑</b>: 지도를 북쪽 위 / 기수 위로 놓습니다. <b>3D 에서도 같이 적용</b>됩니다 —
             HDG↑ 면 3D 카메라도 기수 위로 돌고(1인칭을 꺼 둬도), N↑ 로 되돌리면 북쪽으로 맞춘 뒤
             손으로 돌려 보는 것은 그대로 둡니다. <b>HDG↑ 에서도 축척은 그대로</b>입니다 —
@@ -2100,8 +2125,12 @@ body.phone-mode .ctrl-bar .sw-display {
            손이 닿아야 하는 스위치라, 지도 안에만 두면 창을 옮겨야 했다.
            RAIN 은 내렸다. -->
       <!-- 지도 버튼은 왼쪽 한 줄에 모두 모은다. 화면 세로가 모자라면
-           이 통을 위아래로 굴려 본다 — 버튼을 줄이거나 감추지 않는다. -->
+           이 통을 위아래로 굴려 본다 — 버튼을 줄이거나 감추지 않는다.
+           맨 위 접기/펼치기로 줄을 통째로 여닫는다 — 접으면 그 버튼만
+           남아 지도가 통째로 드러난다. -->
       <div id="map-lsk">
+        <button id="map-lsk-toggle" data-act="toggleMapRail"
+                title="지도 버튼 줄 접기/펼치기">접기</button>
         <div id="map-top-bar">
           <button id="wx-btn" data-act="toggleWxPanel">WX</button>
           <button id="pp-btn" data-act="togglePpMenu">＋</button>

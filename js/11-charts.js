@@ -2175,6 +2175,7 @@ appRegister({
   toggleInhibMenu,
   toggleLayer,
   toggleMapOrient,
+  toggleMapRail,
   toggleNavAp,
   toggleNotamLayer,
   toggleAhrs,
