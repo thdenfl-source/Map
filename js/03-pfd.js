@@ -106,21 +106,23 @@ function hsiBandH() { return Math.round(38 * pfdFontScale); }
 const HSI_PAD     = 6;   // 모서리 글자판과 계기 가장자리 사이
 const HSI_BOX_PAD = 5;   // NAV 상자 테두리와 글자 사이
 // NAV 소스 한 자리 = 이름표 한 줄(FMS 등) + 값 세 줄(식별부호·방위·거리).
-// 옆으로 눕히던 종전에는 두 줄이면 됐다. 세로로 쌓으니 넉 줄이 필요하지만,
-// 값 글씨는 굳이 종전 크기(21)를 고집하지 않는다 — 한 줄에 하나씩만 적으니
-// 이름표(FMS)·값(ANKUK)이 서로 다투지 않고, 그만큼 작아도 잘 읽힌다.
-const NAV_LBL_FS = 10;    // 1줄 — 이름표
-const NAV_VAL_FS = 13;    // 2·3·4줄 — 식별부호·방위·거리
-const NAV_LEAD   = 1.15;  // 줄 간격(글자 크기의 배수)
+// 거리 줄에서 단위(nm)를 뗀 만큼 상자 폭이 줄어, 그 여유를 도로 글씨 키우는
+// 데 썼다 — 상자가 나침반을 밀어내지 않는 한(hsiRadius) 최대한 키운 값이다.
+// 이보다 더 키우면 이 상자 자체가 반지름을 정하는 자리(rNav)로 바뀌어
+// OAT·CRS 상자(rOat)보다 먼저 나침반을 눌러 버린다.
+const NAV_LBL_FS = 12;    // 1줄 — 이름표
+const NAV_VAL_FS = 17;    // 2·3·4줄 — 식별부호·방위·거리
+const NAV_LEAD   = 1.0;   // 줄 간격(글자 크기의 배수)
 
 // NAV 상자가 실제로 차지할 폭·높이 — 내용이 아니라 '가장 넓을 수 있는 값'
-// 으로 잰다. "999.9nm"(거리 세 자리)가 방위(000°)나 식별부호(자료상 가장
-// 긴 것도 넉 자)보다 넓어, 이 값이 늘 상자 폭을 정한다. 튜닝한 국이 바뀌어
-// 글자 길이가 달라질 때마다 나침반이 커졌다 작아졌다 하면 계기가 산만해진다.
+// 으로 잰다. 단위를 뗀 "999.9"(거리 세 자리)가 방위(000°)나 식별부호(자료상
+// 가장 긴 것도 넉 자)보다 여전히 넓어, 이 값이 늘 상자 폭을 정한다. 튜닝한
+// 국이 바뀌어 글자 길이가 달라질 때마다 나침반이 커졌다 작아졌다 하면
+// 계기가 산만해진다.
 function navCornerBoxSize() {
   const FONT = 'Helvetica Neue, Arial, sans-serif';
   ctx.font = `bold ${NAV_VAL_FS}px ${FONT}`;
-  const w = ctx.measureText('999.9 nm').width;
+  const w = ctx.measureText('999.9').width;
   const valPx = NAV_VAL_FS * pfdFontScale, lblPx = NAV_LBL_FS * pfdFontScale;
   const h = Math.round(NAV_LEAD * lblPx + 3 * NAV_LEAD * valPx);
   return { w, h };
@@ -976,11 +978,10 @@ function navInfoRows() {
     const dNM = !has ? 0
               : rw.dme ? dmeDist(rw.lat, rw.lon, rw.elev)
               : distance(S.lat, S.lon, rw.lat, rw.lon);
-    // 단위는 소문자로 적는다(NM → nm) — 옆으로 눕혀 값 여럿을 나란히 적던
-    // 종전에는 대문자가 눈에 잘 띄었지만, 이제는 한 줄에 하나씩이라 굳이
-    // 대문자로 존재감을 다툴 필요가 없다. km 은 이미 소문자다.
+    // 단위는 뺀다 — 한 줄에 하나씩만 적으니 이 상자에서 이 값은 늘 거리다,
+    // "NM" 을 안 적어도 헷갈리지 않는다. 그만큼 줄어든 폭을 글씨 키우는 데 쓴다.
     return { ...rw, has, brg, rad,
-             dst: has ? uDist(dNM, 1).replace(' NM', ' nm') : '--.-',
+             dst: has ? uDist(dNM, 1).replace(/ (NM|km)$/, '') : '--.-',
              sel: navSrc === rw.src };
   });
 }
