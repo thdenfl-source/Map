@@ -1443,9 +1443,21 @@ body.phone-mode #phone-bar { display: flex; }
 #phone-bar button:last-child { border-right: none; }
 #phone-bar button:active { background: #131820; }
 #phone-bar button.active { color: #00e07a; background: #06140c; box-shadow: inset 0 -3px 0 #00e07a; }
-#phone-bar #phone-split-btn  { flex: 0 0 46px; color: #7ab8f5; font-size: 15px; }
-#phone-bar #phone-reload-btn { flex: 0 0 46px; color: #7ab8f5; font-size: 17px; }
+#phone-bar #phone-reload-btn { flex: 0 0 44px; color: #7ab8f5; font-size: 17px; }
 #phone-bar #phone-reload-btn:active { transform: rotate(180deg); }
+/* 창을 고르는 탭이 아니라 켜고 끄는 스위치다. 창 탭과 헷갈리지 않게 폭을
+   내용에 맞추고 색을 달리 둔다 — 켜지면 각자의 색으로 불이 들어온다. */
+#phone-bar #phone-ahrs-btn,
+#phone-bar #phone-gps-btn {
+  flex: 0 0 auto; padding: 0 10px; color: #8a97a8; font-size: 12px;
+  border-left: 1px solid #1c1c1c;
+}
+#phone-bar #phone-ahrs-btn.on {
+  color: #4dffa0; background: #06140c; box-shadow: inset 0 -3px 0 #00cc44;
+}
+#phone-bar #phone-gps-btn.active {
+  color: #ffd54f; background: #171200; box-shadow: inset 0 -3px 0 #ffb300;
+}
 /* 탭바가 차지한 만큼 본문을 내린다.
    --phone-bar-h 는 fitAppViewport() 가 실제로 재서 넣는다(14-navaid.js).
    px 로 못 박아 두면 글꼴·안전영역이 달라지는 기기마다 어긋나, 아래가 잘리거나
@@ -1514,32 +1526,9 @@ body.phone-mode #map-sim-bar .sim-btn { font-size: 10px; }
   align-items: baseline; gap: 2px 10px;
   line-height: 1.25;
 }
-.pi { display: inline-flex; align-items: baseline; gap: 3px; white-space: nowrap; }
-/* OAT 는 눌러서 출처를 볼 수 있다 — 누를 수 있다는 것이 보여야 눌러 본다 */
-.pi-oat { cursor: pointer; touch-action: manipulation; border-radius: 3px; padding: 0 3px; }
-.pi-oat:active { background: rgba(255,255,255,0.12); }
-/* TAS·GS·OAT 도 아래 NAV 줄의 방위 숫자와 같은 크기로 읽는다.
-   한 화면에 있는 값인데 하나만 작으면 그것만 못 읽고 지나친다. */
-.pi i { font-style: normal; color: #888; font-size: 18px; letter-spacing: 0.3px; }
-.pi b { font-size: 22px; font-weight: bold; }
-/* NAV 소스 한 덩어리 — 식별자 · 방위 · 래디얼 · 거리 */
-/* NAV 소스 줄은 비행 중 가장 자주 읽는 숫자다(어디로 · 어느 방위 · 몇 마일).
-   나머지 글자의 두 배로 키운다. 그만큼 계기가 줄지만, 못 읽는 계기보다는 낫다. */
-/* 세 소스는 늘 한 줄씩, 언제나 세 줄이다.
-   종전에는 남는 폭에 따라 접혔다 — 좁은 폰에서는 세 줄, 조금 넓으면 두 줄,
-   패드에서는 한 줄. 그러면 화면 폭이 바뀔 때마다 FMS·NAV1·NAV2 가 서 있는
-   자리가 달라져, 늘 같은 자리를 짚던 눈이 매번 다시 찾아야 했다.
-   관제에 위치를 알릴 때 읽어 내리는 줄이라 자리가 고정돼야 한다. */
-#pi-nav { flex-direction: column; flex-wrap: nowrap; align-items: flex-start; }
-.pi-src { padding: 0 4px; border-radius: 3px; gap: 5px; }
-.pi-src.on { background: rgba(255,255,255,0.07); }
-.pi-src i       { font-size: 18px; }
-.pi-src .pi-id  { color: #fff; font-size: 24px; font-weight: bold; }
-.pi-src .pi-brg { font-size: 22px; font-weight: bold; }
-/* 래디얼 — 관제에 위치를 알릴 때 쓰는 값("OOO 의 090 래디얼 12마일").
-   방위와 헷갈리지 않게 R 을 앞에 붙이고 색을 달리 둔다. */
-.pi-src .pi-rad { color: #ff9f5a; font-size: 22px; font-weight: bold; }
-.pi-src .pi-dst { color: #cccc66; font-size: 22px; font-weight: bold; }
+/* 소스를 고르는 버튼 세 개가 한 줄에 나란히 선다.
+   값(이름·방위·래디얼·거리)은 나침반 네 모서리로 옮겼다 — drawHsiCorners(). */
+#pi-nav { flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 6px; }
 /* 줄 앞의 소스 선택 버튼 — 이 버튼이 곧 종전의 NAV SRC 다 */
 .pi-sel {
   font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -1550,34 +1539,9 @@ body.phone-mode #map-sim-bar .sim-btn { font-size: 10px; }
 }
 .pi-sel:active { background: #1e2430; }
 .pi-sel.on { background: #0e2a16; border-color: #00cc44; color: #4dffa0; }
-/* #pi-air 는 값들을 담기만 한다 — 자기 상자를 만들지 않고 AHRS 버튼과 같은
-   줄에 늘어서게 한다(그래야 줄바꿈도 네 값이 함께 움직인다) */
-#pi-air { display: contents; }
-/* AHRS — 자세 기준을 잡는 버튼. 비행 중 한 손으로 누르는 자리라 크게 둔다 */
-.pi-ahrs {
-  font-family: 'Helvetica Neue', Arial, sans-serif;
-  font-size: 20px; font-weight: bold; letter-spacing: 1px;
-  min-width: 84px; padding: 5px 12px; border-radius: 5px; cursor: pointer;
-  background: #14161c; border: 1px solid #4a5464; color: #9fb0c4;
-  touch-action: manipulation; white-space: nowrap; align-self: center;
-}
-.pi-ahrs:active { background: #1e2430; }
-.pi-ahrs.on {
-  background: #0e2a16; border-color: #00cc44; color: #4dffa0;
-  box-shadow: 0 0 8px rgba(0,204,68,0.4);
-}
-.pi-src.dim .pi-id, .pi-src.dim .pi-brg, .pi-src.dim .pi-dst { color: #666; }
 body.phone-mode #pfd-info { padding: 1px 3px 2px; }
 body.phone-mode .pi-row { gap: 1px 4px; }
-body.phone-mode .pi b { font-size: 20px; }
-body.phone-mode .pi i { font-size: 13px; }
-body.phone-mode .pi-src i { font-size: 16px; }
-body.phone-mode .pi-src .pi-id { font-size: 22px; }
-body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-rad,
-body.phone-mode .pi-src .pi-dst { font-size: 20px; }
 body.phone-mode .pi-sel { font-size: 17px; min-width: 54px; padding: 4px 8px; }
-body.phone-mode .pi-ahrs { font-size: 17px; min-width: 0; padding: 4px 8px; letter-spacing: 0.5px; }
-body.phone-mode .pi { gap: 2px; }
 
 /* ── 폰: PFD 아래 조작부를 낮춘다 ──────────────────────────────────
    PFD 는 (패널높이 − .ctrl-bar 높이) 안에 그려진다(03-pfd.js drawPFD).
@@ -1638,17 +1602,14 @@ body.phone-mode .ctrl-bar { gap: 3px 4px; justify-content: flex-start; padding-l
    넓은 화면에서 조작부 버튼이 그 옆으로 붙어 올라간다 — 실제로 CRS 가
    NAV 줄 오른쪽 끝에 가서 붙었다. */
 body.phone-mode #pfd-info { flex: 0 0 100%; }
-/* 글자판 줄들의 왼쪽 선을 맞춘다 — NAV 줄만 4px 안으로 들어가 있었다 */
-body.phone-mode .pi-src { padding: 0 4px 0 0; }
 body.phone-mode .sw-group { padding: 1px 3px; gap: 3px; }
 body.phone-mode .nav-src-group { gap: 2px; }
 /* 줄바꿈 표식 — 이 항목이 한 줄을 다 차지해 뒤를 다음 줄로 넘긴다 */
 .ctrl-break { display: none; }
 body.phone-mode .ctrl-break { display: block; flex: 0 0 100%; height: 0; order: 4; }
 /* 계기 아래의 버튼은 전부 한 규격이다 — 글자 17px, 높이 30px.
-   기준은 AHRS 버튼(.pi-ahrs)이다. 이 판에서 가장 큰 버튼 글씨였고, 나머지를
-   거기에 올려 맞추면 판 전체가 한 벌로 읽힌다. 위아래로 이어지는 같은 성격의
-   버튼이라 크기가 다르면 줄이 어긋나 보인다. */
+   기준은 NAV 소스 버튼(.pi-sel)이다 — 그 위에 이어 붙는 같은 성격의 버튼이라
+   크기가 다르면 줄이 어긋나 보인다. (AHRS 는 맨 위 탭바로 올라갔다) */
 body.phone-mode .obs-btn,
 body.phone-mode .susp-btn,
 body.phone-mode .brg-tog-btn,
@@ -2073,6 +2034,14 @@ body.phone-mode .ctrl-bar .sw-display {
   <button data-nav="pfd"  data-act="navGo" data-arg='["pfd"]'>PFD</button>
   <button data-nav="plan" data-act="navGo" data-arg='["plan"]'>PLAN</button>
   <button data-nav="cdu"  data-act="navGo" data-arg='["cdu"]'>CDU</button>
+  <!-- 창을 고르는 탭 오른쪽에 늘 손이 닿아야 하는 스위치 둘.
+       AHRS 는 조작부 구석에 있었는데, 계기를 보다가 자세를 잡으려면 창을
+       옮겨야 했다. GPS 는 지도 툴바에만 있어 계기를 보는 동안에는 껐다
+       켰다 할 수가 없었다. 둘 다 어느 창에서나 같은 자리에 둔다. -->
+  <button id="phone-ahrs-btn" data-act="toggleAhrs"
+          title="지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다">AHRS</button>
+  <button id="phone-gps-btn" data-act="toggleGPS"
+          title="GPS 켜기/끄기 — 지도 화면의 GPS 버튼과 같습니다">GPS</button>
   <button id="phone-reload-btn" data-act="hardReload" title="새로고침(상태 초기화)">⟳</button>
 </div>
 <div id="app">
@@ -2083,20 +2052,11 @@ body.phone-mode .ctrl-bar .sw-display {
     <canvas id="pfd"></canvas>
     <div class="ctrl-bar">
 
-      <!-- 0행: 계기 옆에 있던 글자판 — TAS·GS·OAT 와 NAV 소스 3가지.
-           종전에는 나침반 좌·우 여백에 캔버스로 그렸다. 그 자리를 비우면
-           나침반을 키울 수 있고 아래쪽 갈색도 줄어든다. 값 갱신은
-           03-pfd.js 의 updatePfdInfo(). -->
+      <!-- 0행: 항법 소스를 고르는 버튼 한 줄(FMS·NAV1·NAV2).
+           값(이름·방위·래디얼·거리)은 나침반 네 모서리에 그린다 —
+           03-pfd.js 의 drawHsiCorners(). 여기서는 고르기만 한다.
+           버튼 갱신은 updatePfdInfo(). -->
       <div id="pfd-info">
-        <!-- AHRS 는 TAS 왼쪽에 세운다. 자세를 잡는 버튼이라 계기를 보는 눈이
-             머무는 자리에 있어야 한다 — 조작부 구석에 있으면 손이 안 간다.
-             #pi-air 는 updatePfdInfo() 가 innerHTML 로 갈아 끼우므로 버튼을
-             그 안에 두면 지워진다. 밖에 두고 display:contents 로 같은 줄에 세운다. -->
-        <div class="pi-row">
-          <button class="pi-ahrs" id="ahrs-btn" data-act="toggleAhrs"
-                  title="지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다">AHRS</button>
-          <span id="pi-air"></span>
-        </div>
         <div class="pi-row" id="pi-nav"></div>
       </div>
 

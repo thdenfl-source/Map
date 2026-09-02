@@ -185,11 +185,15 @@ function toggleAhrs() {
   updateAhrsBtn();
 }
 function updateAhrsBtn() {
-  const b = document.getElementById('ahrs-btn');
-  if (!b) return;
-  b.classList.toggle('on', ahrsOn);
-  b.title = ahrsOn ? '자세 시현 중 — 다시 누르면 끕니다(누른 자세가 수평 기준)'
-                   : '지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다';
+  // 버튼은 맨 위 탭바에 있다(#phone-ahrs-btn). 종전 조작부 자리(#ahrs-btn)도
+  // 있으면 함께 갱신한다 — 시뮬 모드 마크업이 남아 있을 수 있다.
+  ['phone-ahrs-btn', 'ahrs-btn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (!b) return;
+    b.classList.toggle('on', ahrsOn);
+    b.title = ahrsOn ? '자세 시현 중 — 다시 누르면 끕니다(누른 자세가 수평 기준)'
+                     : '지금 기기 자세를 수평으로 잡고 피치·롤을 보입니다';
+  });
 }
 
 function _onDevOrientation(e, absoluteEvt) {
@@ -447,20 +451,21 @@ function gpsError(err) {
 }
 
 function updateGpsBtn() {
-  const btn = document.getElementById('gps-btn');
   const status = document.getElementById('gps-status');
-  btn.style.borderColor = '';
-  btn.style.color = '';
-  status.style.borderColor = '';
-  status.style.color = '';
-  if (gpsMode) {
-    btn.textContent = 'GPS';   // 글자는 그대로, 색상(.active)만 변경 → 버튼 높이 불변
-    btn.classList.add('active');
-    status.style.display = 'block';
-  } else {
-    btn.textContent = 'GPS';
-    btn.classList.remove('active');
-    status.style.display = 'none';
+  // 같은 스위치가 두 자리에 있다 — 지도 툴바(#gps-btn)와 맨 위 탭바
+  // (#phone-gps-btn). 어느 쪽을 눌러도 둘 다 같은 모습이어야 한다.
+  ['gps-btn', 'phone-gps-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    btn.textContent = 'GPS';   // 글자는 그대로, 색상(.active)만 바뀐다 → 높이 불변
+    btn.classList.toggle('active', gpsMode);
+  });
+  if (status) {
+    status.style.borderColor = '';
+    status.style.color = '';
+    status.style.display = gpsMode ? 'block' : 'none';
   }
 }
 

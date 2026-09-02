@@ -54,44 +54,34 @@ function drawPFD() {
   const ctrlEl = document.querySelector('.ctrl-bar');
   const CTRL_H = ctrlEl ? ctrlEl.offsetHeight : 80;
   const usableH = H - CTRL_H;
-  // 테이프 폭도 글씨 배율을 따라 넓힌다. 테이프 안의 글씨는 대부분 폭(w)에
-  // 비례해 정해지므로, 폭을 그대로 두고 글씨만 키우면 숫자가 상자를 넘는다.
-  const tapW = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
-  const vsiW = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
-  const aiX  = tapW, aiW = W - tapW * 2 - vsiW;
-  // 아래 칸(나침반)은 비율이 아니라 나침반이 실제로 차지할 높이로 잡는다.
-  // 폰처럼 가로가 좁으면 나침반 크기는 폭에 걸려 더 못 커진다. 그런데 칸을
-  // 비율(0.48 등)로 잘라 두면 남는 높이가 전부 갈색으로 남는다 — 사용자가
-  // "갈색이 너무 넓다" 고 한 자리다. 남는 높이는 자세계가 가져간다.
-  const hsiR    = aiW * 0.44;                    // drawHSI 반지름(폭에 걸릴 때)
-  const hsiWant = Math.round(hsiR * 2 + 56);     // 나침반 + 위 바람표시 + 아래 여백
-  const hsiH = Math.max(Math.round(usableH * 0.32),
+  // 좌우 기둥(속도·고도 테이프와 승강계)은 걷어냈다. 폭이 가로의 8.2% 로 묶여
+  // 있어 그 안에서는 숫자를 키울 수가 없었고, 정확한 값은 맨 윗줄 상자(GS·ALT·VS)
+  // 에서 읽는다. 그만큼 자세계와 나침반이 화면 폭을 통째로 쓴다.
+  const aiX = 0, aiW = W;
+  // 나침반 칸은 비율이 아니라 실제로 차지할 높이로 잡는다. 위·아래 두 띠에
+  // 모서리 글자판(FMS·NAV1·NAV2·TAS/GS/OAT)이 들어가고 그 사이가 나침반이다.
+  const bandH   = hsiBandH();
+  const hsiR    = aiW * 0.34;                            // 폭에 걸릴 때의 반지름
+  const hsiWant = Math.round(hsiR * 2 + bandH * 2 + 10);
+  // 절반을 넘기지 않는다. 나침반 칸은 위·아래 띠에 글자판을 이고 있어 그냥
+  // 두면 자세계보다 커진다 — "갈색이 너무 넓다" 던 자리로 되돌아간다.
+  const hsiH = Math.max(Math.round(usableH * 0.34),
                         Math.min(Math.round(usableH * 0.50), hsiWant));
   const aiH  = usableH - hsiH;
 
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, W, H);
 
-  drawSpeedTape(0, 0, tapW, usableH);
-  // 오른쪽 기둥 — 고도 테이프와 VSI 가 위아래를 통째로 쓴다.
-  // 종전에는 아래 절반을 CRHT(호버 기준고도) 표시가 차지했다. 보조 항법장치에는
-  // 기압고도계 하나면 충분하고, 그 조작부(CRHT ▲▼·CRHT 홀드)는 이미 없앴다 —
-  // 조작할 수 없는 값을 계기에만 남겨 두면 읽는 사람이 헷갈린다.
-  drawAltTape(W - tapW - vsiW, 0, tapW, usableH);
-  drawVSI(W - vsiW, 0, vsiW, usableH);
-
-  // Dividers
+  // 자세계와 나침반 사이 경계선
   ctx.strokeStyle = '#1e1e1e'; ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(tapW, 0);             ctx.lineTo(tapW, usableH);          ctx.stroke();
-  // 고도 테이프 왼쪽 모서리 · VSI 오른쪽 모서리 — 둘 다 위아래 끝까지
-  ctx.beginPath(); ctx.moveTo(W-tapW-vsiW, 0);      ctx.lineTo(W-tapW-vsiW, usableH);   ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(W-vsiW, 0);           ctx.lineTo(W-vsiW, usableH);        ctx.stroke();
-  // 가운데 자세계와 나침반 사이
-  ctx.beginPath(); ctx.moveTo(tapW, aiH);           ctx.lineTo(W-tapW-vsiW, aiH);       ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, aiH); ctx.lineTo(W, aiH); ctx.stroke();
 
   drawAI(aiX, 0, aiW, aiH);
   drawHSI(aiX, aiH, aiW, hsiH);
 }
+
+// 나침반 위·아래에 두는 글자판 띠의 높이(두 줄)
+function hsiBandH() { return Math.round(38 * pfdFontScale); }
 
 // ────────────────────────────────────────
 // 맨 윗줄 — 지금 값 세 가지 (GS · ALT · VS)
@@ -305,288 +295,50 @@ function drawAI(x, y, w, h) {
 
   // AFCS strip drawn last in outer clip — sky/horizon cannot overwrite it
   drawTopReadout(x, y, w);
+  drawGlidePath(x, aiY, w, aiH);
 
   ctx.restore();
 }
 
-// ────────────────────────────────────────
-// SPEED TAPE
-// ────────────────────────────────────────
-function drawSpeedTape(x, y, w, h) {
-  ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
-  ctx.fillStyle='#0d0d0d'; ctx.fillRect(x,y,w,h);
-  const cy=y+h/2, ppk=h/80;
-  // Existing V-speed bands (right edge) — structural airspeed limits.
-  const bands=[[0,65,'rgba(255,255,255,0.1)'],[65,125,'rgba(0,180,0,0.18)'],
-    [125,165,'rgba(0,180,0,0.12)'],[165,200,'rgba(255,210,0,0.17)'],[200,250,'rgba(255,50,50,0.22)']];
-  for(const[f,t,c]of bands){
-    const y1=cy-(t-S.spd)*ppk,y2=cy-(f-S.spd)*ppk;
-    ctx.fillStyle=c; ctx.fillRect(x+w-6,Math.max(y,y1),5,Math.min(h,y2-y1));
-  }
-  // ASE/wind reference bands (left edge) — show where motion is ASE-protected
-  // (hover) and where wind starts to drift the aircraft (transition). Above
-  // WIND_HI the helicopter is in full cruise (no band).
-  const aseBands = [
-    [0,        WIND_LO,  'rgba(180,100,220,0.28)'], // hover: ASE on
-    [WIND_LO,  WIND_HI,  'rgba(255,200,0,0.25)' ],  // transition: wind ramps in
-  ];
-  for (const [f, t, c] of aseBands) {
-    const y1 = cy - (t - S.spd) * ppk;
-    const y2 = cy - (f - S.spd) * ppk;
-    ctx.fillStyle = c;
-    ctx.fillRect(x + 1, Math.max(y, y1), 5, Math.min(h, y2 - y1));
-  }
-  // Boundary tick marks at WIND_LO and WIND_HI (small notches on left edge)
-  ctx.strokeStyle = 'rgba(200,200,200,0.6)';
-  ctx.lineWidth = 1;
-  for (const sBound of [WIND_LO, WIND_HI]) {
-    const ty = cy - (sBound - S.spd) * ppk;
-    if (ty < y + 1 || ty > y + h - 1) continue;
-    ctx.beginPath(); ctx.moveTo(x + 1, ty); ctx.lineTo(x + 8, ty); ctx.stroke();
-  }
-  // 눈금은 표시 단위(kt 또는 km/h) 기준의 라운드 값으로 그린다
-  const scv = S_CV(), sMin = unitSpd === 'kmh' ? 10 : 5, sMaj = unitSpd === 'kmh' ? 20 : 10;
-  const dSpd = S.spd * scv;                       // 현재 속도(표시 단위)
-  const d0 = Math.floor((dSpd - 44 * scv) / sMin) * sMin;
-  for (let d = d0; d <= dSpd + 52 * scv; d += sMin) {
-    if (d < 0) continue;
-    const ty = cy - (d / scv - S.spd) * ppk;      // 위치는 내부(kt) 기준 유지
-    if (ty < y || ty > y + h) continue;
-    const maj = Math.abs(d % sMaj) < 1e-6;
-    ctx.strokeStyle = maj ? '#fff' : '#555'; ctx.lineWidth = maj ? 1.5 : 0.8;
-    ctx.beginPath(); ctx.moveTo(x+w-6,ty); ctx.lineTo(x+w-(maj?15:10),ty); ctx.stroke();
-    if (maj) {
-      ctx.fillStyle='#fff'; ctx.font=`${Math.max(9,w*0.17)}px Helvetica Neue, Arial, sans-serif`;
-      ctx.textAlign='right'; ctx.fillText(Math.round(d),x+w-17,ty+4);
-    }
-  }
-  const bh=22;
-  ctx.fillStyle='#000'; ctx.fillRect(x,cy-bh/2,w,bh);
-  ctx.strokeStyle='#fff'; ctx.lineWidth=1.5; ctx.strokeRect(x,cy-bh/2,w,bh);
-  ctx.fillStyle='#fff'; ctx.font=`bold ${Math.max(13,w*0.2)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign='center'; ctx.fillText(Math.round(S.spd*scv),x+w/2,cy+6);
-  ctx.fillStyle='#aaa'; ctx.font='bold 8px Helvetica Neue, Arial, sans-serif';
-  ctx.fillText(S_LBL(),x+w/2,y+11);
-  // Speed trend vector (magenta, 6-second extrapolation)
-  if (Math.abs(spdTrend) > 0.5) {
-    const trendY = cy - spdTrend * ppk;
-    const clampedY = Math.max(y + 2, Math.min(y + h - 2, trendY));
-    ctx.strokeStyle = '#ff44ff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x + w - 22, cy); ctx.lineTo(x + w - 22, clampedY); ctx.stroke();
-    const arrowDir = spdTrend > 0 ? -1 : 1;
-    ctx.fillStyle = '#ff44ff';
-    ctx.beginPath();
-    ctx.moveTo(x + w - 22, clampedY);
-    ctx.lineTo(x + w - 26, clampedY + arrowDir * 6);
-    ctx.lineTo(x + w - 18, clampedY + arrowDir * 6);
-    ctx.closePath(); ctx.fill();
-  }
-  ctx.restore();
-}
 
-// ────────────────────────────────────────
-// ALTITUDE TAPE
-// ────────────────────────────────────────
-function drawAltTape(x, y, w, h) {
-  ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
-  ctx.fillStyle='#0d0d0d'; ctx.fillRect(x,y,w,h);
-
-  // ── Target/VS box at the top — shows the AFCS ALT setting + change rate ──
-  // Height is reserved at the top of the tape so the moving scale starts below it.
-  // 머리글 높이와 두 줄의 베이스라인도 글씨 배율을 따른다 — px 로 두면
-  // 키운 두 번째 줄(VS)이 머리글 밖으로 나가 눈금 라벨과 겹친다.
-  // 자동조종이 없는 항법 보조 모드에서는 머리글 자체를 두지 않는다. 잡아 줄
-  // 것이 없는 목표 고도를 계기에 적어 두면, 바로 옆 맨 윗줄의 '지금 고도'와
-  // 나란히 서서 어느 쪽이 실제인지 헷갈린다(실제로 500 / 500 이 나란히 떴다).
-  // 그만큼 눈금이 위로 더 자란다.
-  const headOn = (typeof simPanelOn !== 'undefined') ? simPanelOn : true;
-  const HEAD_H = headOn ? Math.round(26 * pfdFontScale) : 0;
-  const hL1 = Math.round(11 * pfdFontScale), hL2 = Math.round(22 * pfdFontScale);
-  const tapeY  = y + HEAD_H;
-  const tapeH  = h - HEAD_H;
-  const cy     = tapeY + tapeH / 2;
-  const pp100  = tapeH / 20;
-
-  // Tape ticks within the moving-scale region only (표시 단위 기준 라운드 눈금)
-  const acv = A_CV(), aMin = unitAlt === 'm' ? 50 : 100, aMaj = unitAlt === 'm' ? 100 : 500;
-  const dAlt = S.alt * acv;
-  const d0 = Math.floor((dAlt - 1100 * acv) / aMin) * aMin;
-  for (let d = d0; d <= dAlt + 1200 * acv; d += aMin) {
-    const ty = cy - (d / acv - S.alt) * pp100 / 100;
-    if (ty < tapeY || ty > tapeY + tapeH) continue;
-    const maj = Math.abs(d % aMaj) < 1e-6;
-    ctx.strokeStyle = maj ? '#fff' : '#555'; ctx.lineWidth = maj ? 1.5 : 0.8;
-    ctx.beginPath(); ctx.moveTo(x + 7, ty); ctx.lineTo(x + (maj ? 16 : 10), ty); ctx.stroke();
-    if (maj) {
-      ctx.fillStyle = '#fff'; ctx.font = `${Math.max(9, w * 0.16)}px Helvetica Neue, Arial, sans-serif`;
-      ctx.textAlign = 'left'; ctx.fillText(Math.round(d), x + 18, ty + 4);
-    }
-  }
-
-  // selAlt target bug — cyan triangle on left edge when ALT hold active
-  // (목표 고도를 잡아 줄 자동조종이 있는 시뮬 모드에서만 뜻이 있다)
-  if (headOn && altHoldOn) {
-    const tay = cy - (selAlt - S.alt) * pp100 / 100;
-    if (tay >= tapeY + 3 && tay <= tapeY + tapeH - 3) {
-      ctx.fillStyle = '#00cfff';
-      ctx.beginPath();
-      ctx.moveTo(x + 1, tay);
-      ctx.lineTo(x + 7, tay - 5);
-      ctx.lineTo(x + 7, tay + 5);
-      ctx.closePath(); ctx.fill();
-    }
-  }
-
-  // Current altitude readout (centre of moving scale)
-  const bh = 22;
-  ctx.fillStyle = '#000'; ctx.fillRect(x, cy - bh/2, w, bh);
-  ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.strokeRect(x, cy - bh/2, w, bh);
-  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, w * 0.17)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'center'; ctx.fillText(Math.round(S.alt * acv), x + w/2, cy + 5);
-
-  // ── ALT setting + change-rate box (top header) ── 시뮬 모드에서만
-  if (headOn) {
-  const on = altHoldOn;
-  ctx.fillStyle = '#000';
-  ctx.fillRect(x + 1, y + 1, w - 2, HEAD_H - 2);
-  ctx.strokeStyle = on ? '#00cfff' : '#333';
-  ctx.lineWidth   = on ? 1.5 : 1;
-  ctx.strokeRect(x + 1, y + 1, w - 2, HEAD_H - 2);
-
-  // Line 1: "ALT" label + selAlt value
-  ctx.font      = `bold ${Math.max(9, w * 0.14)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = on ? '#00cfff' : '#666';
-  // 글씨를 키운 폰에서는 'ALT FT' 가 값과 겹친다 — 그때는 단위를 뺀다
-  ctx.fillText(pfdFontScale > 1.05 ? 'ALT' : 'ALT ' + A_LBL(), x + 4, y + hL1);
-  ctx.font      = `bold ${Math.max(10, w * 0.16)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'right';
-  ctx.fillStyle = on ? '#fff' : '#777';
-  ctx.fillText(Math.round(selAlt * acv), x + w - 4, y + hL1);
-
-  // Line 2: VS preselect (selVS) — pilot-settable rate for ALT hold mode.
-  // When ALT hold is active, shows signed rate matching convergence direction.
-  // When idle/off, shows the preselected magnitude (so the pilot can confirm
-  // their setting before engaging). Tap the VS row to change selVS.
-  let vsStr;
-  if (on) {
-    const d = selAlt - S.alt;
-    vsStr = Math.abs(d) < 1 ? '0' : (d > 0 ? '+' : '−') + Math.abs(selVS);
-  } else {
-    vsStr = String(Math.abs(selVS));
-  }
-  ctx.font      = `${Math.max(8, w * 0.13)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = on ? '#ffaa44' : '#665533';
-  ctx.fillText('VS', x + 4, y + hL2);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = on ? '#ffaa44' : '#665533';
-  ctx.fillText(vsStr, x + w - 4, y + hL2);
-  }
-
-  // Altitude trend vector (magenta, 6-second VS extrapolation)
-  if (Math.abs(S.vs) > 10) {
-    const altTrend6s = S.vs * 0.1;  // ft change in 6 seconds
-    const trendY = cy - altTrend6s * pp100 / 100;
-    const clampedY = Math.max(tapeY + 2, Math.min(tapeY + tapeH - 2, trendY));
-    ctx.strokeStyle = '#ff44ff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(x + 2, cy); ctx.lineTo(x + 2, clampedY); ctx.stroke();
-    const arrowDir = S.vs > 0 ? -1 : 1;
-    ctx.fillStyle = '#ff44ff';
-    ctx.beginPath();
-    ctx.moveTo(x + 2, clampedY);
-    ctx.lineTo(x - 2, clampedY + arrowDir * 6);
-    ctx.lineTo(x + 6, clampedY + arrowDir * 6);
-    ctx.closePath(); ctx.fill();
-  }
-
-  ctx.restore();
-}
-
-// ────────────────────────────────────────
-// VSI (Vertical Speed Indicator)
-// ────────────────────────────────────────
-function drawVSI(x, y, w, h) {
-  ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
-  ctx.fillStyle='#0d0d0d'; ctx.fillRect(x,y,w,h);
-  // 고도 단위가 m이면 수직속도는 m/s로 표시(눈금도 라운드 m/s 기준)
-  const met = unitAlt === 'm';
-  const vsRange = met ? 10 : 2000;              // 표시 단위 최대치 (m/s | fpm)
-  const vsStep  = met ? 2.5 : 500;              // 눈금 간격
-  const vsMaj   = met ? 5   : 1000;             // 큰 눈금
-  const vsD     = fpm => met ? fpm * 0.00508 : fpm;   // fpm → 표시 단위
-  const cy=y+h/2, ppm=(h*0.44)/vsRange;
-
-  // scale ticks
-  for(let v=-vsRange;v<=vsRange+1e-6;v+=vsStep){
-    const ty=cy-v*ppm;
-    if(ty<y+2||ty>y+h-2) continue;
-    const maj=Math.abs(v)>1e-6 && Math.abs(v%vsMaj)<1e-6;
-    ctx.strokeStyle=maj?'#888':'#444'; ctx.lineWidth=maj?1.5:0.8;
-    const tw=maj?w*0.55:w*0.32;
-    ctx.beginPath(); ctx.moveTo(x,ty); ctx.lineTo(x+tw,ty); ctx.stroke();
-    if(maj){
-      ctx.fillStyle='#ccc'; ctx.font=`${Math.max(7,w*0.17)}px Helvetica Neue, Arial, sans-serif`;
-      ctx.textAlign='left'; ctx.fillText(met?Math.abs(v):Math.abs(v/1000),x+tw+1,ty+3);
-    }
-  }
-
-  // zero line
-  ctx.strokeStyle='#555'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(x,cy); ctx.lineTo(x+w*0.65,cy); ctx.stroke();
-
-  // pointer triangle
-  const vs=Math.max(-vsRange,Math.min(vsRange,vsD(S.vs)));
-  const py=Math.max(y+8,Math.min(y+h-24,cy-vs*ppm));
-  const pc=S.vs>50?'#00cc44':S.vs<-50?'#ff6644':'#aaa';
-  ctx.fillStyle=pc;
-  ctx.beginPath(); ctx.moveTo(x+w,py); ctx.lineTo(x+w-9,py-5); ctx.lineTo(x+w-9,py+5); ctx.closePath(); ctx.fill();
-
-  // value box at bottom
-  const bh=18;
-  ctx.fillStyle='#000'; ctx.fillRect(x,y+h-bh,w,bh);
-  ctx.strokeStyle='#333'; ctx.lineWidth=1; ctx.strokeRect(x,y+h-bh,w,bh);
-  ctx.fillStyle=pc; ctx.font=`bold ${Math.max(9,w*0.2)}px Helvetica Neue, Arial, sans-serif`;
-  ctx.textAlign='center'; ctx.fillText(met?vs.toFixed(1):Math.round(vs),x+w/2,y+h-4);
-
-  // label at top
-  ctx.fillStyle='#aaa'; ctx.font='bold 7px Helvetica Neue, Arial, sans-serif';
-  ctx.fillText(met?'M/S':'FPM',x+w/2,y+9);
-
-  // ── 글라이드 패스 지시(ILS) ──
-  // ILS 를 잡았을 때만 승강계 왼편에 눈금과 마름모가 뜬다. 마름모가 가운데
-  // 기준선 위에 있으면 강하선보다 높다는 뜻이다(계기와 같은 읽기).
-  // 승강계 지시침은 오른쪽 끝을 쓰므로 왼쪽 끝에 두어 서로 가리지 않는다.
+// ── 글라이드 패스 지시(ILS) — 자세계 오른쪽 끝 ────────────────────
+// 종전에는 승강계 왼편에 있었다. 승강계를 걷어내면서 함께 사라질 뻔했는데,
+// 이것은 자동조종이 아니라 항법 표시다 — ILS 를 맞춰 두면 강하선 대비 어디에
+// 있는지 보여야 한다. 실제 PFD 들이 그러듯 자세계 오른쪽 끝에 세로 눈금으로
+// 세운다. ILS 를 잡았을 때만 뜬다.
+function drawGlidePath(x, y, w, h) {
   let gsv = null;
-  try { gsv = (typeof gsDeviation === 'function') ? gsDeviation() : null; } catch(e) { _swallow(e); }
-  if (gsv) {
-    const gx = x + 3.5;                    // 눈금 중심선
-    const span = h * 0.30;                 // 최대편위(2점)까지의 길이
-    const capt = (typeof gsOn !== 'undefined' && gsOn);
-    // 눈금: 가운데 기준선 + 위아래 1·2점
-    ctx.strokeStyle = '#7a7a7a'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(gx - 3, cy); ctx.lineTo(gx + 3, cy); ctx.stroke();
-    ctx.fillStyle = '#9a9a9a';
-    [-2, -1, 1, 2].forEach(n => {
-      const dy = cy - n * span / 2;
-      if (dy < y + 12 || dy > y + h - 22) return;
-      ctx.beginPath(); ctx.arc(gx, dy, 1.6, 0, Math.PI * 2); ctx.fill();
-    });
-    // 마름모 — 최대편위를 넘으면 끝에 붙이고 속을 비운다(신뢰 구간 밖)
-    const dots = Math.max(-2.4, Math.min(2.4, gsv.dots));
-    const py2 = Math.max(y + 12, Math.min(y + h - 22, cy - dots * span / 2));
-    const col = capt ? '#ff44ff' : '#dd88ff';
-    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.6;
-    const r2 = 4.5;
-    ctx.beginPath();
-    ctx.moveTo(gx, py2 - r2); ctx.lineTo(gx + r2, py2);
-    ctx.lineTo(gx, py2 + r2); ctx.lineTo(gx - r2, py2); ctx.closePath();
-    if (Math.abs(gsv.dots) > 2) ctx.stroke(); else ctx.fill();
-    // 머리글 G/S — 붙잡았으면 밝게
-    ctx.fillStyle = capt ? '#ff88ff' : '#996699';
-    ctx.font = 'bold 7px Helvetica Neue, Arial, sans-serif';
-    ctx.textAlign = 'left'; ctx.fillText('G/S', x + 1, y + 18);
-  }
+  try { gsv = (typeof gsDeviation === 'function') ? gsDeviation() : null; } catch (e) { _swallow(e); }
+  if (!gsv) return;
+  ctx.save();
+  const gx   = x + w - Math.max(10, Math.round(12 * pfdFontScale));   // 눈금 중심선
+  const cy   = y + h * 0.5;
+  const span = h * 0.34;                 // 최대편위(2점)까지의 길이
+  const capt = (typeof gsOn !== 'undefined' && gsOn);
+  // 눈금: 가운데 기준선 + 위아래 1·2점
+  ctx.strokeStyle = '#cfd8e0'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(gx - 5, cy); ctx.lineTo(gx + 5, cy); ctx.stroke();
+  ctx.fillStyle = '#cfd8e0';
+  [-2, -1, 1, 2].forEach(n => {
+    const dy = cy - n * span / 2;
+    if (dy < y + 8 || dy > y + h - 8) return;
+    ctx.beginPath(); ctx.arc(gx, dy, 2.2, 0, Math.PI * 2); ctx.fill();
+  });
+  // 마름모 — 최대편위를 넘으면 끝에 붙이고 속을 비운다(신뢰 구간 밖)
+  const dots = Math.max(-2.4, Math.min(2.4, gsv.dots));
+  const py2  = Math.max(y + 8, Math.min(y + h - 8, cy - dots * span / 2));
+  const col  = capt ? '#ff44ff' : '#dd88ff';
+  ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.8;
+  const r2 = Math.max(5, Math.round(6 * pfdFontScale));
+  ctx.beginPath();
+  ctx.moveTo(gx, py2 - r2); ctx.lineTo(gx + r2, py2);
+  ctx.lineTo(gx, py2 + r2); ctx.lineTo(gx - r2, py2); ctx.closePath();
+  if (Math.abs(gsv.dots) > 2) ctx.stroke(); else ctx.fill();
+  // 머리글 G/S — 붙잡았으면 밝게
+  ctx.fillStyle = capt ? '#ff88ff' : '#bb99cc';
+  ctx.font = 'bold 10px Helvetica Neue, Arial, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText('G/S', gx, cy - span / 2 - 12);
   ctx.restore();
 }
 
@@ -600,11 +352,17 @@ function drawHSI(x, y, w, h) {
   ctx.fillRect(x,y,w,h);
 
   const cx   = x + w / 2;
-  // 옆 글자판을 조작부로 내보낸 만큼 나침반을 키운다 — 종전 0.38w 는 글자판
-  // 두 벌을 재우던 값이라 지금은 나침반을 공연히 작게 만든다.
-  const r    = Math.min(w * 0.44, h * 0.47);
-  const cy   = y + h * 0.54;
+  // 위·아래 한 띠씩을 모서리 글자판(FMS·NAV1 / TAS·GS·OAT·NAV2)에 내준다.
+  // 나침반은 그 사이를 쓴다 — 좌우 기둥을 걷어내 폭이 넉넉해진 만큼,
+  // 이제 나침반 크기를 정하는 것은 폭이 아니라 남은 높이인 경우가 많다.
+  const bandH  = hsiBandH();
+  const availH = h - bandH * 2;
+  const r    = Math.max(24, Math.min(w * 0.36, availH * 0.47));
+  const cy   = y + bandH + availH / 2;
   const arrowR = r * 0.84;
+
+  // 네 모서리 글자판 — 나침반보다 먼저 그려 눈금이 위로 오게 한다
+  drawHsiCorners(x, y, w, h, bandH);
 
   // ── Hover Page mode: simplified HSI + GPS speed readouts ──
   if (hoverPageOn) {
@@ -1207,20 +965,21 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
 
 
 // ══════════════════════════════════════════════════════
-// 계기 글자판 — 조작부 맨 윗줄(#pfd-info)
+// 계기 값 — 나침반 네 모서리에 적고, 고르는 버튼만 조작부에 둔다
 // ══════════════════════════════════════════════════════
-// 종전에는 나침반 좌·우 여백에 캔버스로 그렸다(TAS·OAT·GS 두 줄과
-// NAV 소스 세 줄). 그 자리를 비워 나침반을 키우고 아래쪽 갈색을 줄였다.
-// 계산은 그대로 옮겨 왔고, 그리는 곳만 HTML 로 바뀌었다.
+// 값이 놓인 자리가 세 번 옮겨 다녔다. 처음에는 나침반 좌·우 여백에 캔버스로
+// 그렸고(그러느라 나침반이 폭의 38% 로 눌렸다), 다음에는 조작부 맨 윗줄로
+// 옮겨 HTML 로 그렸다(나침반은 커졌지만 조작부가 넉 줄로 늘었다).
 //
-// 프레임마다 DOM 을 건드리지 않는다 — 값이 실제로 바뀔 때만 쓴다.
-// GPS 모드에서는 위치가 3초에 한 번 오므로 그보다 자주 그릴 이유도 없다.
-let _piLast = '';
-function updatePfdInfo() {
-  const air = document.getElementById('pi-air');
-  const nav = document.getElementById('pi-nav');
-  if (!air || !nav) return;
+// 이제 좌우 기둥(속도·고도 테이프·승강계)을 걷어내 화면 폭이 통째로 남았다.
+// 값은 나침반 네 모서리로 돌아간다 — 나침반을 보는 눈이 그대로 읽을 수 있고,
+// 조작부에는 고르는 버튼 한 줄만 남는다.
+//
+//   왼쪽 위  FMS        오른쪽 위  NAV1
+//   왼쪽 아래 TAS·GS·OAT 오른쪽 아래 NAV2
 
+// TAS · GS — 계산은 종전 그대로다
+function airInfo() {
   // TAS — 표시속도를 고도로 보정(1000ft 당 약 +2%)
   const tas = S.spd * (1 + 0.02 * S.alt / 1000);
   // GS — TAS 벡터 + 유효 바람 벡터(저속에서는 바람 영향이 0 으로 줄어든다)
@@ -1228,15 +987,12 @@ function updatePfdInfo() {
   const wEff = effectiveWindSpd();
   const gsN  = tas * Math.cos(S.hdg * D2R) + wEff * Math.cos(wto);
   const gsE  = tas * Math.sin(S.hdg * D2R) + wEff * Math.sin(wto);
-  const gs   = Math.sqrt(gsN * gsN + gsE * gsE);
-  // OAT — 기상청 격자 기온(없으면 근처 METAR)에 감률을 먹인 지금 고도의 기온.
-  // ISA 는 내렸다. 고도만 넣으면 나오는 표준대기 값이라 화면에서 읽을 것이
-  // 없고, 옆의 OAT 와 비슷한 숫자가 나란히 서서 어느 쪽이 실제인지 헷갈렸다.
-  // (ISA 편차가 필요한 계산은 CDU 의 DENSALT·TAS 가 그대로 해 준다)
-  const oat  = oatNow();
-  const sl   = S_LBL().toLowerCase();
+  return { tas, gs: Math.sqrt(gsN * gsN + gsE * gsE), oat: oatNow() };
+}
 
-  // NAV 소스 세 가지 — FMS(활성 웨이포인트) · NAV1 · NAV2
+// NAV 소스 세 가지 — FMS(활성 웨이포인트) · NAV1 · NAV2
+// 각 줄에 이름·방위·래디얼·거리를 담아 돌려준다.
+function navInfoRows() {
   const rows = [];
   {
     const ok = S.awp >= 0 && S.awp < S.wps.length;
@@ -1251,18 +1007,7 @@ function updatePfdInfo() {
                 lat: ok ? rr.lat : null, lon: ok ? rr.lon : null, color: '#44aaff',
                 dme: true, elev: rr.elev || 0 });
   });
-
-  const airHtml =
-      `<span class="pi"><i>TAS</i><b style="color:#88ccff">${Math.round(tas * S_CV())}${sl}</b></span>`
-    + `<span class="pi"><i>GS</i><b style="color:#00cc44">${Math.round(gs * S_CV())}${sl}</b></span>`
-    // 자료가 없으면 '---' 로 비운다 — 없는 값을 표준대기로 채워 내보이면
-    // 조종사는 그것을 잰 값으로 읽는다. 누르면 어디서 온 값인지(혹은 왜 비었는지)
-    // 알려 준다 — 출처를 모르는 기온은 믿고 쓸 수가 없다.
-    + `<span class="pi pi-oat" data-act="oatInfo" title="이 기온이 어디서 왔는지 보기">`
-    + `<i>OAT</i><b style="color:${oat.c === null ? '#777' : '#ffd54f'}">`
-    + `${uTemp(oat.c)}</b></span>`;
-
-  const navHtml = rows.map(rw => {
+  return rows.map(rw => {
     const has = rw.lat !== null;
     // 방위(BRG) — 항공기에서 그 지점을 본 방향
     const brg = has ? fmtA(toMag(bearing(S.lat, S.lon, rw.lat, rw.lon))) + '°' : '---°';
@@ -1274,23 +1019,116 @@ function updatePfdInfo() {
     const dNM = !has ? 0
               : rw.dme ? dmeDist(rw.lat, rw.lon, rw.elev)
               : distance(S.lat, S.lon, rw.lat, rw.lon);
-    const dst = has ? uDist(dNM, 1) : '--.-';
-    const sel = navSrc === rw.src;
-    // 줄 앞의 버튼이 곧 소스 선택이다. 이름·방위·래디얼·거리를 보면서 고르는
-    // 편이, 버튼만 따로 떼어 두는 것보다 손이 덜 간다.
-    return `<span class="pi pi-src${sel ? ' on' : ''}${has ? '' : ' dim'}">`
-         + `<button class="pi-sel${sel ? ' on' : ''}" data-act="setNavSrc" `
-         + `data-arg='["${rw.src}"]' title="${rw.src} 를 항법 소스로">${rw.src}</button>`
-         + `<span class="pi-id">${rw.ident}</span>`
-         + `<span class="pi-brg" style="${has ? 'color:' + rw.color : ''}">${brg}</span>`
-         + `<span class="pi-rad">${rad}</span>`
-         + `<span class="pi-dst">${dst}</span></span>`;
-  }).join('');
+    return { ...rw, has, brg, rad, dst: has ? uDist(dNM, 1) : '--.-',
+             sel: navSrc === rw.src };
+  });
+}
 
-  // 바뀐 것이 없으면 손대지 않는다 — innerHTML 은 매번 다시 파싱된다
-  const key = airHtml + navHtml;
-  if (key === _piLast) return;
-  _piLast = key;
-  air.innerHTML = airHtml;
-  nav.innerHTML = navHtml;
+// ── 조작부에 남는 것 — 소스를 고르는 버튼 한 줄 ──────────────────
+// 프레임마다 DOM 을 건드리지 않는다. 고른 소스가 바뀔 때만 다시 쓴다.
+let _piLast = '';
+function updatePfdInfo() {
+  const nav = document.getElementById('pi-nav');
+  if (!nav) return;
+  const html = ['FMS', 'NAV1', 'NAV2'].map(src =>
+    `<button class="pi-sel${navSrc === src ? ' on' : ''}" data-act="setNavSrc" ` +
+    `data-arg='["${src}"]' title="${src} 를 항법 소스로">${src}</button>`).join('');
+  if (html === _piLast) return;
+  _piLast = html;
+  nav.innerHTML = html;
+}
+
+// ── 나침반 네 모서리 글자판 ──────────────────────────────────────
+// 위 띠는 나침반 위, 아래 띠는 나침반 아래다. 왼쪽은 왼쪽 끝에, 오른쪽은
+// 오른쪽 끝에 붙여 네 덩이가 서로 멀리 떨어지게 한다 — 가운데로 모으면
+// 나침반 눈금과 겹친다.
+function drawHsiCorners(x, y, w, h, bandH) {
+  const rows = navInfoRows();
+  const air  = airInfo();
+  const sl   = S_LBL().toLowerCase();
+
+  const lblFs = Math.max(9,  Math.round(13 * 0.85));   // 이름표
+  const valFs = Math.max(11, 16);                      // 값
+  const pad   = 6;
+  const l1 = bandH * 0.40, l2 = bandH * 0.82;          // 두 줄의 베이스라인
+
+  // 한 덩이 = 이름표 + 값 두 줄. align 은 'left' | 'right'.
+  const block = (bx, by, align, head, headCol, parts) => {
+    ctx.textAlign = align;
+    ctx.textBaseline = 'alphabetic';
+    // 1줄: 이름표 + 식별자
+    ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+    const hw = ctx.measureText(head).width;
+    ctx.fillStyle = headCol;
+    ctx.fillText(head, bx, by + l1);
+    if (parts.ident !== undefined) {
+      ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(parts.ident, align === 'left' ? bx + hw + 6 : bx - hw - 6, by + l1);
+    }
+    // 2줄: 이어 붙인 조각들(색이 저마다다) — align 에 맞춰 왼쪽부터 쌓는다
+    ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+    const gap = 6;
+    const widths = parts.line2.map(p => ctx.measureText(p.t).width);
+    const total  = widths.reduce((a, b) => a + b, 0) + gap * (parts.line2.length - 1);
+    let cx2 = align === 'left' ? bx : bx - total;
+    ctx.textAlign = 'left';
+    parts.line2.forEach((p, i) => {
+      ctx.fillStyle = p.c;
+      ctx.fillText(p.t, cx2, by + l2);
+      cx2 += widths[i] + gap;
+    });
+  };
+
+  const navBlock = (rw, bx, by, align) => {
+    // 고른 소스는 옅은 바탕을 깔아 한눈에 보이게 한다. 상자는 글자를 재서
+    // 그만큼만 — 넉넉히 잡으면 빈 회색 띠가 나침반 옆에 덩그러니 남는다.
+    if (rw.sel) {
+      ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+      const w2 = ctx.measureText(`${rw.brg} ${rw.rad} ${rw.dst}`).width + 8;
+      ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+      const w1 = ctx.measureText(rw.src).width + 6;
+      ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+      const wBox = Math.max(w1 + ctx.measureText(rw.ident).width, w2) + 8;
+      ctx.fillStyle = 'rgba(255,255,255,0.09)';
+      ctx.fillRect(align === 'left' ? bx - 4 : bx - wBox + 4, by + 1, wBox, bandH - 2);
+    }
+    block(bx, by, align, rw.src, rw.has ? rw.color : '#667', {
+      ident: rw.ident,
+      line2: [{ t: rw.brg, c: rw.has ? rw.color : '#667' },
+              { t: rw.rad, c: rw.has ? '#ff9f5a' : '#667' },
+              { t: rw.dst, c: rw.has ? '#cccc66' : '#667' }],
+    });
+  };
+
+  ctx.save();
+  navBlock(rows[0], x + pad,     y,             'left');   // 왼쪽 위 — FMS
+  navBlock(rows[1], x + w - pad, y,             'right');  // 오른쪽 위 — NAV1
+  navBlock(rows[2], x + w - pad, y + h - bandH, 'right');  // 오른쪽 아래 — NAV2
+
+  // 왼쪽 아래 — TAS · GS · OAT
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const by = y + h - bandH, bx = x + pad;
+  const pairs = [
+    ['TAS', `${Math.round(air.tas * S_CV())}${sl}`, '#88ccff'],
+    ['GS',  `${Math.round(air.gs  * S_CV())}${sl}`, '#00cc44'],
+  ];
+  let cx3 = bx;
+  pairs.forEach(([lb, v, col]) => {
+    ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.fillStyle = '#8fa3b8'; ctx.fillText(lb, cx3, by + l1);
+    cx3 += ctx.measureText(lb).width + 4;
+    ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.fillStyle = col; ctx.fillText(v, cx3, by + l1);
+    cx3 += ctx.measureText(v).width + 10;
+  });
+  // OAT — 자료가 없으면 '---' 로 비운다. 누르면 어디서 온 값인지 알려 준다
+  // (09-cdu.js 의 onPfdTap 이 이 띠를 받는다).
+  ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+  ctx.fillStyle = '#8fa3b8'; ctx.fillText('OAT', bx, by + l2);
+  const ow = ctx.measureText('OAT').width;
+  ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+  ctx.fillStyle = air.oat.c === null ? '#777' : '#ffd54f';
+  ctx.fillText(uTemp(air.oat.c), bx + ow + 4, by + l2);
+  ctx.restore();
 }

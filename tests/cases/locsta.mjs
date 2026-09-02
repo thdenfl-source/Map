@@ -204,21 +204,25 @@ export async function run(page, t) {
   t.eq(dup.gimp, 'IOFR', `김포에서 108.70 은 IOFR (${dup.gimp})`);
   t.eq(dup.daeg, 'ITAG', `대구에서 같은 108.70 은 ITAG (${dup.daeg})`);
 
-  // ── PFD NAV 줄에 명칭·방위·거리가 나오는가 ──
-  // 이 줄은 캔버스가 아니라 조작부 맨 윗줄(#pfd-info)의 HTML 이다.
+  // ── PFD NAV 자리에 명칭·방위·거리가 나오는가 ──
+  // 값은 나침반 오른쪽 위 모서리에 캔버스로 그린다(drawHsiCorners).
   const pfd = await page.evaluate(() => {
     S.lat = 38.0; S.lon = 128.6; S.alt = 3000; S.awp = -1;
     setNavRadio('NAV1', '109.30', null); setNavSrc('NAV1');
-    updatePfdInfo();
-    // 줄 앞의 선택 버튼(.pi-sel)이 곧 그 줄의 이름이다
-    const row = [...document.querySelectorAll('#pi-nav .pi-src')]
-      .find(e => (e.querySelector('.pi-sel') || {}).textContent === 'NAV1');
-    if (!row) return '';
-    return [...row.children].map(e => e.textContent.trim()).join(' ').replace(/\s+/g, ' ').trim();
+    const row = navInfoRows().find(r => r.src === 'NAV1');
+    if (!row) return { txt: '', drawn: false };
+    const txt = [row.src, row.ident, row.brg, row.rad, row.dst].join(' ');
+    // 화면에도 같은 글자가 나오는지 — 계산만 맞고 안 그려지면 없는 것과 같다
+    setSolo('pfd'); resizePFD();
+    const g = ctx, orig = g.fillText, seen = [];
+    g.fillText = function (tx) { seen.push(String(tx)); return orig.apply(this, arguments); };
+    try { drawPFD(); } finally { g.fillText = orig; }
+    return { txt, drawn: [row.ident, row.brg, row.rad, row.dst].every(v => seen.includes(v)) };
   });
   // 이름 · 방위 · 래디얼(R###) · 거리 순이다
-  t.ok(/^NAV1 IYAN\s+\d{3}°\s+R\d{3}\s+[\d.]+ NM$/.test(pfd),
-    `PFD NAV1 줄에 명칭·방위·래디얼·거리가 나온다 (${pfd || '없음'})`);
+  t.ok(/^NAV1 IYAN \d{3}° R\d{3} [\d.]+ NM$/.test(pfd.txt),
+    `PFD NAV1 자리에 명칭·방위·래디얼·거리가 나온다 (${pfd.txt || '없음'})`);
+  t.eq(pfd.drawn, true, '그 네 값이 실제로 나침반 모서리에 그려진다');
 
   // ── CDU 주파수 입력창에 명칭이 뜨는가 ──
   // 종전에는 VOR 목록만 뒤져서 ILS 주파수를 넣으면 명칭 칸이 빈 채로 남았다.
