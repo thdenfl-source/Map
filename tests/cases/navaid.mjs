@@ -502,8 +502,9 @@ export async function run(page, t) {
       (cols[k] = cols[k] || []).push(b.id);
     });
     // 툴바가 지도를 먹지 않는가 — 컨테이너는 통과시키고 버튼만 받아야 한다
+    // (GPS 는 맨 위 탭바로 올라갔으므로 첫 버튼으로 잰다)
     const barPe = getComputedStyle(bar).pointerEvents;
-    const btnPe = getComputedStyle(bar.querySelector('#gps-btn')).pointerEvents;
+    const btnPe = getComputedStyle(bar.querySelector('button')).pointerEvents;
     // 두 칸 사이 가운데는 지도가 그대로 보여야 한다
     const mid = document.elementFromPoint(window.innerWidth / 2, 120);
     return { left: (cols.L || []).length, right: (cols.R || []).length,
@@ -633,18 +634,59 @@ export async function run(page, t) {
              && box(g).left < box(rl).left,
       tall: Math.round(box(a).height), wide: Math.round(box(a).width),
       ahrsLit, gpsLit,
-      // 지도 툴바의 GPS 와 같은 동작을 부르는가
-      sameAct: a.dataset.act === 'toggleAhrs' && g.dataset.act === 'toggleGPS'
-               && document.getElementById('gps-btn').dataset.act === 'toggleGPS',
+      // 지도 툴바의 GPS 는 내렸다 — 이제 이 하나가 그 스위치다
+      sameAct: a.dataset.act === 'toggleAhrs' && g.dataset.act === 'toggleGPS',
+      mapGpsGone: !document.getElementById('gps-btn'),
     };
   });
   t.eq(sw.inBar, true, 'AHRS·GPS 가 맨 위 탭바에 있다');
   t.eq(sw.inCtrl, false, '조작부에서는 AHRS 가 빠졌다');
   t.eq(sw.order, true, 'CDU · AHRS · GPS · ⟳ 순으로 선다');
+
+  // 맨 위 탭바 — 순서와 폭
+  // 손가락은 자리를 외워서 간다. 폭이 제각각이면 눌러야 할 자리를 눈으로
+  // 찾게 되고, 흔들리는 기내에서 그 한 번이 길다.
+  const bar7 = await phone.evaluate(() => {
+    const bs = [...document.querySelectorAll('#phone-bar button')];
+    return { txt: bs.map(b => b.textContent.trim()),
+             widths: bs.map(b => Math.round(b.getBoundingClientRect().width)) };
+  });
+  t.eq(bar7.txt.join(' '), 'PFD MAP PLAN CDU AHRS GPS ⟳',
+    `PFD · MAP · PLAN · CDU · AHRS · GPS · ⟳ 순이다 (${bar7.txt.join(' ')})`);
+  const spreadW = Math.max(...bar7.widths) - Math.min(...bar7.widths);
+  t.ok(spreadW <= 1, `일곱 칸의 폭이 같다 (편차 ${spreadW}px · ${bar7.widths.join('/')})`);
+
+  // ── 지도에서 내린 것들 ────────────────────────────────────────
+  // 늘 떠 있어야 하는 것(좌표·GPS 상태)에 귀퉁이를 내주고, 손이 잘 가지 않던
+  // 스위치는 걷었다. 확대·축소는 손가락 두 개로 한다.
+  await phone.evaluate(() => navGo('map'));
+  await phone.waitForTimeout(400);
+  const mapGone = await phone.evaluate(() => {
+    const byId = id => !!document.getElementById(id);
+    const byAct = a2 => !!document.querySelector(`#map-wrap [data-act="${a2}"]`);
+    return {
+      zoom: !document.querySelector('#map-wrap .leaflet-control-zoom'),
+      scale: !document.querySelector('#map-wrap .vfr-scale'),
+      gps: !byId('gps-btn'), rain: !byId('rain-btn'), fdr: !byId('fdr-btn'),
+      lock: !byId('lock-btn'), ship: !byId('map-ship-btn'), reset: !byAct('resetSim'),
+      // 남아 있어야 하는 것 — 좌표와 GPS 상태는 그대로다
+      coord: byId('center-coord'), status: byId('gps-status'),
+    };
+  });
+  t.eq(mapGone.zoom, true, '지도에 확대·축소 버튼이 없다');
+  t.eq(mapGone.scale, true, '축척 막대도 없다');
+  for (const [k, name] of [['gps', 'GPS'], ['rain', 'RAIN'], ['fdr', 'FDR'],
+                           ['lock', '지도잠금'], ['ship', 'SHIP'], ['reset', 'RESET']]) {
+    t.eq(mapGone[k], true, `지도 버튼에서 ${name} 를 내렸다`);
+  }
+  t.eq(mapGone.coord && mapGone.status, true, '좌표와 GPS 상태는 그대로 남는다');
+  await phone.evaluate(() => navGo('pfd'));
+  await phone.waitForTimeout(300);
   t.ok(sw.tall >= 44 && sw.wide >= 40, `손가락으로 누를 크기다 (${sw.wide}×${sw.tall}px)`);
   t.eq(sw.ahrsLit, true, 'AHRS 를 누르면 켜져 보인다');
   t.eq(sw.gpsLit, true, 'GPS 가 붙으면 켜져 보인다');
-  t.eq(sw.sameAct, true, '지도 툴바의 GPS 와 같은 스위치다');
+  t.eq(sw.sameAct, true, 'GPS 를 켜고 끄는 스위치다');
+  t.eq(sw.mapGpsGone, true, '지도 툴바에는 GPS 버튼이 없다 — 한 자리로 모았다');
 
   // ── ⑩ CRHT 가 없어졌는가 · 좌우 기둥도 없어졌는가 ────────────
   const crht = await phone.evaluate(() => {

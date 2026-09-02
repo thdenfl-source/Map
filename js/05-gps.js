@@ -415,12 +415,17 @@ function decToDMS(deg, isLat) {
 }
 
 function showGpsError(msg) {
-  const btn = document.getElementById('gps-btn');
+  // GPS 버튼은 맨 위 탭바에 있다(#phone-gps-btn). 지도 툴바의 것(#gps-btn)은
+  // 내렸지만, 시뮬 모드 마크업이 남아 있을 수 있어 있으면 함께 물들인다.
   const status = document.getElementById('gps-status');
-  btn.textContent = '⚠ GPS';
-  btn.classList.remove('active');
-  btn.style.borderColor = '#aa3322';
-  btn.style.color = '#ff6655';
+  ['phone-gps-btn', 'gps-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = '⚠ GPS';
+    btn.classList.remove('active');
+    btn.style.borderColor = '#aa3322';
+    btn.style.color = '#ff6655';
+  });
   status.style.display = 'block';
   status.style.borderColor = '#aa3322';
   status.style.color = '#ff7766';

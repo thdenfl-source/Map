@@ -454,17 +454,14 @@ body.solo-mode .solo-panel-visible {
   font-size: 15px; font-weight: bold; line-height: 1.4; color: #ffd54f; white-space: nowrap;
   pointer-events: none;
 }
-/* REC·FDR 은 지도 아래 라인 셀렉터로 들어갔다 — 규격은 .sim-btn 이 정한다.
-   여기서는 켜졌을 때의 색만 따로 둔다. */
-#fdr-btn:hover  { background: rgba(0,30,60,0.92); border-color: #4488ff; color: #88ccff; }
+/* REC 은 지도 아래 라인 셀렉터에 있다 — 규격은 .sim-btn 이 정한다.
+   여기서는 켜졌을 때의 색만 따로 둔다. (FDR 버튼은 내렸다) */
 #rec-btn:hover  { background: rgba(60,0,0,0.92); border-color: #ff4444; color: #ff8888; }
 #rec-btn.active {
   background: rgba(90,0,0,0.92); border-color: #ff4444; color: #ff6666;
   animation: recblink 1.2s infinite;
 }
 @keyframes recblink { 0%,100%{ box-shadow: 0 0 6px rgba(255,68,68,0.7);} 50%{ box-shadow: none;} }
-#fdr-btn.active   { background: rgba(0,30,80,0.92); border-color: #4488ff; color: #88ccff;
-                    box-shadow: 0 0 8px rgba(68,136,255,0.4); }
 /* FDR panel */
 #fdr-panel {
   display: none; position: absolute; bottom: calc(20% + 165px); right: 10px; z-index: 1100;
@@ -547,15 +544,10 @@ body.solo-mode .solo-panel-visible {
   background: rgba(0,20,60,0.92); border-color: #4488ff; color: #88ccff;
   box-shadow: 0 0 8px rgba(68,136,255,0.4);
 }
-#gps-btn.active {
-  background: rgba(0,40,0,0.92); border-color: #00dd44; color: #00ff88;
-  box-shadow: 0 0 8px rgba(0,220,80,0.4);
-}
 /* MAP 상단 FULL/HALF 토글 버튼 — 눈에 띄는 노랑.
    폭은 다른 라인 셀렉터 버튼과 같아야 한다. 혼자 넓으면 그 칸만 4px 밀려
    줄이 어긋나 보인다. */
-/* ── 화면 터치 잠금 ── */
-#lock-btn.locked { background: rgba(60,45,0,0.92); border-color: #ffaa00; color: #ffcc44; }
+/* ── 화면 터치 잠금 ── (여는 버튼은 내렸다) */
 #lock-overlay {
   display: none;
   position: fixed; inset: 0; z-index: 99999;
@@ -805,10 +797,6 @@ body.solo-mode .solo-panel-visible {
 #wx-btn.wx-active {
   background: rgba(0,20,40,0.92); border-color: #00aaff; color: #66ccff;
   box-shadow: 0 0 8px rgba(0,170,255,0.4);
-}
-#rain-btn.rain-active {
-  background: rgba(0,10,40,0.92); border-color: #4488ff; color: #88bbff;
-  box-shadow: 0 0 8px rgba(68,136,255,0.4);
 }
 #wind-btn.wind-active {
   background: rgba(0,30,20,0.92); border-color: #44cc88; color: #88ffcc;
@@ -1443,15 +1431,14 @@ body.phone-mode #phone-bar { display: flex; }
 #phone-bar button:last-child { border-right: none; }
 #phone-bar button:active { background: #131820; }
 #phone-bar button.active { color: #00e07a; background: #06140c; box-shadow: inset 0 -3px 0 #00e07a; }
-#phone-bar #phone-reload-btn { flex: 0 0 44px; color: #7ab8f5; font-size: 17px; }
+/* 일곱 칸을 똑같이 나눈다(위 #phone-bar button 의 flex:1). 폭이 제각각이면
+   눌러야 할 자리를 눈으로 찾게 되는데, 손가락은 자리를 외워서 간다. */
+#phone-bar #phone-reload-btn { color: #7ab8f5; font-size: 17px; }
 #phone-bar #phone-reload-btn:active { transform: rotate(180deg); }
-/* 창을 고르는 탭이 아니라 켜고 끄는 스위치다. 창 탭과 헷갈리지 않게 폭을
-   내용에 맞추고 색을 달리 둔다 — 켜지면 각자의 색으로 불이 들어온다. */
+/* 창을 고르는 탭이 아니라 켜고 끄는 스위치다 — 폭은 같게 두되 색을 달리 둔다.
+   켜지면 각자의 색으로 불이 들어온다. */
 #phone-bar #phone-ahrs-btn,
-#phone-bar #phone-gps-btn {
-  flex: 0 0 auto; padding: 0 10px; color: #8a97a8; font-size: 12px;
-  border-left: 1px solid #1c1c1c;
-}
+#phone-bar #phone-gps-btn { color: #8a97a8; font-size: 12px; }
 #phone-bar #phone-ahrs-btn.on {
   color: #4dffa0; background: #06140c; box-shadow: inset 0 -3px 0 #00cc44;
 }
@@ -2030,8 +2017,8 @@ body.phone-mode .ctrl-bar .sw-display {
 </div>
 <!-- 창 고르는 탭 — 한 화면씩 갈아 끼운다. 화면 맨 위에 둔다. -->
 <div id="phone-bar">
-  <button data-nav="map"  data-act="navGo" data-arg='["map"]'>MAP</button>
   <button data-nav="pfd"  data-act="navGo" data-arg='["pfd"]'>PFD</button>
+  <button data-nav="map"  data-act="navGo" data-arg='["map"]'>MAP</button>
   <button data-nav="plan" data-act="navGo" data-arg='["plan"]'>PLAN</button>
   <button data-nav="cdu"  data-act="navGo" data-arg='["cdu"]'>CDU</button>
   <!-- 창을 고르는 탭 오른쪽에 늘 손이 닿아야 하는 스위치 둘.
@@ -2274,11 +2261,12 @@ body.phone-mode .ctrl-bar .sw-display {
           <button data-act="tiltAdj" data-arg='[5]'  title="Tilt down">▼</button>
         </div>
       </div>
+      <!-- GPS 는 맨 위 탭바로 올라갔다(#phone-gps-btn) — 계기를 보는 동안에도
+           손이 닿아야 하는 스위치라, 지도 안에만 두면 창을 옮겨야 했다.
+           RAIN 은 내렸다. -->
       <div id="map-top-bar">
-        <button id="gps-btn" data-act="toggleGPS">GPS</button>
         <button id="wx-btn" data-act="toggleWxPanel">WX</button>
         <button id="pp-btn" data-act="togglePpMenu">＋</button>
-        <button id="rain-btn" data-act="toggleRain">RAIN</button>
         <button id="wind-btn" data-act="toggleWind">WIND</button>
         <button id="notam-btn" data-act="toggleNotamLayer">NOTAM</button>
         <button id="fix-btn" data-act="toggleFixPanel">FIX</button>
@@ -2380,9 +2368,7 @@ body.phone-mode .ctrl-bar .sw-display {
       </div>
       <div id="map-sim-bar">
         <button class="sim-btn sim-only" id="map-fly-btn" data-act="toggleSim">▶ FLY</button>
-        <button class="sim-btn" data-act="resetSim">⟳ RESET</button>
         <button class="sim-btn clr" data-act="clearFP">✕ CLR</button>
-        <button class="sim-btn" id="map-ship-btn" data-act="toggleShip">⛵ SHIP</button>
         <button class="sim-btn" id="map-tcut-btn" data-act="toggleTcut">⛰ T-CUT</button>
         <button class="sim-btn" id="map-hold-btn" data-act="toggleHoldEntry">⟳ HOLD</button>
         <button class="sim-btn" id="inhib-btn" data-act="toggleInhibMenu">INHIB</button>
@@ -2390,10 +2376,7 @@ body.phone-mode .ctrl-bar .sw-display {
         <button class="sim-btn" id="follow-btn" data-act="toggleFollow">1인칭</button>
         <button class="sim-btn sat" id="layer-btn" data-act="toggleLayer">MAP</button>
         <button class="sim-btn" id="layer-btn-3d" data-act="toggle3dMap">3D</button>
-        <button class="sim-btn" id="lock-btn" data-act="lockScreen" title="화면 터치 잠금">🔒</button>
-        <!-- REC·FDR — 따로 떠 있으면 오른쪽 칸과 겹친다. 같은 칸에 세운다 -->
         <button class="sim-btn" id="rec-btn" data-act="toggleTrackRec">REC</button>
-        <button class="sim-btn" id="fdr-btn" data-act="toggleFdrPanel">FDR</button>
       </div>
 
       <!-- Weather Overlay Panel -->
