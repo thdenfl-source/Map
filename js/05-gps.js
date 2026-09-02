@@ -511,8 +511,6 @@ leafMap.getContainer().addEventListener('click', e => {
 }, true);
 
 let trailLine = L.polyline([],{color:'#00ff88',weight:1.5,opacity:0.65}).addTo(leafMap);
-let shipTrail = [];
-let shipTrailLine = L.polyline([],{color:'#ff3333',weight:1.5,opacity:0.65}).addTo(leafMap);
 let routeLine = L.polyline([],{color:'#4488ff',weight:2,dashArray:'6 5',opacity:0.8}).addTo(leafMap);
 // CRS 라인 색은 HSI BRG 색 체계와 통일: FMS=BRG2 초록, VOR/LOC=BRG1 파랑
 let crsLine   = L.polyline([],{color:'#00cc44',weight:1.5,dashArray:'10 5',opacity:0.9}).addTo(leafMap);
@@ -524,15 +522,11 @@ let vorCrsLine = L.polyline([],{color:'#44aaff',weight:1.5,dashArray:'10 5',opac
 let spdVecLine = L.polyline([], {color:'#ff1744', weight:2.5, opacity:0.95}).addTo(leafMap);
 let spdVecHead = L.polygon([],  {color:'#ff1744', weight:1, fillColor:'#ff1744', fillOpacity:1, opacity:1}).addTo(leafMap);
 
-// FDR 재생 여부 — 선언이 FDR 블록(아래쪽)에 있었는데 여기서 먼저 읽어
-// 기동 중 TDZ 예외("Cannot access '_fdrPlaying' before initialization")가
-// 조용히 삼켜지고 있었다. 첫 사용처보다 앞으로 옮겨 근본 원인을 없앤다.
-let _fdrPlaying = false;
 
 function updateSpeedVector() {
   // 1분 예상궤적: 선회 중(뱅크)에는 선회율+바람을 적분한 곡선,
-  // 직진 시에는 기존처럼 직선. GPS/FDR 모드는 지상속도·트랙 그대로 직선.
-  const simMode = !gpsMode && !_fdrPlaying;
+  // 직진 시에는 기존처럼 직선. GPS 모드는 지상속도·트랙 그대로 직선.
+  const simMode = !gpsMode;
   const airSpd = Math.min(Math.max(S.spd || 0, 0), 130);   // 130kt 상한
   const wEff = (simMode && typeof effectiveWindSpd === 'function') ? effectiveWindSpd() : 0;
   const wt = normA(windDir + 180) * D2R;
@@ -994,7 +988,6 @@ function _update3dTrail() {
     geometry: { type: 'LineString', coordinates: S.trail.map(t => [t[1], t[0]]) }
   });
 }
-function updateShipTrail(){ shipTrailLine.setLatLngs(shipTrail.map(t=>[t[0],t[1]])); }
 // ── 1인칭 Follow Mode ────────────────────────────────────────────────────
 // When active: 2D map centres on aircraft every frame;
 //              3D map additionally tracks heading and scales zoom with altitude.

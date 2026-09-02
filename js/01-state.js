@@ -84,7 +84,7 @@ const HDG_ROLLOUT_DEG = 6;         // 남은 각도가 이 이하면 뱅크를 �
 function stdRateBank(spd) {        // 표준선회 뱅크각(°) — 속도의 16%, 최대 30°
   return Math.max(2, Math.min(30, Math.abs(spd) * 0.16));
 }
-// 리셋·GPS·나침반·FDR 리플레이처럼 기수를 외부에서 직접 바꾸는 경로에서 호출한다.
+// GPS·나침반처럼 기수를 외부에서 직접 바꾸는 경로에서 호출한다.
 // 동기화하지 않으면 시뮬레이션으로 돌아오는 순간 AFCS가 옛 HDG bug로 선회해 버린다.
 function syncHdgBug() { selHdg = ((Math.round(S.hdg) + 359) % 360) + 1; }
 let selVS   = 1000; // VS preselect (fpm, magnitude) — used by ALT hold mode
@@ -1030,7 +1030,7 @@ function applyNavRadioToPfd() {
     vorObsCrs = toTrue(r.crs);
     try { updateNav(); } catch(e) { _swallow(e); }
   }
-  // 튜닝한 국의 이름은 글자판(#pfd-info)의 그 줄이 이미 보여 준다 —
+  // 튜닝한 국의 이름은 나침반 모서리 글자판이 이미 보여 준다 —
   // 따로 두던 라벨(nav-icao-lbl)은 같은 말을 두 번 하는 자리라 걷어냈다.
 }
 // BRG1(파란 방위 지시침)이 가리킬 항법시설.
@@ -1292,9 +1292,8 @@ function swReset() {
 // ── NAV source / ICAO / RNP ──
 function setNavSrc(src) {
   navSrc = src;
-  // 선택 표시는 글자판(#pfd-info)의 줄 앞 버튼이 낸다. 다시 그리면 반영된다.
-  try { if (typeof updatePfdInfo === 'function') { _piLast = ''; updatePfdInfo(); } }
-  catch (e) { _swallow(e); }
+  // 선택 표시는 나침반 모서리 글자판(검은 바탕)이 낸다. 다시 그리면 반영된다.
+  try { if (typeof drawPFD === 'function') drawPFD(); } catch (e) { _swallow(e); }
   if (src === 'FMS') {
     navLat = navLon = null; navIcao = '';
   } else {
