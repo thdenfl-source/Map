@@ -298,7 +298,8 @@ export async function run(page, t) {
       : 0;
     const pw = document.getElementById('pfd-wrap').getBoundingClientRect();
     // 항법용 조작부는 그대로 눌러 쓸 수 있어야 한다(줄이느라 없애지 않았는가)
-    const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'ahrs-btn', 'rnp-1', 'susp-btn']
+    // (AHRS 는 맨 위 탭바로 옮겼다 — #phone-ahrs-btn)
+    const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'phone-ahrs-btn', 'rnp-1', 'susp-btn']
       .filter(id => { const e = document.getElementById(id); return e && e.getBoundingClientRect().height > 0; });
     // '두 줄' 은 버튼 줄 이야기다. 맨 윗줄(#pfd-info)은 읽기만 하는 글자판이라
     // 따로 뺀다 — 섞어 재면 글자 크기를 바꿀 때마다 이 검사가 흔들린다.
@@ -407,7 +408,7 @@ export async function run(page, t) {
       const bar = document.querySelector('.ctrl-bar').getBoundingClientRect();
       const box = sel => { const e = document.querySelector(sel); if (!e) return null;
         const q = e.getBoundingClientRect(); return { l: q.left - bar.left, t: q.top - bar.top, h: q.height }; };
-      // 글자판 각 줄의 왼쪽 끝 — display:contents 인 껍데기(#pi-air)는 0,0 이라 뺀다
+      // 소스 고르는 줄의 왼쪽 끝 — 아래 조작부와 같은 선에서 시작해야 한다
       const rowLefts = [...document.querySelectorAll('#pfd-info .pi-row')].map(r =>
         Math.round(Math.min(...[...r.children]
           .map(c => c.getBoundingClientRect())
@@ -433,13 +434,13 @@ export async function run(page, t) {
                           obs: one('#obs-btn'), brg: one('#brg1-tog'),
                           susp: one('#susp-btn'), suspAuto, rnp: one('#rnp-1') };
                })(),
-               // 글꼴·크기·굵기도 하나로 — 기준은 AHRS 버튼이다.
-               // 이 판에서 가장 큰 버튼 글씨였고, 나머지를 거기에 올려 맞췄다.
+               // 글꼴·크기·굵기도 하나로 — 기준은 NAV 소스 버튼이다.
+               // (AHRS 는 맨 위 탭바로 올라가 그 줄의 규격을 따른다)
                fonts: (() => {
                  const f = e => { const c = getComputedStyle(e);
                    return [c.fontFamily, c.fontSize, c.fontWeight].join(' / '); };
-                 const out = { 기준: f(document.getElementById('ahrs-btn')) };
-                 for (const [k, sel] of [['NAV 소스', '#pi-nav .pi-sel'],
+                 const out = { 기준: f(document.querySelector('#pi-nav .pi-sel')) };
+                 for (const [k, sel] of [
                        ['CRS', '#crs-lbl-btn'], ['◄', '#crs-dn'],
                        ['OBS', '#obs-btn'], ['BRG1', '#brg1-tog'], ['SUSP', '#susp-btn'],
                        ['시계', '#sw-display'], ['STOP WATCH', '#sw-btns-clock .sw-btn'],
@@ -473,7 +474,7 @@ export async function run(page, t) {
     const ref = a.fonts['기준'];
     const odd = Object.entries(a.fonts).filter(([k, v]) => k !== '기준' && v !== ref);
     t.eq(odd.length, 0,
-      `${L} — 버튼 글씨가 AHRS 와 같다 (${ref})` +
+      `${L} — 조작부 글씨가 NAV 소스 버튼과 같다 (${ref})` +
       (odd.length ? ' — 다른 것: ' + odd.map(([k, v]) => `${k}=${v}`).join(' · ') : ''));
     t.ok(/(^|[^\d])(700|bold)([^\d]|$)/.test(ref), `${L} — 그 글씨가 볼드체다 (${ref})`);
     // 시계·RNP 는 맨 아래 — 앞줄(CRS·BRG·SUSP)보다 아래에 있어야 한다
@@ -516,122 +517,152 @@ export async function run(page, t) {
   t.eq(lsk.btnPe, 'auto', '버튼만 터치를 받는다');
   t.eq(lsk.midIsMap, true, '두 칸 사이 가운데는 지도가 그대로 보인다');
 
-  // ── ⑨ 계기 글자판이 조작부로 옮겨졌는가 ──────────────────────
+  // ── ⑨ 값은 나침반 모서리, 고르는 버튼만 조작부 ────────────────
+  // 값이 놓인 자리가 세 번 옮겨 다녔다. 나침반 좌·우 여백(캔버스) → 조작부
+  // 맨 윗줄(HTML) → 다시 나침반 네 모서리(캔버스). 마지막 자리가 이유가 있다:
+  // 좌우 기둥(속도·고도 테이프·승강계)을 걷어내 화면 폭이 통째로 남았고,
+  // 나침반을 보는 눈이 그대로 값을 읽을 수 있다. 조작부에는 고르는 버튼
+  // 한 줄만 남아 계기가 그만큼 커진다.
   await phone.evaluate(() => navGo('pfd'));
   await phone.waitForTimeout(500);
+
   const info = await phone.evaluate(() => {
-    const air = document.getElementById('pi-air');
     const nav = document.getElementById('pi-nav');
-    const px = el => parseFloat(getComputedStyle(el).fontSize);
-    return { air: (air.textContent || ''), nav: (nav.textContent || ''),
-             srcCount: nav.querySelectorAll('.pi-src').length,
-             airPx: px(air.querySelector('b')), airLblPx: px(air.querySelector('i')),
-             navPx: px(nav.querySelector('.pi-id')), brgPx: px(nav.querySelector('.pi-brg')),
-             h: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height) };
-  });
-  for (const k of ['TAS', 'GS', 'OAT']) {
-    t.ok(info.air.includes(k), `조작부 윗줄에 ${k} 가 있다`);
-  }
-  // ISA 는 내렸다 — 고도만 넣으면 나오는 표준대기 값이라 읽을 것이 없고,
-  // 옆의 OAT 와 비슷한 숫자가 나란히 서서 어느 쪽이 실제인지 헷갈렸다.
-  t.ok(!/\bISA\b/.test(info.air), `ISA 는 글자판에 없다 (${info.air.trim()})`);
-  t.eq(info.srcCount, 3, 'NAV 소스 세 가지(FMS·NAV1·NAV2)가 모두 있다');
-  t.ok(/FMS/.test(info.nav) && /NAV1/.test(info.nav) && /NAV2/.test(info.nav),
-    '세 소스의 이름이 다 보인다');
-
-  // 세 소스는 폭이 어떻든 늘 한 줄씩, 언제나 세 줄이다.
-  // 종전에는 남는 폭에 따라 접혔다 — 좁은 폰에서는 세 줄, 조금 넓으면 두 줄,
-  // 패드·PC 에서는 한 줄. 그러면 화면 폭이 바뀔 때마다 FMS·NAV1·NAV2 가 서 있는
-  // 자리가 달라져, 늘 같은 자리를 짚던 눈이 매번 다시 찾아야 했다.
-  // 데스크톱 창을 끝까지 늘려도 마찬가지다 — 폭이 남는다고 붙지 않는다.
-  for (const w of [320, 390, 430, 540, 768, 810, 1180, 1400, 1900, 2560]) {
-    await phone.setViewportSize({ width: w, height: 844 });
-    await phone.waitForTimeout(220);
-    const r = await phone.evaluate(() => {
-      const src = [...document.querySelectorAll('#pi-nav .pi-src')];
-      const rows = new Set(src.map(e => Math.round(e.getBoundingClientRect().top)));
-      const lefts = new Set(src.map(e => Math.round(e.getBoundingClientRect().left)));
-      return { rows: rows.size, lefts: lefts.size, n: src.length };
-    });
-    t.eq(r.rows, 3, `${w}px — NAV 소스가 세 줄이다 (${r.rows}줄 / ${r.n}개)`);
-    t.eq(r.lefts, 1, `${w}px — 세 줄이 같은 왼쪽 선에서 시작한다 (${r.lefts}자리)`);
-  }
-  await phone.setViewportSize(PHONE);
-  await phone.waitForTimeout(300);
-  t.ok(info.h > 10 && info.h < 170, `글자판이 지나치게 자라지 않았다 (${info.h}px)`);
-  // 글자판의 값은 모두 같은 크기로 읽는다. 한 화면에 있는 값인데 하나만 작으면
-  // 그것만 못 읽고 지나친다 — TAS·GS·OAT 를 NAV 줄의 방위 숫자에 맞춘다.
-  t.eq(info.airPx, info.brgPx,
-    `TAS·GS·OAT 가 방위 숫자와 같은 크기다 (${info.airPx}px vs ${info.brgPx}px)`);
-  t.ok(info.airPx >= 18, `그 크기가 비행 중에 읽을 만하다 (${info.airPx}px)`);
-  // 이름표는 값보다 작다. AHRS 버튼까지 한 줄에 세워야 해서 폭이 빠듯하다 —
-  // 읽는 것은 값이므로 이름표를 먼저 줄인다.
-  t.ok(info.airLblPx >= 12 && info.airLblPx < info.airPx,
-    `이름표는 값보다 조금 작다 (${info.airLblPx}px vs ${info.airPx}px)`);
-
-  // ── AHRS 버튼이 TAS 왼쪽에 있는가 ────────────────────────────
-  // 자세를 잡는 버튼이라 계기를 보는 눈이 머무는 자리에 있어야 한다.
-  // 조작부 구석(OBS 옆)에 있을 때는 손이 가지 않았다.
-  const ahrsBtn = await phone.evaluate(() => {
-    const b = document.getElementById('ahrs-btn');
-    const tas = [...document.querySelectorAll('#pfd-info .pi i')].find(e => e.textContent === 'TAS');
-    const a = b.getBoundingClientRect(), r = tas.getBoundingClientRect();
-    const sel = document.querySelector('#pi-nav .pi-sel').getBoundingClientRect();
-    // 글자판은 updatePfdInfo() 가 innerHTML 로 갈아 끼운다 — 버튼이 살아남아야 한다
-    toggleAhrs(); _piLast = ''; updatePfdInfo();
-    const after = document.getElementById('ahrs-btn');
-    const lit = !!after && after.classList.contains('on');
-    toggleAhrs();
-    // 값 넉 줄이 한 줄에 서는가(줄이 넘어가면 계기가 그만큼 눌린다)
-    const tops = new Set([...document.querySelectorAll('#pi-air ~ *, #pfd-info .pi:not(.pi-src)')]
+    // 조작부에는 고르는 버튼만 — 값(이름·방위·래디얼·거리)은 없다
+    const sels = [...nav.querySelectorAll('.pi-sel')].map(e => e.textContent.trim());
+    const rows = new Set([...nav.querySelectorAll('.pi-sel')]
       .map(e => Math.round(e.getBoundingClientRect().top)));
-    return { inInfo: !!b.closest('#pfd-info'), inCtrl: !!b.closest('.ctrl-sub-row'),
-             leftOfTas: a.right <= r.left + 1,
-             sameRow: Math.abs((a.top + a.height / 2) - (r.top + r.height / 2)) < 12,
-             w: Math.round(a.width), h: Math.round(a.height),
-             biggerThanSel: a.height >= sel.height,
-             alive: !!after, lit, airLines: tops.size };
+    // 화면(캔버스)에 실제로 찍히는 글자
+    resizePFD();
+    const g = ctx, orig = g.fillText, seen = [];
+    g.fillText = function (tx, x, y) {
+      seen.push({ t: String(tx), x, y });
+      return orig.apply(this, arguments);
+    };
+    try { drawPFD(); } finally { g.fillText = orig; }
+    const W = cvs.width;
+    const ctrlH = document.querySelector('.ctrl-bar').offsetHeight;
+    const usableH = cvs.height - ctrlH;
+    const bandH = hsiBandH();
+    const hsiWant = Math.round(W * 0.34 * 2 + bandH * 2 + 10);
+    const hsiH = Math.max(Math.round(usableH * 0.34),
+                          Math.min(Math.round(usableH * 0.50), hsiWant));
+    const hsiY = usableH - hsiH;
+    // 화면 좌표로 들어온 것만(translate 로 그리는 눈금·장미는 0 이하다).
+    // 같은 글자가 맨 윗줄(GS·ALT·VS)에도 있으므로 나침반 칸 안에서 찾는다.
+    const corner = t => {
+      const e = seen.find(q => q.t === t && q.y > hsiY && q.y <= hsiY + hsiH);
+      if (!e) return null;
+      return { top: e.y < hsiY + bandH + 4, bot: e.y > hsiY + hsiH - bandH - 4,
+               left: e.x < W / 2, right: e.x > W / 2 }; };
+    return { sels, rows: rows.size,
+             // 값은 계기로 갔다 — 조작부에는 방위(°)도 거리(NM)도 없다
+             navHasValues: /°|NM/.test(nav.textContent),
+             infoH: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height),
+             fms: corner('FMS'), nav1: corner('NAV1'), nav2: corner('NAV2'),
+             tas: corner('TAS'), gs: corner('GS'), oat: corner('OAT'),
+             all: seen.map(e => e.t) };
   });
-  t.eq(ahrsBtn.inInfo, true, 'AHRS 가 계기 글자판에 있다');
-  t.eq(ahrsBtn.inCtrl, false, '조작부에서는 빠졌다');
-  t.eq(ahrsBtn.leftOfTas, true, 'TAS 왼쪽에 선다');
-  t.eq(ahrsBtn.sameRow, true, 'TAS 와 같은 줄이다');
-  t.ok(ahrsBtn.h >= 28 && ahrsBtn.w >= 60,
-    `한 손으로 누를 크기다 (${ahrsBtn.w}×${ahrsBtn.h}px)`);
-  t.eq(ahrsBtn.biggerThanSel, true, 'NAV 소스 선택 버튼보다 작지 않다');
-  t.eq(ahrsBtn.alive, true, '글자판을 다시 그려도 버튼이 살아남는다');
-  t.eq(ahrsBtn.lit, true, '누르면 켜져 보인다');
-  t.eq(ahrsBtn.airLines, 1, `AHRS 와 네 값이 한 줄에 선다 (${ahrsBtn.airLines}줄)`);
+  t.eq(info.sels.join(','), 'FMS,NAV1,NAV2', `조작부에 고르는 버튼 셋이 있다 (${info.sels.join(',')})`);
+  t.eq(info.rows, 1, `그 셋이 한 줄에 선다 (${info.rows}줄)`);
+  t.eq(info.navHasValues, false, '조작부에는 숫자가 없다 — 값은 계기로 갔다');
+  t.ok(info.infoH > 10 && info.infoH < 60, `고르는 줄이 한 줄 높이다 (${info.infoH}px)`);
 
-  // ── ⑩ CRHT 가 없어졌는가 · 갈색이 줄었는가 ───────────────────
+  // 네 모서리 — 왼쪽 위 FMS · 오른쪽 위 NAV1 · 오른쪽 아래 NAV2 · 왼쪽 아래 TAS·GS·OAT
+  const where = [['FMS', info.fms, 'top', 'left'], ['NAV1', info.nav1, 'top', 'right'],
+                 ['NAV2', info.nav2, 'bot', 'right'], ['TAS', info.tas, 'bot', 'left'],
+                 ['GS', info.gs, 'bot', 'left'], ['OAT', info.oat, 'bot', 'left']];
+  for (const [name, c, vert, horz] of where) {
+    t.ok(c, `${name} 가 계기에 그려진다`);
+    if (!c) continue;
+    t.eq(c[vert], true, `${name} 가 ${vert === 'top' ? '위' : '아래'} 띠에 있다`);
+    t.eq(c[horz], true, `${name} 가 ${horz === 'left' ? '왼' : '오른'}쪽이다`);
+  }
+  // ISA 는 내렸다 — 고도만 넣으면 나오는 표준대기 값이라 읽을 것이 없다
+  t.ok(!info.all.includes('ISA'), '계기에 ISA 가 없다');
+
+  // ── AHRS·GPS 는 맨 위 탭바에 있다 ───────────────────────────
+  // AHRS 는 조작부 구석에 있었다. 계기를 보다가 자세를 잡으려면 창을 옮겨야
+  // 했다. GPS 는 지도 툴바에만 있어 계기를 보는 동안에는 손이 닿지 않았다.
+  const sw = await phone.evaluate(() => {
+    const bar = document.getElementById('phone-bar');
+    const a = document.getElementById('phone-ahrs-btn');
+    const g = document.getElementById('phone-gps-btn');
+    const rl = document.getElementById('phone-reload-btn');
+    const cdu = document.querySelector('#phone-bar [data-nav="cdu"]');
+    const box = e => e.getBoundingClientRect();
+    // 눌러 보고 상태가 따라오는가
+    const ahrsWas = ahrsOn; toggleAhrs();
+    const ahrsLit = a.classList.contains('on');
+    if (ahrsOn !== ahrsWas) toggleAhrs();
+    const gpsWas = gpsMode; gpsMode = true; updateGpsBtn();
+    const gpsLit = g.classList.contains('active');
+    gpsMode = gpsWas; updateGpsBtn();
+    return {
+      inBar: !!a.closest('#phone-bar') && !!g.closest('#phone-bar'),
+      inCtrl: !!document.getElementById('ahrs-btn'),
+      order: box(cdu).left < box(a).left && box(a).left < box(g).left
+             && box(g).left < box(rl).left,
+      tall: Math.round(box(a).height), wide: Math.round(box(a).width),
+      ahrsLit, gpsLit,
+      // 지도 툴바의 GPS 와 같은 동작을 부르는가
+      sameAct: a.dataset.act === 'toggleAhrs' && g.dataset.act === 'toggleGPS'
+               && document.getElementById('gps-btn').dataset.act === 'toggleGPS',
+    };
+  });
+  t.eq(sw.inBar, true, 'AHRS·GPS 가 맨 위 탭바에 있다');
+  t.eq(sw.inCtrl, false, '조작부에서는 AHRS 가 빠졌다');
+  t.eq(sw.order, true, 'CDU · AHRS · GPS · ⟳ 순으로 선다');
+  t.ok(sw.tall >= 44 && sw.wide >= 40, `손가락으로 누를 크기다 (${sw.wide}×${sw.tall}px)`);
+  t.eq(sw.ahrsLit, true, 'AHRS 를 누르면 켜져 보인다');
+  t.eq(sw.gpsLit, true, 'GPS 가 붙으면 켜져 보인다');
+  t.eq(sw.sameAct, true, '지도 툴바의 GPS 와 같은 스위치다');
+
+  // ── ⑩ CRHT 가 없어졌는가 · 좌우 기둥도 없어졌는가 ────────────
   const crht = await phone.evaluate(() => {
     const dead = n => { try { return new Function('return typeof ' + n)() === 'undefined'; }
                         catch (e) { return true; } };
     // 계기 칸 나눔 — drawPFD 와 같은 셈
     const W = cvs.width, H = cvs.height;
     const usableH = H - document.querySelector('.ctrl-bar').offsetHeight;
-    const tapW = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
-    const vsiW = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
-    const hsiR = (W - tapW * 2 - vsiW) * 0.44;
-    const hsiH = Math.max(Math.round(usableH * 0.32),
-                          Math.min(Math.round(usableH * 0.50), Math.round(hsiR * 2 + 56)));
+    const bandH = hsiBandH();
+    const hsiWant = Math.round(W * 0.34 * 2 + bandH * 2 + 10);
+    const hsiH = Math.max(Math.round(usableH * 0.34),
+                          Math.min(Math.round(usableH * 0.50), hsiWant));
     return { fn: dead('drawCrhtDisplay'), flag: dead('crhtOn'), sel: dead('selCrht'),
              toggle: dead('toggleCrht'),
              btn: !document.getElementById('crht-btn') && !document.getElementById('crht-up'),
+             // 좌우 기둥(속도·고도 테이프·승강계)도 걷어냈다 — 폭이 가로의
+             // 8.2% 로 묶여 있어 숫자를 키울 수가 없었고, 값은 맨 윗줄
+             // 상자(GS·ALT·VS)에서 읽는다.
+             tapes: dead('drawSpeedTape') && dead('drawAltTape') && dead('drawVSI'),
+             // 그 대신 자세계·나침반이 화면 폭을 통째로 쓴다
+             fullWidth: (() => {
+               const g = ctx, orig = g.strokeRect, seen = [];
+               g.strokeRect = function (x, y, w2) { seen.push({ x, w: w2 }); return orig.apply(this, arguments); };
+               try { drawPFD(); } finally { g.strokeRect = orig; }
+               // 맨 윗줄 세 상자가 화면 양끝까지 벌어져 있는가
+               const wide = seen.filter(q => q.w > W * 0.2);
+               return wide.length >= 3 && Math.min(...wide.map(q => q.x)) < 6
+                      && Math.max(...wide.map(q => q.x + q.w)) > W - 6;
+             })(),
              hsiH, aiH: usableH - hsiH, usableH };
   });
   t.eq(crht.fn, true, 'CRHT 표시를 그리는 함수가 없다');
   t.eq(crht.flag && crht.sel && crht.toggle, true, 'CRHT 상태값·토글도 남지 않았다');
   t.eq(crht.btn, true, 'CRHT 버튼도 마크업에 없다');
-  t.ok(crht.hsiH < crht.aiH,
-    `나침반 칸(갈색)이 자세계보다 좁다 (${crht.hsiH}px < ${crht.aiH}px)`);
-  // 45% — 종전에는 42% 로 잡았다. 나침반 칸의 절대 높이는 그대로인데,
-  // 버튼 글씨를 AHRS 에 맞추며 조작부가 21px 두꺼워져 계기가 그만큼 줄었고
-  // 그 바람에 같은 칸의 몫이 40.6% → 42.03% 로 올라갔다. 지켜야 할 것은
-  // '나침반이 자세계보다 작다'(바로 위 검사)이고, 이 몫은 그것이 아슬아슬해지지
-  // 않게 두는 여유선이다.
-  t.ok(crht.hsiH < crht.usableH * 0.45,
-    `갈색이 계기의 45% 아래다 (${crht.hsiH}px / ${crht.usableH}px = ${(100 * crht.hsiH / crht.usableH).toFixed(1)}%)`);
+  t.eq(crht.tapes, true, '좌우 기둥(속도·고도 테이프·승강계)을 그리던 함수도 없다');
+  t.eq(crht.fullWidth, true, '계기가 화면 폭을 통째로 쓴다');
+  // 나침반 칸은 이제 위·아래 띠에 글자판 넷(FMS·NAV1·NAV2·TAS/GS/OAT)을
+  // 이고 있다. 종전에는 그 칸이 통째로 빈 갈색이라 "너무 넓다" 는 말이 나왔고,
+  // 그래서 '자세계보다 좁아야 한다' 로 못 박아 두었다. 지금은 값이 들어차
+  // 있으므로 기준을 '절반을 넘지 않는다' 로 옮긴다 — 자세계도 그만큼은
+  // 남아야 하기 때문이다.
+  t.ok(crht.hsiH <= crht.aiH + 2,
+    `나침반 칸이 자세계보다 크지 않다 (${crht.hsiH}px ≤ ${crht.aiH}px)`);
+  // 그 '절반' 을 코드에서도 못 박아 둔다(drawPFD 의 0.50 상한).
+  t.ok(crht.hsiH <= crht.usableH * 0.51,
+    `나침반 칸이 계기의 절반을 넘지 않는다 (${crht.hsiH}px / ${crht.usableH}px = ${(100 * crht.hsiH / crht.usableH).toFixed(1)}%)`);
 
   // ── ⑪ 하위 창이 그 버튼에서 가지 치는가 ──────────────────────
   // 옛 가로 툴바 시절 좌표(top:44px·right:8px)에 못 박혀 있어, 라인 셀렉터로
@@ -728,32 +759,39 @@ export async function run(page, t) {
   t.eq(hdgRef.kmh, 20, `헤딩이 나침반으로 넘어가는 기준이 20km/h 다 (${hdgRef.kmh})`);
   t.ok(Math.abs(hdgRef.kt - 10.8) < 0.05, `kt 로는 약 10.8kt 다 (${hdgRef.kt.toFixed(2)})`);
 
-  // ── ⑬ NAV 소스 — 줄 앞 버튼으로 고르고 래디얼까지 보인다 ─────
+  // ── ⑬ NAV 소스 — 버튼으로 고르고, 값은 나침반 모서리에 ──────
+  await phone.evaluate(() => navGo('pfd'));
+  await phone.waitForTimeout(400);
   const src = await phone.evaluate(() => {
     S.lat = 38.0; S.lon = 128.6; S.alt = 3000; S.awp = -1;
     setNavRadio('NAV1', '109.30', null);
     setNavSrc('FMS'); _piLast = ''; updatePfdInfo();
-    const row = [...document.querySelectorAll('#pi-nav .pi-src')]
-      .find(e => e.querySelector('.pi-sel').textContent === 'NAV1');
-    const cells = [...row.children].map(e => e.className);
-    const txt = [...row.children].map(e => e.textContent.trim());
     const before = navSrc;
-    row.querySelector('.pi-sel').click();     // 줄 앞 버튼이 곧 소스 선택이다
+    // 버튼을 누르면 그 소스가 선택된다
+    [...document.querySelectorAll('#pi-nav .pi-sel')]
+      .find(e => e.textContent === 'NAV1').click();
     _piLast = ''; updatePfdInfo();
     const after = navSrc;
     const lit = [...document.querySelectorAll('#pi-nav .pi-sel.on')].map(e => e.textContent);
-    return { cells, txt, before, after, lit,
+    // 값은 계산부(navInfoRows)가 내고 나침반 모서리에 그려진다
+    const row = navInfoRows().find(r => r.src === 'NAV1');
+    resizePFD();
+    const g = ctx, orig = g.fillText, seen = [];
+    g.fillText = function (tx) { seen.push(String(tx)); return orig.apply(this, arguments); };
+    try { drawPFD(); } finally { g.fillText = orig; }
+    return { before, after, lit,
+             brg: row.brg, rad: row.rad, dst: row.dst, ident: row.ident,
+             drawn: [row.ident, row.brg, row.rad, row.dst].every(v => seen.includes(v)),
              oldBtns: !document.getElementById('nav-fms') && !document.querySelector('.nav-src-btn') };
   });
-  t.eq(src.cells.join(' '), 'pi-sel pi-id pi-brg pi-rad pi-dst',
-    `이름·방위·래디얼·거리 순이다 (${src.cells.join(' ')})`);
   t.eq(src.oldBtns, true, '종전 NAV SRC 버튼은 없어졌다');
   t.eq(src.before, 'FMS', '누르기 전에는 FMS 였다');
-  t.eq(src.after, 'NAV1', '줄 앞 버튼을 누르면 그 소스가 선택된다');
-  t.eq(src.lit.join(','), 'NAV1', `선택된 줄만 켜져 보인다 (${src.lit.join(',')})`);
-  t.ok(/^R\d{3}$/.test(src.txt[3]), `래디얼은 R 을 앞에 붙여 방위와 구분한다 (${src.txt[3]})`);
+  t.eq(src.after, 'NAV1', '버튼을 누르면 그 소스가 선택된다');
+  t.eq(src.lit.join(','), 'NAV1', `고른 버튼만 켜져 보인다 (${src.lit.join(',')})`);
+  t.eq(src.drawn, true, '이름·방위·래디얼·거리가 나침반 모서리에 그려진다');
+  t.ok(/^R\d{3}$/.test(src.rad), `래디얼은 R 을 앞에 붙여 방위와 구분한다 (${src.rad})`);
   // 래디얼은 그 지점에서 항공기를 본 방향 — 방위의 반대편이다
-  const brgN = parseInt(src.txt[2], 10), radN = parseInt(src.txt[3].slice(1), 10);
+  const brgN = parseInt(src.brg, 10), radN = parseInt(src.rad.slice(1), 10);
   t.ok(Math.abs(((radN - brgN + 360) % 360) - 180) < 3,
     `래디얼이 방위의 반대편이다 (방위 ${brgN}° · 래디얼 ${radN}°)`);
 

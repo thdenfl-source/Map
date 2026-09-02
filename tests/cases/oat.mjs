@@ -65,35 +65,41 @@ export async function run(page, t) {
   t.eq(staleAll.c, null, `둘 다 오래됐으면 비운다 (${staleAll.c})`);
 
   // ── ⑤ 계기에 그대로 나오는가 ─────────────────────────────────
+  // OAT 는 나침반 왼쪽 아래 모서리에 캔버스로 그린다(drawHsiCorners).
+  // 무엇이 어떤 색으로 찍히는지는 fillText 를 엿봐야 알 수 있다.
   const shown = await page.evaluate(() => {
-    setSolo('pfd');
-    const read = () => { _piLast = ''; updatePfdInfo();
-      return document.getElementById('pi-air').textContent.replace(/\s+/g, ' ').trim(); };
+    setSolo('pfd'); resizePFD();
+    const read = () => {
+      const g = ctx, orig = g.fillText, seen = [];
+      g.fillText = function (tx, x, y) {
+        seen.push({ t: String(tx), c: String(this.fillStyle) });
+        return orig.apply(this, arguments);
+      };
+      try { drawPFD(); } finally { g.fillText = orig; }
+      const i = seen.findIndex(e => e.t === 'OAT');
+      return { all: seen.map(e => e.t), val: i >= 0 ? seen[i + 1] : null };
+    };
     S.alt = 1000;
     window._oatKma = { c: 7, elevFt: 1000, lat: S.lat, lon: S.lon, at: Date.now() };
     window._oatSurfaceAt = 0;
-    const withData = read();
-    const b = [...document.querySelectorAll('#pi-air .pi')]
-      .find(e => e.querySelector('i') && e.querySelector('i').textContent === 'OAT');
-    const litColor = getComputedStyle(b.querySelector('b')).color;
+    const lit = read();
     window._oatKma = null;
-    const noData = read();
-    const b2 = [...document.querySelectorAll('#pi-air .pi')]
-      .find(e => e.querySelector('i') && e.querySelector('i').textContent === 'OAT');
-    const dimColor = getComputedStyle(b2.querySelector('b')).color;
-    return { withData, noData, litColor, dimColor };
+    const dim = read();
+    return { litTxt: lit.val && lit.val.t, litColor: lit.val && lit.val.c,
+             dimTxt: dim.val && dim.val.t, dimColor: dim.val && dim.val.c,
+             all: lit.all };
   });
-  t.ok(/OAT\s*7/.test(shown.withData),
-    `받은 기온이 계기에 그대로 뜬다 (${shown.withData})`);
-  t.ok(/OAT\s*---/.test(shown.noData),
-    `자료가 없으면 '---' 다 (${shown.noData})`);
+  t.ok(/^7/.test(shown.litTxt || ''),
+    `받은 기온이 계기에 그대로 뜬다 (OAT ${shown.litTxt})`);
+  t.ok(/^---/.test(shown.dimTxt || ''),
+    `자료가 없으면 '---' 다 (OAT ${shown.dimTxt})`);
   t.ok(shown.litColor !== shown.dimColor,
     `값이 없을 때는 색으로도 구분된다 (${shown.litColor} vs ${shown.dimColor})`);
 
   // ── ⑥ ISA 는 내렸다 ──────────────────────────────────────────
   // 고도만 넣으면 나오는 표준대기 값이라 읽을 것이 없고, 옆의 OAT 와 비슷한
   // 숫자가 나란히 서서 어느 쪽이 실제인지 헷갈렸다.
-  t.ok(!/\bISA\b/.test(shown.withData), `글자판에 ISA 가 없다 (${shown.withData})`);
+  t.ok(!shown.all.includes('ISA'), `계기에 ISA 가 없다 (${shown.all.slice(0, 12).join(' ')})`);
 
   // ── ⑦ 받아 오는 곳 ───────────────────────────────────────────
   // 한 곳만 두면 그 창구가 막히는 순간 기온이 통째로 사라진다(실제로 그랬다).
@@ -118,15 +124,32 @@ export async function run(page, t) {
 
   // ── ⑧ 왜 안 뜨는지 볼 수 있는가 ──────────────────────────────
   // 빈 칸을 보고도 까닭을 알 길이 없으면 고칠 수도, 믿을 수도 없다.
+  // OAT 가 캔버스로 옮겨 간 뒤로는 그 자리(나침반 왼쪽 아래 띠)를 누르면
+  // 열린다 — 09-cdu.js 의 onPfdTap.
   t.eq(src.info, true, 'OAT 를 누르면 출처를 알려 주는 자리가 등록돼 있다');
-  const tap = await page.evaluate(() => {
-    const e = document.querySelector('#pi-air .pi-oat');
-    return { has: !!e, act: e ? e.dataset.act : null,
-             cur: e ? getComputedStyle(e).cursor : null };
+  const tap = await page.evaluate(async () => {
+    setSolo('pfd'); resizePFD(); drawPFD();
+    const r = document.getElementById('pfd').getBoundingClientRect();
+    const ctrlH = document.querySelector('.ctrl-bar').offsetHeight;
+    const usableH = cvs.height - ctrlH;
+    const bandH = hsiBandH();
+    const hsiWant = Math.round(cvs.width * 0.34 * 2 + bandH * 2 + 10);
+    const hsiH = Math.max(Math.round(usableH * 0.34),
+                          Math.min(Math.round(usableH * 0.50), hsiWant));
+    const sc = r.height / cvs.height;
+    // 그 띠의 왼쪽 절반 한가운데를 누른다
+    const px = r.left + r.width * 0.25;
+    const py = r.top + (usableH - bandH / 2) * sc;
+    document.getElementById('pfd').dispatchEvent(
+      new MouseEvent('click', { clientX: px, clientY: py, bubbles: true }));
+    await new Promise(res => setTimeout(res, 250));
+    const dlg = document.querySelector('.ui-dlg-msg');
+    const txt = dlg ? dlg.textContent : '';
+    const btn = document.querySelector('.ui-dlg-btns button, .ui-dlg-ok');
+    if (btn) btn.click();
+    return txt;
   });
-  t.eq(tap.has, true, 'OAT 자리가 누를 수 있게 돼 있다');
-  t.eq(tap.act, 'oatInfo', `누르면 출처를 연다 (${tap.act})`);
-  t.eq(tap.cur, 'pointer', '누를 수 있다는 것이 보인다');
+  t.ok(/OAT/.test(tap), `그 자리를 누르면 출처 창이 열린다 (${tap.split('\n')[0]})`);
 
   // ── ⑨ 창구가 막혀도 기온이 뜨는가 ────────────────────────────
   // 실제로 겪은 일이다: 창구 한 곳만 두었더니 그것이 답하지 않는 동안

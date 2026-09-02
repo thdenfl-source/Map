@@ -286,9 +286,15 @@ function init(){
   setTimeout(() => { try { _tpRenderMapPoints(); } catch(e) { _swallow(e); } }, 0);
   if (!_simLoopRunning) { _simLoopRunning = true; requestAnimationFrame(simStep); }
 
-  // ── PFD canvas tap-to-edit ──
-  // FMA row (top of AI)  : middle cell → HDG preselect, right cell → IAS preselect
-  // ALT header box (top of ALT tape, right column) → selAlt / selVS
+  // ── PFD 화면 누르기 ──
+  // 누를 것이 하나 남았다: 나침반 왼쪽 아래의 TAS·GS·OAT 글자판.
+  // 거기를 누르면 기온이 어디서 온 값인지 알려 준다(oatInfo) — 값이 '---' 일 때
+  // 까닭을 알 길이 없으면 고칠 수도, 믿을 수도 없다.
+  //
+  // 종전에는 두 자리가 더 있었다. 자세계 맨 윗줄(FMA)을 누르면 HDG·IAS
+  // 프리셀렉트를, 고도 테이프 머리글을 누르면 ALT·VS 프리셀렉트를 물었다.
+  // 둘 다 자동조종에게 줄 목표값인데 이 앱에는 자동조종이 없고, 그 화면
+  // 요소들도 이제 없다.
   async function onPfdTap(clientX, clientY) {
     const rect = cvs.getBoundingClientRect();
     const scX  = cvs.width  / rect.width;
@@ -296,38 +302,22 @@ function init(){
     const px   = (clientX - rect.left) * scX;
     const py   = (clientY - rect.top)  * scY;
 
-    // Mirror drawPFD geometry
-    const ctrlEl = document.querySelector('.ctrl-bar');
-    const CTRL_H = ctrlEl ? ctrlEl.offsetHeight : 80;
-    const W      = cvs.width;
-    const H      = cvs.height;
-    const usableH = H - CTRL_H;
     // drawPFD 와 같은 셈을 쓴다 — 글씨 배율(pfdFontScale)까지 따라가야 한다.
     // 여기가 어긋나면 눌러도 엉뚱한 자리가 잡힌다.
-    const tapW   = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
-    const vsiW   = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
-    // Right-column header box (where selAlt + VS are shown)
-    const HEAD_H   = Math.round(26 * pfdFontScale);
-    const altX     = W - tapW - vsiW;
-    const altRight = W - vsiW;                  // ALT tape right edge
+    const ctrlEl = document.querySelector('.ctrl-bar');
+    const CTRL_H = ctrlEl ? ctrlEl.offsetHeight : 80;
+    const W = cvs.width, H = cvs.height;
+    const usableH = H - CTRL_H;
+    const bandH   = hsiBandH();
+    const hsiWant = Math.round(W * 0.34 * 2 + bandH * 2 + 10);
+    const hsiH = Math.max(Math.round(usableH * 0.34),
+                          Math.min(Math.round(usableH * 0.50), hsiWant));
+    const hsiY = usableH - hsiH;
 
-    // — ALT tape header (top half, x in [altX, altRight]) —
-    // Header is sub-divided: top half ≈ selAlt, bottom half ≈ selVS
-    // 머리글은 시뮬 모드에서만 그린다(drawAltTape) — 없는 상자를 누르게 두지 않는다
-    if (simPanelOn && py >= 0 && py <= HEAD_H && px >= altX && px <= altRight) {
-      if (py < HEAD_H * 0.5) {
-        const v = await uiPrompt('ALT preselect (ft):', selAlt, { numeric: true });
-        if (v !== null) { const n = parseInt(v, 10); if (!isNaN(n) && n >= 0) selAlt = n; }
-      } else {
-        const v = await uiPrompt('VS preselect (fpm, magnitude — direction is auto):', Math.abs(selVS), { numeric: true });
-        if (v !== null) { const n = parseInt(v, 10); if (!isNaN(n) && n >= 0) selVS = Math.max(50, Math.min(3000, n)); }
-      }
-      return;
+    // 나침반 왼쪽 아래 띠 — TAS·GS·OAT
+    if (py >= hsiY + hsiH - bandH && py <= hsiY + hsiH && px <= W * 0.5) {
+      try { oatInfo(); } catch (e) { _swallow(e); }
     }
-    // 자세계 위 맨 윗줄은 이제 지금 값(GS·ALT·VS)을 읽는 자리다 — 누를 것이
-    // 없다. 종전에는 그 세 칸이 FMA(오토파일럿 모드)여서, 누르면 HDG·IAS
-    // 프리셀렉트를 물었다. 잡아 줄 자동조종이 없는 화면에서 목표값만 받아
-    // 두는 것은 누른 사람을 헷갈리게 한다.
   }
 
   // Touch: guard against scroll drags; click: desktop support

@@ -20,18 +20,21 @@ export async function run(page, t) {
       return orig.apply(this, arguments);
     };
     try { resizePFD(); drawPFD(); } finally { g.fillText = orig; }
-    // 윗줄이 차지하는 높이·가로 범위 — drawPFD 가 쓰는 것과 같은 셈.
-    // 가로를 안 자르면 속도 테이프의 'KT' 와 승강계의 'FPM' 머리글이 함께
-    // 잡힌다. 그것들은 좌우 기둥의 글자라 이 줄과는 상관이 없다.
+    // 윗줄이 차지하는 높이 — drawAI 가 쓰는 것과 같은 셈.
+    // 좌우 기둥(속도·고도 테이프·승강계)을 걷어낸 뒤로 자세계가 화면 폭을
+    // 통째로 쓰므로, 가로로 자를 것이 없다.
     const top = 2 + fmaStripH();
     const W = cvs.width;
-    const tapW = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
-    const vsiW = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
-    const aiX = tapW, aiR = W - tapW - vsiW;
     const px = f => parseFloat(String(f).match(/(\d*\.?\d+)px/)[1]);
-    const inStrip = calls.filter(c => c.y <= top + 2 && c.x >= aiX && c.x <= aiR);
+    // 캔버스를 옮겨(translate) 그리는 것들 — 자세계 피치 눈금과 나침반 장미 —
+    // 은 좌표가 0 이하로 들어온다. 화면 좌표가 아니므로 걸러낸다.
+    const inStrip = calls.filter(c => c.y > 0 && c.y <= top + 2 && c.x > 0);
     const find = txt => inStrip.find(c => c.txt === txt);
-    const span = c => c && (c.align === 'right' ? [c.x - c.w, c.x] : [c.x, c.x + c.w]);
+    // 가운데 정렬은 x 가 글자의 중심이다 — 절반씩 좌우로 벌려야 실제 범위가 된다
+    const span = c => !c ? null
+      : c.align === 'right'  ? [c.x - c.w, c.x]
+      : c.align === 'center' ? [c.x - c.w / 2, c.x + c.w / 2]
+      : [c.x, c.x + c.w];
     return {
       top, canvasW: cvs.width,
       txts: inStrip.map(c => c.txt),
@@ -119,7 +122,7 @@ export async function run(page, t) {
     t.ok(v.length >= 3 && v[0][1] < v[1][0] && v[1][1] < v[2][0],
       `${w}px — 값 셋이 겹치지 않는다`);
     t.ok(v[0][0] > 0 && v[v.length - 1][1] < q.canvasW,
-      `${w}px — 값이 화면 안에 있다`);
+      `${w}px — 값이 화면 안에 있다 (${v[0][0].toFixed(0)}~${v[v.length - 1][1].toFixed(0)} / ${q.canvasW}px)`);
   }
 
   // 뒷정리
