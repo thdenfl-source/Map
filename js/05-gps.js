@@ -35,6 +35,7 @@ function startGPS() {
   gpsMode = true;
   lastGpsMs = 0;
   _gpsPrev = null;
+  _hdgBias = 0; _hdgSrc = null;   // 나침반 보정은 이번 비행에서 다시 잡는다
   startDevOrientation();   // 저속(10kt 미만) 헤딩용 기기 나침반(권한은 이 제스처에서 요청)
   updateGpsBtn();
   const status = document.getElementById('gps-status');
@@ -93,10 +94,48 @@ let _gpsPrev = null;   // 직전 GPS 위치(속도·방위각 산출용)
 // ── 기기 방향(나침반·자이로) ──────────────────────────────────────
 // 헤딩은 저속에서만 나침반을 쓴다. 기준은 20km/h — 그보다 느리면 GPS 항적이
 // 방향을 못 잡는다(제자리에서 도는 동안에도 항적은 한 점이다).
-const HDG_DEV_KMH = 20;                          // 이보다 느리면 나침반 헤딩
+const HDG_DEV_KMH = 20;                          // 이보다 느리면 항적을 못 믿는다
 const KMH_PER_KT  = 1.852;
 const HDG_DEV_KT  = HDG_DEV_KMH / KMH_PER_KT;    // ≈ 10.8kt
 let _devHdg = null, _devHdgBound = false, _devHdgLastApply = 0;
+let _devHdgAt = 0;                               // 마지막 나침반 값이 들어온 시각
+
+// ── 헤딩 — 나침반으로 돌리고 GPS 항적으로 맞춘다(HYBRID) ─────────
+// 종전에는 20km/h 를 경계로 둘 중 하나만 썼다. 그 위에서는 GPS 항적만 썼는데,
+// 위치는 3초에 한 번 들어오므로 나침반 카드가 3초마다 뚝뚝 끊겨 돌았다.
+// (게다가 발열을 줄이려고 그 속도에서는 나침반 센서를 아예 놓아 버렸다)
+//
+// 이제 둘을 함께 쓴다.
+//   · 화면에서 도는 것은 늘 기기 나침반이다 — 센서가 초당 수십 번 들어오므로
+//     움직임이 이어진다.
+//   · GPS 가 들어올 때마다 항적과 지금 표시의 차이를 재서 보정값(_hdgBias)에
+//     조금씩 반영한다. 나침반이 거치 각도나 자기 간섭으로 틀어져 있어도
+//     몇 번의 갱신을 거치며 항적 쪽으로 맞춰진다.
+//   · 나침반이 없거나(권한 거부·미탑재·데스크톱) 값이 끊기면 종전처럼
+//     항적을 그대로 쓴다 — 끊겨 보여도 없는 것보다 낫다.
+//
+// 한 번에 다 맞추지 않고 조금씩(GAIN) 맞추는 이유: GPS 항적은 저속·다중경로
+// 에서 크게 튄다. 한 번 튄 값에 화면을 통째로 끌려가게 두면 종전보다 나쁘다.
+const HDG_BIAS_GAIN     = 0.25;   // GPS 한 번에 오차의 1/4 을 반영한다
+const HDG_BIAS_MAX_STEP = 20;     // 한 번에 이보다 크게는 안 돌린다(튀는 항적 방어)
+const HDG_SMOOTH        = 0.35;   // 화면 헤딩이 목표를 따라가는 비율(센서 한 번당)
+const HDG_DEV_STALE_MS  = 2000;   // 이만큼 나침반이 조용하면 없는 것으로 친다
+let _hdgBias = 0;                 // 나침반 → 항적 보정값(°)
+let _hdgSrc  = null;              // 'HYBRID' | 'DEV' | 'GPS' | null — 무엇으로 그리는가
+
+function _devHdgFresh() {
+  return _devHdg !== null && (Date.now() - _devHdgAt) < HDG_DEV_STALE_MS;
+}
+
+// 화면 헤딩을 목표로 조금씩 옮긴다. 센서는 자주 들어오므로 한 번에 다 옮기면
+// 값의 떨림이 그대로 카드의 떨림이 된다.
+function _hdgGlide(target) {
+  const t = normA(target);
+  S.hdg = (typeof S.hdg !== 'number' || isNaN(S.hdg))
+    ? t : normA(S.hdg + normAS(t - S.hdg) * HDG_SMOOTH);
+  bankTarget = 0; _rollRate = 0; syncHdgBug();
+  if (!ahrsOn) S.bnk = 0;              // 자세를 보이는 중이면 롤을 지우지 않는다
+}
 
 // ── 자세(AHRS) — 기기 기울기로 피치·롤을 보인다 ──────────────────
 // 우리에겐 자세 센서가 따로 없다. 기기 자체의 기울기를 쓰되, 거치 각도가
@@ -168,13 +207,13 @@ function _onDevOrientation(e) {
   }
   if (h === null) return;
   _devHdg = normA(h);
-  // 저속에서는 GPS 갱신(3초)과 무관하게 헤딩을 즉시 반영(0.2초 스로틀)
-  const now = Date.now();
-  if (gpsMode && S.spd < HDG_DEV_KT && now - _devHdgLastApply > 200) {
-    _devHdgLastApply = now;
-    S.hdg = _devHdg;
-    bankTarget = 0; _rollRate = 0; syncHdgBug();
-    if (!ahrsOn) S.bnk = 0;              // 자세를 보이는 중이면 롤을 지우지 않는다
+  _devHdgAt = Date.now();
+  // 속도와 상관없이 나침반이 화면을 돌린다(0.1초 스로틀). GPS 는 이 값을
+  // 항적 쪽으로 맞추는 데만 쓴다 — applyGPS 의 _hdgBias.
+  if (gpsMode && _devHdgAt - _devHdgLastApply > 100) {
+    _devHdgLastApply = _devHdgAt;
+    _hdgSrc = _hdgSrc === 'HYBRID' ? 'HYBRID' : 'DEV';
+    _hdgGlide(_devHdg + _hdgBias);
   }
 }
 function startDevOrientation() {
@@ -199,15 +238,13 @@ function stopDevOrientation() {
   if (_devHdgBound) { window.removeEventListener('deviceorientation', _onDevOrientation); _devHdgBound = false; }
   _devHdg = null;
 }
-// 발열 저감: 항적 헤딩 구간(≥12kt)에서는 나침반 이벤트 일시 해제,
-// 저속(<8kt) 복귀 시 재바인딩(히스테리시스로 경계 떨림 방지)
-function _devHdgAuto(spdKt) {
-  if (!gpsMode || spdKt === null) return;
-  if (ahrsOn) return;                    // 자세 시현 중에는 센서를 놓지 않는다
-  if (spdKt >= HDG_DEV_KT + 1 && _devHdgBound) {
-    window.removeEventListener('deviceorientation', _onDevOrientation);
-    _devHdgBound = false; _devHdg = null;
-  } else if (spdKt < HDG_DEV_KT - 1 && !_devHdgBound) {
+// 종전에는 발열을 줄이려고 12kt 를 넘으면 나침반 이벤트를 놓았다. 그런데
+// 헤딩을 나침반으로 돌리게 된 지금은 그 속도야말로 센서가 있어야 하는 구간이다
+// (놓으면 다시 3초마다 끊긴다). GPS 를 켠 동안에는 계속 붙들어 둔다 — 발열은
+// 값을 반영하는 쪽을 0.1초로 스로틀해 던다.
+function _devHdgAuto() {
+  if (!gpsMode) return;
+  if (!_devHdgBound) {
     window.addEventListener('deviceorientation', _onDevOrientation);
     _devHdgBound = true;
   }
@@ -237,23 +274,40 @@ function applyGPS(pos) {
       if (!ahrsOn) { S.pit = 0; S.bnk = 0; }
     } else S.pit = pitchFromSpd(S.spd);
   }
-  _devHdgAuto(spdKt);   // 속도에 따라 나침반 이벤트 자동 on/off(발열 저감)
+  _devHdgAuto();   // 나침반 이벤트를 붙들어 둔다(헤딩이 이 값으로 돈다)
 
   // ── 방위각 ──
-  // 10kt 미만: 기기 방향(나침반) 사용 / 10kt 이상: 항적(track) 기준
-  let hdg = null;
-  if (spdKt !== null && spdKt < HDG_DEV_KT && _devHdg !== null) {
-    hdg = _devHdg;
-  } else if (c.heading !== null && !isNaN(c.heading) && (c.speed == null || c.speed > 0.5)) {
-    hdg = c.heading;                                  // GPS 항적(track)
+  // 항적(track) — GPS 가 줄 때만 있는 값이다. 화면에 곧장 꽂지 않는다.
+  let track = null;
+  if (c.heading !== null && !isNaN(c.heading) && (c.speed == null || c.speed > 0.5)) {
+    track = c.heading;                                // GPS 가 계산해 준 항적
   } else if (_gpsPrev) {
     const dNM = distance(_gpsPrev.lat, _gpsPrev.lon, lat, lon);
-    if (dNM > 0.0027) hdg = bearing(_gpsPrev.lat, _gpsPrev.lon, lat, lon);  // ~5m 이상 이동
+    if (dNM > 0.0027) track = bearing(_gpsPrev.lat, _gpsPrev.lon, lat, lon);  // ~5m 이상 이동
   }
-  if (hdg === null && _devHdg !== null && (spdKt === null || spdKt < HDG_DEV_KT)) hdg = _devHdg;
-  if (hdg !== null) {
-    S.hdg = normA(hdg);
-    bankTarget = 0; S.bnk = 0; _rollRate = 0; syncHdgBug();
+  // 항적은 20km/h 는 넘어야 뜻이 있다. 그보다 느리면 제자리에서 도는 동안에도
+  // 항적은 한 점이라 방향을 못 잡는다.
+  const trackOk = track !== null && spdKt !== null && spdKt >= HDG_DEV_KT;
+
+  if (_devHdgFresh()) {
+    // 나침반이 살아 있다 — 화면은 그쪽(_onDevOrientation)이 계속 돌리고,
+    // 여기서는 항적과의 차이를 보정값에 조금씩 실어 준다.
+    if (trackOk) {
+      const err  = normAS(track - normA(_devHdg + _hdgBias));
+      const step = Math.max(-HDG_BIAS_MAX_STEP,
+                            Math.min(HDG_BIAS_MAX_STEP, err * HDG_BIAS_GAIN));
+      _hdgBias = normA(_hdgBias + step);
+      _hdgSrc = 'HYBRID';
+    } else if (_hdgSrc !== 'HYBRID') {
+      _hdgSrc = 'DEV';
+    }
+    _hdgGlide(_devHdg + _hdgBias);
+  } else if (track !== null) {
+    // 나침반이 없다 — 종전처럼 항적을 그대로 쓴다(3초마다 끊긴다)
+    _hdgSrc = 'GPS';
+    S.hdg = normA(track);
+    bankTarget = 0; _rollRate = 0; syncHdgBug();
+    if (!ahrsOn) S.bnk = 0;
   }
 
   // ── 고도 ── GPS 고도(m) → ft
