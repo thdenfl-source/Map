@@ -306,10 +306,6 @@ function init(){
     // 여기가 어긋나면 눌러도 엉뚱한 자리가 잡힌다.
     const tapW   = Math.max(56 * pfdFontScale, Math.min(76 * pfdFontScale, W * 0.082));
     const vsiW   = Math.max(28 * pfdFontScale, Math.min(38 * pfdFontScale, W * 0.046));
-    const aiX    = tapW;
-    const aiW    = W - tapW * 2 - vsiW;
-    const aiH    = Math.floor(usableH * 0.56);
-
     // Right-column header box (where selAlt + VS are shown)
     const HEAD_H   = Math.round(26 * pfdFontScale);
     const altX     = W - tapW - vsiW;
@@ -317,7 +313,8 @@ function init(){
 
     // — ALT tape header (top half, x in [altX, altRight]) —
     // Header is sub-divided: top half ≈ selAlt, bottom half ≈ selVS
-    if (py >= 0 && py <= HEAD_H && px >= altX && px <= altRight) {
+    // 머리글은 시뮬 모드에서만 그린다(drawAltTape) — 없는 상자를 누르게 두지 않는다
+    if (simPanelOn && py >= 0 && py <= HEAD_H && px >= altX && px <= altRight) {
       if (py < HEAD_H * 0.5) {
         const v = await uiPrompt('ALT preselect (ft):', selAlt, { numeric: true });
         if (v !== null) { const n = parseInt(v, 10); if (!isNaN(n) && n >= 0) selAlt = n; }
@@ -327,23 +324,10 @@ function init(){
       }
       return;
     }
-    // — FMA row (centre AI column, top) — HDG / IAS preselect entry —
-    if (px < aiX || px > aiX + aiW) return;
-    const cellW  = Math.floor((aiW - FMA_MARGIN * 2 - FMA_GAP * 2) / 3);
-    const relX   = px - (aiX + FMA_MARGIN);
-    const boxIdx = Math.max(0, Math.min(2, Math.floor(relX / (cellW + FMA_GAP))));
-
-    const fmaTop = FMA_MARGIN;
-    const fmaBtm = FMA_MARGIN + FMA_BOX_H;
-    if (py >= fmaTop && py <= fmaBtm) {
-      if (boxIdx === 1) {
-        const v = await uiPrompt('HDG preselect (1–360°M):', fmtA(toMag(selHdg)), { numeric: true });
-        if (v !== null) { const n = parseInt(v, 10); if (!isNaN(n)) { selHdg = toTrue(Math.max(1, Math.min(360, n))) || 360; hdgSelOn = true; rollApOn = true; } }
-      } else if (boxIdx === 2) {
-        const v = await uiPrompt('IAS preselect (kt):', selSpd, { numeric: true });
-        if (v !== null) { const n = parseInt(v, 10); if (!isNaN(n) && n >= 0) selSpd = n; }
-      }
-    }
+    // 자세계 위 맨 윗줄은 이제 지금 값(GS·ALT·VS)을 읽는 자리다 — 누를 것이
+    // 없다. 종전에는 그 세 칸이 FMA(오토파일럿 모드)여서, 누르면 HDG·IAS
+    // 프리셀렉트를 물었다. 잡아 줄 자동조종이 없는 화면에서 목표값만 받아
+    // 두는 것은 누른 사람을 헷갈리게 한다.
   }
 
   // Touch: guard against scroll drags; click: desktop support

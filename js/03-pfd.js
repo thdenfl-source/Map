@@ -94,110 +94,99 @@ function drawPFD() {
 }
 
 // ────────────────────────────────────────
-// FLIGHT MODE ANNUNCIATOR (FMA)
-// Three rectangular boxes at top of AI:  Left=Collective | Mid=Yaw/Roll | Right=Pitch
+// 맨 윗줄 — 지금 값 세 가지 (GS · ALT · VS)
 // ────────────────────────────────────────
-// ── FMA geometry constants (used by drawFMA + click handler) ──
-// FMA shows axis engagement state only; per-axis target values are drawn
-// inside the right-column ALT tape header instead.
-const FMA_BOX_H  = 20;
+// 종전에는 여기가 FMA(오토파일럿 모드 표시줄)였다. ALT | HDG | IAS 세 칸에
+// 어느 축을 자동조종이 잡고 있는지 적었는데, 이 앱에는 자동조종이 없다 —
+// 조작부(FCP)를 내린 뒤로는 늘 같은 글자가 떠 있는 자리였다.
+//
+// 그 자리에 지금 값을 큼직하게 적는다. 좌우 테이프는 폭이 좁아(56~76px)
+// 숫자를 더 키울 수가 없다. 테이프는 '흐름'(오르는 중인가·빠라지는 중인가)을
+// 보는 것이고, 정확한 숫자는 여기서 읽는다.
+//
+// 왼쪽은 GS(대지속도)다. IAS 가 아니다 — 이 앱에는 대기속도계가 없고 이
+// 숫자는 GPS 가 준 대지속도다. 계기에 IAS 라 적으면 없는 센서를 있는 것처럼
+// 보이게 한다(바람 표시를 내린 것과 같은 이유다).
+//
+// ── 칸 크기 (drawAI 와 CDU 의 터치 판정이 함께 쓴다) ──
 const FMA_MARGIN = 2;
 const FMA_GAP    = 3;
+const FMA_LBL_H  = 13;                    // 이름표 줄
+const FMA_VAL_H  = 27;                    // 값 상자
+const FMA_BOX_H  = FMA_LBL_H + FMA_VAL_H; // 배율 1 일 때의 줄 높이
+// 글씨가 배율을 따라 커지므로(pfdFontScale) 칸도 함께 커져야 한다.
+// 종전에는 높이만 20px 로 못 박아 두어, 폰에서 글씨가 상자를 넘었다.
+function fmaStripH() { return Math.round(FMA_BOX_H * pfdFontScale); }
 
-// ────────────────────────────────────────
-// FLIGHT MODE ANNUNCIATOR  (mode labels only)
-// ────────────────────────────────────────
-function drawFMA(x, y, w) {
-  const MARGIN = FMA_MARGIN, GAP = FMA_GAP, BOX_H = FMA_BOX_H;
-  const cellW  = Math.floor((w - MARGIN * 2 - GAP * 2) / 3);
-  const Y0     = y + MARGIN;
-  // Determine active mode per axis.  Default ALT | HDG | IAS — each axis
-  // gets its own distinct label, never duplicating ALT on two axes.
-  //   Left   (collective): ALT (홀드가 꺼져 있으면 흐리게)
-  //   Middle (yaw/roll)  : HDG or GS when GSPD
-  //   Right  (pitch)     : IAS — or GS when GSPD engaged
-  let left, leftOn,
-      mid = navApOn
-        ? (holdOn && _holdPhase !== 'TOFIX'
-             ? 'HOLD ' + (_holdEntry ? _holdEntry[0] : '')     // D=직진 P=평행 T=눈물방울
-             : (holdOn ? 'HOLD ARM' : (_navDirectTo ? 'NAV DIR' : 'NAV')))
-        : (hdgSelOn ? 'HDG SEL' : 'HDG'),
-      midOn = rollApOn || navApOn, right, rightOn;
+function drawTopReadout(x, y, w) {
+  const MARGIN = FMA_MARGIN, GAP = FMA_GAP;
+  const cellW = Math.floor((w - MARGIN * 2 - GAP * 2) / 3);
+  const lblH  = Math.round(FMA_LBL_H * pfdFontScale);
+  const valH  = Math.round(FMA_VAL_H * pfdFontScale);
+  const Y0    = y + MARGIN;
 
-  if (gspdOn) {
-    // GSPD engaged: both yaw/roll (mid) and pitch (right) are driven by
-    // body-frame ground speed; capture GS on both axes.
-    left   = 'ALT'; leftOn = true;
-    // GSPD 는 요/롤 축을 가져간다. NAV·HDG SEL 이 켜져 있어도 조향하지 못하므로
-    // 켜진 채 방치하지 말고 "대기"임을 분명히 적는다.
-    // (버튼은 초록인데 기체가 안 도는 상황을 화면만 보고 알 수 있어야 한다)
-    mid    = navApOn ? 'GS/NAV' : (hdgSelOn ? 'GS/HDG' : 'GS');
-    midOn  = true;
-    right  = 'GS'; rightOn = true;
-  } else {
-    left   = 'ALT';
-    leftOn = altHoldOn;
-    right  = 'IAS';
-    rightOn = true;
-  }
-
-  // ── G/S (ILS 강하선) ──
-  // 세로축을 잡으면 그 칸의 주 모드가 G/S 가 된다(승강계 마름모·버튼과 같은 자홍색).
-  // 아직 무장만 한 상태는 실제 FMA 처럼 '흰 글씨로 옆에' 적어 둔다 —
-  // 지금 잡고 있는 모드와 곧 잡을 모드를 한눈에 갈라 보기 위해서다.
-  let leftArm = '';
-  if (typeof gsOn !== 'undefined' && gsOn) { left = 'G/S'; leftOn = true; }
-  else if (typeof gsArmed !== 'undefined' && gsArmed) { leftArm = 'G/S'; }
-
-  const modes  = [left,   mid,    right  ];
-  const active = [leftOn, midOn,  rightOn];
-  const armed  = [leftArm, '',    ''      ];
-
-  const modeColor = (lbl, on) => {
-    if (!on) return '#3a3a3a';
-    // GS/NAV · GS/HDG = GSPD 가 축을 잡고 있어 NAV·HDG 가 조향하지 못하는 대기 상태.
-    // 초록(정상 작동)과 구분되게 호박색으로 표시한다.
-    // G/S 도 빗금이 있으므로 대기 상태(GS/NAV)보다 먼저 가려낸다.
-    if (lbl === 'G/S') return '#ff66ff';   // 강하선을 잡은 상태 — 승강계 마름모와 같은 색
-    if (lbl.indexOf('/') >= 0) return '#ffb74d';
-    return '#00ff88';  // all active AFCS modes in green
-  };
+  const met = unitAlt === 'm';
+  const vsShown = met ? S.vs * 0.00508 : S.vs;
+  // 승강계 바늘과 같은 색 규칙 — 오르면 초록, 내리면 빨강, 그 사이는 회색
+  const vsCol = S.vs > 50 ? '#00cc44' : S.vs < -50 ? '#ff6644' : '#bbbbbb';
+  const vsTxt = met ? vsShown.toFixed(1)
+                    : String(Math.round(vsShown / 10) * 10);   // fpm 은 10 단위로 — 1 단위는 떨림만 보인다
+  const cells = [
+    { lbl: 'GS',  unit: S_LBL(), val: String(Math.round(S.spd * S_CV())), col: '#00e07a' },
+    { lbl: 'ALT', unit: A_LBL(), val: String(Math.round(S.alt * A_CV())), col: '#ffffff' },
+    { lbl: 'VS',  unit: met ? 'M/S' : 'FPM',
+      val: (Math.abs(S.vs) < 10 ? '0' : (S.vs > 0 ? '+' : '') + vsTxt), col: vsCol },
+  ];
 
   ctx.save();
-  ctx.font = `bold ${Math.max(8, Math.min(11, w * 0.030))}px 'Helvetica Neue', 'Arial', sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.textBaseline = 'middle';
+
+  // 글씨는 칸에 들어갈 만큼만 키운다. 좁은 폰에서는 칸이 45px 밖에 안 되는데
+  // 다섯 자리 고도(12500)를 설계 크기로 적으면 66px 이라 옆 칸을 침범한다.
+  // 가장 넓은 값을 재서, 넘칠 때만 그 비율로 줄인다.
+  const FONT = 'Helvetica Neue, Arial, sans-serif';
+  const fit = (want, texts, room, min) => {
+    ctx.font = `bold ${want}px ${FONT}`;
+    const wide = Math.max(...texts.map(tx => ctx.measureText(tx).width));
+    return wide <= room ? want : Math.max(min, Math.floor(want * room / wide));
+  };
+  const valFs  = fit(Math.max(11, Math.round(FMA_VAL_H * 0.70)),
+                     cells.map(c => c.val), cellW - 6, 9);
+  const lblFs  = fit(Math.max(8, Math.round(FMA_LBL_H * 0.72)),
+                     cells.map(c => c.lbl + ' ' + c.unit), cellW - 4, 7);
+  const unitFs = Math.max(6, Math.round(lblFs * 0.84));
 
   for (let i = 0; i < 3; i++) {
     const bx = x + MARGIN + i * (cellW + GAP);
-    const on = active[i];
-    ctx.strokeStyle = on ? '#446688' : '#1a1a1a';
-    ctx.lineWidth   = 1;
-    ctx.strokeRect(bx + 0.5, Y0 + 0.5, cellW - 1, BOX_H - 1);
-    if (on) {
-      ctx.fillStyle = 'rgba(0,25,50,0.85)';
-      ctx.fillRect(bx + 1, Y0 + 1, cellW - 2, BOX_H - 2);
-    }
-    const ty = Y0 + BOX_H / 2 + 0.5;
-    if (armed[i]) {
-      // 주 모드 + 무장 모드를 한 칸에 나란히. 둘을 합친 폭을 재어 가운데 맞춘다.
-      const mainF = ctx.font;
-      const smallF = `bold ${Math.max(7, Math.min(9, w * 0.024))}px 'Helvetica Neue', 'Arial', sans-serif`;
-      ctx.font = mainF;  const w1 = ctx.measureText(modes[i]).width;
-      ctx.font = smallF; const w2 = ctx.measureText(armed[i]).width;
-      const gap2 = 4, total = w1 + gap2 + w2;
-      let px = bx + (cellW - total) / 2;
-      ctx.textAlign = 'left';
-      ctx.font = mainF;  ctx.fillStyle = modeColor(modes[i], on);
-      ctx.fillText(modes[i], px, ty);
-      px += w1 + gap2;
-      // 무장은 흰색 — 아직 잡지 않았다는 뜻이다
-      ctx.font = smallF; ctx.fillStyle = '#ffffff';
-      ctx.fillText(armed[i], px, ty);
-      ctx.font = mainF; ctx.textAlign = 'center';
-    } else {
-      ctx.fillStyle = modeColor(modes[i], on);
-      ctx.fillText(modes[i], bx + cellW / 2, ty);
-    }
+
+    // 이름표 — 값보다 작게, 단위를 옆에 붙여 적는다
+    ctx.textAlign = 'center';
+    const c = cells[i];
+    ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+    const w1 = ctx.measureText(c.lbl).width;
+    ctx.font = `${unitFs}px Helvetica Neue, Arial, sans-serif`;
+    const w2 = ctx.measureText(c.unit).width;
+    const gap2 = 3;
+    let px = bx + (cellW - (w1 + gap2 + w2)) / 2;
+    const ly = Y0 + lblH / 2;
+    ctx.textAlign = 'left';
+    ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.fillStyle = '#8fa3b8';
+    ctx.fillText(c.lbl, px, ly);
+    ctx.font = `${unitFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.fillStyle = '#5a6a7a';
+    ctx.fillText(c.unit, px + w1 + gap2, ly);
+
+    // 값 상자
+    const by = Y0 + lblH;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(bx, by, cellW, valH);
+    ctx.strokeStyle = '#446688'; ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, cellW - 1, valH - 1);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = c.col;
+    ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.fillText(c.val, bx + cellW / 2, by + valH / 2 + 1);
   }
   ctx.restore();
 }
@@ -206,7 +195,7 @@ function drawFMA(x, y, w) {
 // ATTITUDE INDICATOR
 // ────────────────────────────────────────
 function drawAI(x, y, w, h) {
-  const FMA_H = FMA_MARGIN + FMA_BOX_H;  // AFCS strip height
+  const FMA_H = FMA_MARGIN + fmaStripH();   // 맨 윗줄(GS·ALT·VS)이 차지하는 높이
   const aiY   = y + FMA_H;               // AI content starts below AFCS strip
   const aiH   = h - FMA_H;
   const cx = x + w/2, cy = aiY + aiH * 0.47;
@@ -315,7 +304,7 @@ function drawAI(x, y, w, h) {
   ctx.restore();  // end inner clip (AI content area)
 
   // AFCS strip drawn last in outer clip — sky/horizon cannot overwrite it
-  drawFMA(x, y, w);
+  drawTopReadout(x, y, w);
 
   ctx.restore();
 }
@@ -406,7 +395,12 @@ function drawAltTape(x, y, w, h) {
   // Height is reserved at the top of the tape so the moving scale starts below it.
   // 머리글 높이와 두 줄의 베이스라인도 글씨 배율을 따른다 — px 로 두면
   // 키운 두 번째 줄(VS)이 머리글 밖으로 나가 눈금 라벨과 겹친다.
-  const HEAD_H = Math.round(26 * pfdFontScale);
+  // 자동조종이 없는 항법 보조 모드에서는 머리글 자체를 두지 않는다. 잡아 줄
+  // 것이 없는 목표 고도를 계기에 적어 두면, 바로 옆 맨 윗줄의 '지금 고도'와
+  // 나란히 서서 어느 쪽이 실제인지 헷갈린다(실제로 500 / 500 이 나란히 떴다).
+  // 그만큼 눈금이 위로 더 자란다.
+  const headOn = (typeof simPanelOn !== 'undefined') ? simPanelOn : true;
+  const HEAD_H = headOn ? Math.round(26 * pfdFontScale) : 0;
   const hL1 = Math.round(11 * pfdFontScale), hL2 = Math.round(22 * pfdFontScale);
   const tapeY  = y + HEAD_H;
   const tapeH  = h - HEAD_H;
@@ -430,7 +424,8 @@ function drawAltTape(x, y, w, h) {
   }
 
   // selAlt target bug — cyan triangle on left edge when ALT hold active
-  if (altHoldOn) {
+  // (목표 고도를 잡아 줄 자동조종이 있는 시뮬 모드에서만 뜻이 있다)
+  if (headOn && altHoldOn) {
     const tay = cy - (selAlt - S.alt) * pp100 / 100;
     if (tay >= tapeY + 3 && tay <= tapeY + tapeH - 3) {
       ctx.fillStyle = '#00cfff';
@@ -449,8 +444,8 @@ function drawAltTape(x, y, w, h) {
   ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.max(12, w * 0.17)}px Helvetica Neue, Arial, sans-serif`;
   ctx.textAlign = 'center'; ctx.fillText(Math.round(S.alt * acv), x + w/2, cy + 5);
 
-  // ── ALT setting + change-rate box (top header) ──
-  // Active when ALT hold is engaged; dim otherwise. Tappable for selAlt edit.
+  // ── ALT setting + change-rate box (top header) ── 시뮬 모드에서만
+  if (headOn) {
   const on = altHoldOn;
   ctx.fillStyle = '#000';
   ctx.fillRect(x + 1, y + 1, w - 2, HEAD_H - 2);
@@ -487,6 +482,7 @@ function drawAltTape(x, y, w, h) {
   ctx.textAlign = 'right';
   ctx.fillStyle = on ? '#ffaa44' : '#665533';
   ctx.fillText(vsStr, x + w - 4, y + hL2);
+  }
 
   // Altitude trend vector (magenta, 6-second VS extrapolation)
   if (Math.abs(S.vs) > 10) {
