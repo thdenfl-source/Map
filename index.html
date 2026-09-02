@@ -1679,7 +1679,29 @@ body.phone-mode .ctrl-lbl-btn {
 body.phone-mode .susp-btn .susp-auto {
   display: inline; margin-left: 4px; font-size: 10px; letter-spacing: 0;
 }
-body.phone-mode .sw-display { font-size: 15px; min-width: 76px; letter-spacing: 0.5px; }
+body.phone-mode .sw-display { min-width: 76px; }
+/* 조작부 두 줄(CRS·OBS·BRG·SUSP / 시계·STOP WATCH·RNP)의 글씨를 바로 위
+   NAV 소스 버튼(.pi-sel)에 통째로 맞춘다. 같은 자리에 이어 붙은 버튼들인데
+   저마다였다 — CRS 만 13px 보통 글씨였고, BRG·RNP·STOP WATCH 도 보통 글씨,
+   시계는 글꼴마저 달랐다(-apple-system). 굵기가 들쭉날쭉하면 어느 것이
+   눌린 버튼인지 색보다 굵기로 먼저 읽히는 착시가 생긴다.
+   .ctrl-bar 안으로 한정한다 — 같은 클래스가 지도 툴바에도 쓰인다. */
+body.phone-mode .ctrl-bar .ctrl-lbl-btn,
+body.phone-mode .ctrl-bar .cbtn,
+body.phone-mode .ctrl-bar .obs-btn,
+body.phone-mode .ctrl-bar .brg-tog-btn,
+body.phone-mode .ctrl-bar .susp-btn,
+body.phone-mode .ctrl-bar .rnp-btn,
+body.phone-mode .ctrl-bar .sw-btn,
+body.phone-mode .ctrl-bar .sw-display {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px; font-weight: bold; letter-spacing: 0.5px;
+}
+/* 시계도 같은 줄에 서므로 높이를 나란히 맞춘다 */
+body.phone-mode .ctrl-bar .sw-display {
+  height: var(--ctrl-btn-h); box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+}
 </style>
 </head>
 <body>
