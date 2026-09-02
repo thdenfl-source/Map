@@ -171,8 +171,8 @@ function drRender(sinceMs) {
 }
 
 function drTick() {
-  // GPS 를 쓰지 않는 동안(수동으로 껐거나 FDR 리플레이 중)에는 관여하지 않는다
-  if (!gpsMode || (typeof _fdrPlaying !== 'undefined' && _fdrPlaying)) {
+  // GPS 를 쓰지 않는 동안에는 관여하지 않는다
+  if (!gpsMode) {
     if (drActive || drLost) { drReset(); try { updateGpsBtn(); } catch (e) { _swallow(e); } }
     return;
   }

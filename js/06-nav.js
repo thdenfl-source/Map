@@ -598,7 +598,6 @@ function fpRenderList(area, title, footer) {
     <div class="fp-nav-btn" data-act="fpGoCduHome"><span>🏠</span>Home</div>
     <div class="fp-nav-btn" data-act="fpGo" data-arg='["ADD"]'><span>＋</span>Add WPT</div>
     <div class="fp-nav-btn" data-act="clearFP"><span>✕</span>Clr</div>
-    <div class="fp-nav-btn" data-act="resetSim"><span>⟳</span>Rst</div>
     <div class="fp-nav-btn" data-act="fpBackToCdu"><span>↩</span>Back</div>`;
 }
 

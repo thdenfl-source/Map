@@ -124,22 +124,17 @@ export async function run(page, t) {
 
   // ── ⑧ 왜 안 뜨는지 볼 수 있는가 ──────────────────────────────
   // 빈 칸을 보고도 까닭을 알 길이 없으면 고칠 수도, 믿을 수도 없다.
-  // OAT 가 캔버스로 옮겨 간 뒤로는 그 자리(나침반 왼쪽 아래 띠)를 누르면
-  // 열린다 — 09-cdu.js 의 onPfdTap.
+  // OAT 가 캔버스로 옮겨 간 뒤로는 그 글자를 누르면 열린다 —
+  // 09-cdu.js 의 onPfdTap 이 hsiHitBoxes 를 보고 가른다.
   t.eq(src.info, true, 'OAT 를 누르면 출처를 알려 주는 자리가 등록돼 있다');
   const tap = await page.evaluate(async () => {
     setSolo('pfd'); resizePFD(); drawPFD();
     const r = document.getElementById('pfd').getBoundingClientRect();
-    const ctrlH = document.querySelector('.ctrl-bar').offsetHeight;
-    const usableH = cvs.height - ctrlH;
-    const bandH = hsiBandH();
-    const hsiWant = Math.round(cvs.width * 0.34 * 2 + bandH * 2 + 10);
-    const hsiH = Math.max(Math.round(usableH * 0.34),
-                          Math.min(Math.round(usableH * 0.50), hsiWant));
-    const sc = r.height / cvs.height;
-    // 그 띠의 왼쪽 절반 한가운데를 누른다
-    const px = r.left + r.width * 0.25;
-    const py = r.top + (usableH - bandH / 2) * sc;
+    // 누를 자리는 계기를 그린 쪽이 적어 둔다 — 03-pfd.js 의 hsiHitBoxes.
+    // 여기서 같은 셈을 다시 하면 계기가 바뀔 때마다 이 검사가 뒤처진다.
+    const b = hsiHitBoxes.find(q => q.act === 'oat');
+    const px = r.left + (b.x + b.w / 2) * (r.width / cvs.width);
+    const py = r.top  + (b.y + b.h / 2) * (r.height / cvs.height);
     document.getElementById('pfd').dispatchEvent(
       new MouseEvent('click', { clientX: px, clientY: py, bubbles: true }));
     await new Promise(res => setTimeout(res, 250));

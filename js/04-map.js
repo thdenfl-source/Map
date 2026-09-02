@@ -85,9 +85,6 @@ function toggleLayer() {
   }
 }
 
-// ── RainViewer precipitation overlay ──
-
-
 // ══════════════════════════════════════════════════════
 // 3D TERRAIN MAP  (Maplibre GL JS)
 // ══════════════════════════════════════════════════════
@@ -252,16 +249,6 @@ function _init3dMap() {
 
     _update3dMarker();
     _update3dTrail();
-    if (_fdrTrack.length) _fdrDraw3dTrackRoute();
-    // 레이더가 이미 켜져 있으면 3D에도 적용
-    if (rainActive && _rainFrames.length) {
-      const f = _rainFrames[_rainFrameIdx];
-      const tileUrl = `${f._host}${f.path}/256/{z}/{x}/{y}/2/1_1.png`;
-      try {
-        _ml3d.addSource('rain-src', { type:'raster', tiles:[tileUrl], tileSize:256, attribution:'RainViewer' });
-        _ml3d.addLayer({ id:'rain-layer', type:'raster', source:'rain-src', paint:{'raster-opacity':0.55} }, _firstSymbolLayerId());
-      } catch {}
-    }
     _ml3d.resize();
   });
 
@@ -278,99 +265,6 @@ function _update3dMarker() {
   // 삼각형이 실제 기수방향을 가리킨다 (예: 팔로우 중에는 항상 화면 위쪽).
   const inner = _ml3dMarker.getElement().querySelector('.ac3d-inner');
   if (inner) inner.style.transform = `rotate(${S.hdg - _ml3d.getBearing()}deg)`;
-}
-
-let rainLayer = null;
-let rainActive = false;
-let _rainFrames = [];
-let _rainFrameIdx = 0;
-let _rainAnimTimer = null;
-let _rainRefreshTimer = null;
-let _rain3dLayerId = null;
-
-async function _loadRainFrames() {
-  const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-  const data = await res.json();
-  return { host: data.host, frames: data.radar.past.slice(-6) }; // 최근 6프레임
-}
-
-function _setRainFrame(host, frame) {
-  if (rainLayer) { leafMap.removeLayer(rainLayer); rainLayer = null; }
-  const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-  rainLayer = L.tileLayer(tileUrl, { opacity: 0.6, attribution: 'RainViewer', zIndex: 500 });
-  rainLayer.addTo(leafMap);
-
-  // 3D 맵에도 적용
-  if (_ml3d && _ml3d.loaded()) {
-    const src = _ml3d.getSource ? _ml3d.getSource('rain-src') : null;
-    if (src) {
-      src.tiles = [tileUrl];
-      src.setTiles([tileUrl]);
-    } else {
-      try {
-        if (_ml3d.getSource('rain-src')) _ml3d.removeLayer('rain-layer'), _ml3d.removeSource('rain-src');
-      } catch {}
-      _ml3d.addSource('rain-src', { type:'raster', tiles:[tileUrl], tileSize:256, attribution:'RainViewer' });
-      _ml3d.addLayer({ id:'rain-layer', type:'raster', source:'rain-src', paint:{'raster-opacity':0.55} }, _firstSymbolLayerId());
-      _rain3dLayerId = 'rain-layer';
-    }
-  }
-
-  // 타임스탬프 표시
-  const ts = new Date(frame.time * 1000);
-  const label = `${ts.getUTCHours().toString().padStart(2,'0')}:${ts.getUTCMinutes().toString().padStart(2,'0')}Z`;
-  const btn = document.getElementById('rain-btn');
-  if (btn) btn.textContent = `RAIN ${label}`;
-}
-
-function _startRainAnim() {
-  if (_rainAnimTimer) clearInterval(_rainAnimTimer);
-  _rainAnimTimer = setInterval(() => {
-    if (!_rainFrames.length) return;
-    _rainFrameIdx = (_rainFrameIdx + 1) % _rainFrames.length;
-    _setRainFrame(_rainFrames[0]._host, _rainFrames[_rainFrameIdx]);
-  }, 800);
-}
-
-function _stopRainAnim() {
-  if (_rainAnimTimer) { clearInterval(_rainAnimTimer); _rainAnimTimer = null; }
-}
-
-async function toggleRain() {
-  const btn = document.getElementById('rain-btn');
-  if (rainActive) {
-    _stopRainAnim();
-    if (_rainRefreshTimer) { clearInterval(_rainRefreshTimer); _rainRefreshTimer = null; }
-    if (rainLayer) { leafMap.removeLayer(rainLayer); rainLayer = null; }
-    if (_ml3d && _ml3d.loaded()) {
-      try { _ml3d.removeLayer('rain-layer'); _ml3d.removeSource('rain-src'); } catch {}
-    }
-    rainActive = false;
-    btn.classList.remove('rain-active');
-    btn.textContent = 'RAIN';
-    return;
-  }
-  btn.textContent = '…';
-  try {
-    const { host, frames } = await _loadRainFrames();
-    _rainFrames = frames.map(f => ({ ...f, _host: host }));
-    _rainFrameIdx = _rainFrames.length - 1;
-    _setRainFrame(host, _rainFrames[_rainFrameIdx]);
-    rainActive = true;
-    btn.classList.add('rain-active');
-    _startRainAnim();
-    // 5분마다 자동 갱신
-    _rainRefreshTimer = setInterval(async () => {
-      try {
-        const { host: h2, frames: f2 } = await _loadRainFrames();
-        _rainFrames = f2.map(f => ({ ...f, _host: h2 }));
-        _rainFrameIdx = _rainFrames.length - 1;
-      } catch {}
-    }, 5 * 60 * 1000);
-  } catch (e) {
-    btn.textContent = 'RAIN';
-    uiAlert('강수 레이더 로드 실패. 네트워크를 확인하세요.');
-  }
 }
 
 let windLayer = null;

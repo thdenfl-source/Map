@@ -261,23 +261,13 @@ function updateSimSpeedBtns() {
   });
 }
 
-function resetSim(){
-  S.running=false;
-  setSimSpeed(1);            // 리셋하면 실시간으로 돌아온다
-  suspOn = false; try { updateSuspBtn(); } catch(e) { _swallow(e); }
-  gsArmed = false; gsOn = false; try { updateGsBtn(); } catch(e) { _swallow(e); }
-  updateFlyBtns();
-  S.trail=[];trailLine.setLatLngs([]);_update3dTrail();S.lastT=null;
-  updateAcOnMap();
-}
-
 let _swPrevTs = null;   // 스톱워치에 시간을 흘려 넣기 위한 직전 프레임 시각
 let _simLastTick = 0;   // 렌더 루프 생존 감시용
 let _pfdDrawLast = 0;   // GPS 모드 PFD 10fps 제한용
 function simStep(ts){
   _simLastTick = performance.now();
   try {
-  if(S.running && !gpsMode && !_fdrPlaying && S.lastT!==null){
+  if(S.running && !gpsMode && S.lastT!==null){
     const _raw=(ts-S.lastT)/1000;
     // 배속: 한 프레임에 흐르게 할 시뮬 시간 = 실제 경과시간 × simSpeed.
     // 한 번에 몰아 적분하면 큰 dt 에서 오차가 커지므로(선회 중 특히) 0.2초를
@@ -496,21 +486,6 @@ function simStep(ts){
     else S.bnk=bankTarget;
   }
 
-  // Ship movement (wind-independent)
-  if (shipVisible && shipMarker && shipSpd > 0 && S.lastT !== null) {
-    const sdt = (ts - S.lastT) / 1000 * simSpeed;   // 배가 항공기와 같은 시간을 흐르게
-    if (sdt > 0 && sdt < 0.5 * simSpeed) {
-      const [nLat, nLon] = destPoint(shipLat, shipLon, shipHdg, shipSpd * sdt / 3600);
-      shipLat = nLat; shipLon = nLon;
-      if (!shipDragging) shipMarker.setLatLng([shipLat, shipLon]);
-      const slast = shipTrail[shipTrail.length - 1];
-      if (!slast || distance(slast[0], slast[1], shipLat, shipLon) > 0.01) {
-        shipTrail.push([shipLat, shipLon]);
-        if (shipTrail.length > 600) shipTrail.shift();
-        updateShipTrail();
-      }
-    }
-  }
   S.lastT=ts;
   updateHoverBtns();
   try { updateSuspBtn(); } catch(e) { _swallow(e); }
@@ -523,16 +498,14 @@ function simStep(ts){
     const _swReal = ts - _swPrevTs;
     if (_swReal > 0 && _swReal < 2000) {
       swAddMs(gpsMode ? _swReal
-            : (S.running && !_fdrPlaying) ? _swReal * simSpeed : 0);
+            : S.running ? _swReal * simSpeed : 0);
     }
   }
   _swPrevTs = ts;
   swRender();
   // 발열 저감: GPS 모드(데이터 3초 주기)에서는 PFD를 10fps로 제한.
-  // 시뮬 비행·FDR 리플레이는 기존 60fps 유지.
-  let _lowFps = false;
-  if (gpsMode) _lowFps = !_fdrPlaying;
-  if (!_lowFps || performance.now() - _pfdDrawLast >= 100) {
+  // 시뮬 비행은 기존 60fps 유지.
+  if (!gpsMode || performance.now() - _pfdDrawLast >= 100) {
     _pfdDrawLast = performance.now();
     // 자가치유: PFD가 보이는데 캔버스 크기가 표시영역과 어긋나면 재조정.
     // (풀스크린→분할 복귀 시 레이아웃이 늦게 잡혀 캔버스가 0크기로 남아
@@ -546,8 +519,6 @@ function simStep(ts){
       }
     }
     drawPFD();
-    // 계기 옆 글자판(조작부 맨 윗줄) — 값이 바뀔 때만 DOM 을 건드린다
-    try { updatePfdInfo(); } catch(e) { _swallow(e); }
   }
   } catch(e) {
     // 한 프레임의 예외로 rAF 체인이 끊겨 PFD가 검게 멈추는 것을 방지
@@ -648,57 +619,6 @@ function setPage(n) { setSolo(['map', 'plan', 'cdu'][n] || 'map'); }
 // CDU 홈의 MAP 버튼 — MAP 창으로 갈아 끼운다.
 function cduOpenMap() { setSolo('map'); }
 
-// ══════════════════════════════════════════════════════
-// 화면 터치 잠금 — 비행 중 오조작 방지 (길게 눌러 해제)
-// ══════════════════════════════════════════════════════
-const LOCK_HOLD_MS = 1200;
-let _screenLocked = false;
-function lockScreen() {
-  _screenLocked = true;
-  document.getElementById('lock-overlay').classList.add('on');
-  const b = document.getElementById('lock-btn'); if (b) b.classList.add('locked');
-  try { navigator.vibrate && navigator.vibrate(40); } catch(e) { _swallow(e); }
-}
-function unlockScreen() {
-  _screenLocked = false;
-  document.getElementById('lock-overlay').classList.remove('on');
-  const b = document.getElementById('lock-btn'); if (b) b.classList.remove('locked');
-  const f = document.getElementById('lock-unlock-fill'); if (f) f.style.width = '0%';
-  const t = document.getElementById('lock-unlock-txt'); if (t) t.textContent = '길게 눌러 해제';
-  try { navigator.vibrate && navigator.vibrate([40, 60, 40]); } catch(e) { _swallow(e); }
-}
-(function initScreenLock() {
-  const btn  = document.getElementById('lock-unlock');
-  const fill = document.getElementById('lock-unlock-fill');
-  const txt  = document.getElementById('lock-unlock-txt');
-  const ov   = document.getElementById('lock-overlay');
-  if (!btn || !ov) return;
-  let t0 = 0, raf = null;
-  const stop = () => {
-    if (raf) { cancelAnimationFrame(raf); raf = null; }
-    t0 = 0; fill.style.width = '0%'; txt.textContent = '길게 눌러 해제';
-  };
-  const tick = () => {
-    if (!t0) return;
-    const el = performance.now() - t0;
-    const p = Math.min(1, el / LOCK_HOLD_MS);
-    fill.style.width = (p * 100) + '%';
-    txt.textContent = p < 1 ? '해제 중…' : '해제';
-    if (p >= 1) { stop(); unlockScreen(); return; }
-    raf = requestAnimationFrame(tick);
-  };
-  btn.addEventListener('pointerdown', e => {
-    e.preventDefault(); e.stopPropagation();
-    try { btn.setPointerCapture(e.pointerId); } catch(err) { _swallow(err); }
-    t0 = performance.now(); tick();
-  });
-  ['pointerup','pointercancel','pointerleave'].forEach(ev =>
-    btn.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); stop(); }));
-  // 오버레이 자체는 모든 입력을 흡수(잠금 유지)
-  ['pointerdown','pointerup','click','touchstart','touchmove','wheel'].forEach(ev =>
-    ov.addEventListener(ev, e => { if (e.target === ov || e.target.id === 'lock-badge') { e.preventDefault(); e.stopPropagation(); } },
-      { passive: false }));
-})();
 
 // ══════════════════════════════════════════════════════
 // RULER — 지도에서 두 점 이상을 찍어 거리·방위 측정

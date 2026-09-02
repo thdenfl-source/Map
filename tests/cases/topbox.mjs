@@ -81,9 +81,10 @@ export async function run(page, t) {
   t.ok(three[0].px > r.lblPx,
     `값이 이름표보다 크다 (${three[0].px}px vs ${r.lblPx}px)`);
 
-  // ③-2 나침반 위 HDG·CRS 상자와 같은 크기로 읽는다 ─────────────
-  // 계기에서 가장 자주 읽는 숫자들이 서로 다른 크기로 서 있으면 눈이 그때마다
-  // 다시 맞춘다. 자리가 넉넉한 화면에서는 두 자리가 정확히 같아야 한다.
+  // ③-2 목표 크기(이름표 22 · 값 26)로 읽는다 ─────────────────
+  // 나침반 위에 있던 HDG·CRS 상자를 내린 뒤로, 이 줄이 계기에서 가장 크게
+  // 읽는 자리다. 자리가 넉넉한 화면에서는 목표 크기 그대로여야 한다 —
+  // 모서리 글자판(이름표 14 · 값 21)보다 한 단계 크다.
   const vs2 = await page.evaluate(() => {
     const g = ctx, orig = g.fillText, seen = [];
     g.fillText = function (txt, x, y) {
@@ -93,13 +94,14 @@ export async function run(page, t) {
     const top = 2 + fmaStripH();
     const upper = t => { const e = seen.find(q => q.t === t && q.y > 0 && q.y <= top + 2); return e ? px(e.f) : null; };
     const lower = t => { const a2 = seen.filter(q => q.t === t && q.y > top); return a2.length ? px(a2[a2.length - 1].f) : null; };
-    return { gsLbl: upper('GS'), altVal: upper(String(Math.round(S.alt * A_CV()))),
-             hdgLbl: lower('HDG'), hdgVal: lower(fmtA(toMag(S.hdg)) + '°') };
+    return { scale: pfdFontScale,
+             gsLbl: upper('GS'), altVal: upper(String(Math.round(S.alt * A_CV()))),
+             cornerLbl: lower('OAT'), cornerVal: lower('CRS') };
   });
-  t.eq(vs2.gsLbl, vs2.hdgLbl,
-    `윗줄 이름표가 HDG 이름표와 같은 크기다 (${vs2.gsLbl}px vs ${vs2.hdgLbl}px)`);
-  t.eq(vs2.altVal, vs2.hdgVal,
-    `윗줄 값도 HDG 값과 같은 크기다 (${vs2.altVal}px vs ${vs2.hdgVal}px)`);
+  t.eq(vs2.gsLbl, 22 * vs2.scale, `이름표가 22px 이다 (${vs2.gsLbl}px)`);
+  t.eq(vs2.altVal, 26 * vs2.scale, `값이 26px 이다 (${vs2.altVal}px)`);
+  t.ok(vs2.gsLbl > vs2.cornerLbl,
+    `모서리 이름표보다 크다 (${vs2.gsLbl}px vs ${vs2.cornerLbl}px)`);
 
   // ── ④ 오름·내림을 색으로 가른다 ─────────────────────────────
   // 승강계 바늘과 같은 규칙 — 오르면 초록, 내리면 빨강, 그 사이는 회색.

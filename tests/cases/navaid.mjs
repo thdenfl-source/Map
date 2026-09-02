@@ -301,20 +301,16 @@ export async function run(page, t) {
     // (AHRS 는 맨 위 탭바로 옮겼다 — #phone-ahrs-btn)
     const alive = ['crs-up', 'obs-btn', 'brg1-tog', 'phone-ahrs-btn', 'rnp-1', 'susp-btn']
       .filter(id => { const e = document.getElementById(id); return e && e.getBoundingClientRect().height > 0; });
-    // '두 줄' 은 버튼 줄 이야기다. 맨 윗줄(#pfd-info)은 읽기만 하는 글자판이라
-    // 따로 뺀다 — 섞어 재면 글자 크기를 바꿀 때마다 이 검사가 흔들린다.
-    const infoH = document.getElementById('pfd-info').getBoundingClientRect().height;
-    return { h: Math.round(r.height - infoH), rows, alive: alive.length,
+    return { h: Math.round(r.height), rows, alive: alive.length,
              usable: Math.round(pw.height - r.height), pfdH: Math.round(pw.height) };
   });
   t.ok(bar.rows >= 1 && bar.rows <= 2, `조작부가 두 줄 안으로 접힌다 (${bar.rows}줄)`);
   t.ok(bar.h > 20 && bar.h <= 90, `버튼 줄 높이가 90px 아래다 (${bar.h}px)`);
   t.eq(bar.alive, 6, '줄이면서 항법용 조작부를 잃지 않았다 (CRS·OBS·BRG1·AHRS·RNP·SUSP)');
-  // 조작부 맨 윗줄(#pfd-info)이 계기 옆 글자판을 대신 짊어진다. NAV 소스 줄은
-  // 비행 중 가장 자주 읽는 값이라 일부러 크게 뒀고(폰에서는 세 줄), 그만큼 자리를 쓴다.
-  // 글자판(값 다섯 줄)과 조작부 두 줄을 합친 몫이다. 좁은 폰에서 가장 빠듯하다.
-  t.ok(bar.usable > bar.pfdH * 0.72,
-    `계기가 패널의 72% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
+  // 조작부는 두 줄만 남았다 — NAV 소스 버튼 줄까지 나침반 모서리로 갔다.
+  // 그만큼 계기가 넓게 쓴다.
+  t.ok(bar.usable > bar.pfdH * 0.80,
+    `계기가 패널의 80% 넘게 쓴다 (${bar.usable}px / ${bar.pfdH}px)`);
 
   // ── ⑦ 폰에서 계기 글씨가 커지는가 ────────────────────────────
   // 글꼴 지정이 예순 곳이 넘어 한자리에서 가로채 배율을 곱한다. 배율만 확인하면
@@ -408,18 +404,14 @@ export async function run(page, t) {
       const bar = document.querySelector('.ctrl-bar').getBoundingClientRect();
       const box = sel => { const e = document.querySelector(sel); if (!e) return null;
         const q = e.getBoundingClientRect(); return { l: q.left - bar.left, t: q.top - bar.top, h: q.height }; };
-      // 소스 고르는 줄의 왼쪽 끝 — 아래 조작부와 같은 선에서 시작해야 한다
-      const rowLefts = [...document.querySelectorAll('#pfd-info .pi-row')].map(r =>
-        Math.round(Math.min(...[...r.children]
-          .map(c => c.getBoundingClientRect())
-          .filter(q => q.width > 0).map(q => q.left - bar.left))));
       const px = sel => parseFloat(getComputedStyle(document.querySelector(sel)).fontSize);
-      return { rowLefts,
-               crs: box('.ctrl-group'), sw: box('.sw-group'), rnp: box('.nav-src-group'),
+      return { crs: box('.ctrl-group'), sw: box('.sw-group'), rnp: box('.nav-src-group'),
                brg: box('.brg-tog-group'), susp: box('.susp-group'),
-               selH: Math.round(document.querySelector('.pi-sel').getBoundingClientRect().height),
+               // 기준은 OBS 버튼이다 — 조작부에서 가장 오래 규격이 안 바뀐 버튼.
+               // (종전 기준이던 NAV 소스 버튼은 나침반 모서리로 갔다)
+               selH: Math.round(document.getElementById('obs-btn').getBoundingClientRect().height),
                obsH: Math.round(document.getElementById('obs-btn').getBoundingClientRect().height),
-               selFs: px('.pi-sel'), obsFs: px('#obs-btn'),
+               selFs: px('#obs-btn'), obsFs: px('#obs-btn'),
                suspFs: px('#susp-btn'), rnpFs: px('#rnp-1'),
                // 한 줄에 나란히 서는 것들의 높이 — 하나라도 다르면 줄이 들쭉날쭉해진다.
                // SUSP 는 '자동' 이 붙은 모습으로도 재 본다(홀딩·미스드어프로치에서 그렇게 뜬다).
@@ -434,12 +426,12 @@ export async function run(page, t) {
                           obs: one('#obs-btn'), brg: one('#brg1-tog'),
                           susp: one('#susp-btn'), suspAuto, rnp: one('#rnp-1') };
                })(),
-               // 글꼴·크기·굵기도 하나로 — 기준은 NAV 소스 버튼이다.
-               // (AHRS 는 맨 위 탭바로 올라가 그 줄의 규격을 따른다)
+               // 글꼴·크기·굵기도 하나로 — 기준은 OBS 버튼이다.
+               // (AHRS 는 맨 위 탭바, NAV 소스는 나침반 모서리로 갔다)
                fonts: (() => {
                  const f = e => { const c = getComputedStyle(e);
                    return [c.fontFamily, c.fontSize, c.fontWeight].join(' / '); };
-                 const out = { 기준: f(document.querySelector('#pi-nav .pi-sel')) };
+                 const out = { 기준: f(document.getElementById('obs-btn')) };
                  for (const [k, sel] of [
                        ['CRS', '#crs-lbl-btn'], ['◄', '#crs-dn'],
                        ['OBS', '#obs-btn'], ['BRG1', '#brg1-tog'], ['SUSP', '#susp-btn'],
@@ -452,17 +444,13 @@ export async function run(page, t) {
                })() };
     });
     const L = vp.width + '×' + vp.height;
-    // 왼쪽 선 — 글자판 줄들과 조작부 첫 무리가 같은 자리에서 시작한다
-    const spread = Math.max(...a.rowLefts, a.crs.l) - Math.min(...a.rowLefts, a.crs.l);
-    t.ok(spread <= 12, `${L} — 줄들이 같은 왼쪽 선에서 시작한다 (편차 ${Math.round(spread)}px)`);
+    // 왼쪽 선 — 조작부 첫 무리가 왼쪽 끝에서 시작한다
     t.ok(a.crs.l <= 12, `${L} — 조작부가 왼쪽에 붙는다 (${Math.round(a.crs.l)}px)`);
-    // 크기 — NAV 소스 선택 버튼과 같은 규격
-    t.eq(a.obsH, a.selH, `${L} — 조작부 버튼 높이가 NAV 버튼과 같다 (${a.obsH} vs ${a.selH})`);
-    t.eq(a.obsFs, a.selFs, `${L} — 글자 크기도 같다 (${a.obsFs} vs ${a.selFs})`);
+    // 크기 — 기준(OBS)과 같은 규격
     t.eq(a.suspFs, a.selFs, `${L} — SUSP 도 같다 (${a.suspFs})`);
     t.eq(a.rnpFs, a.selFs, `${L} — RNP 도 같다 (${a.rnpFs})`);
     // 높이도 하나로 — CRS 의 ◄► 는 이웃보다 솟았고 CRS 이름표는 주저앉았으며,
-    // SUSP 는 '자동' 이 붙으면 두 줄이 되어 혼자 커졌다. 전부 .pi-sel 에 맞춘다.
+    // SUSP 는 '자동' 이 붙으면 두 줄이 되어 혼자 커졌다. 전부 한 규격에 맞춘다.
     const hs = Object.entries(a.btnHs).filter(([, h]) => h !== a.selH);
     t.eq(hs.length, 0,
       `${L} — 조작부 버튼 높이가 모두 ${a.selH}px 로 같다` +
@@ -470,11 +458,10 @@ export async function run(page, t) {
     // 글꼴·크기·굵기도 하나여야 한다. 저마다이면 어느 것이 눌린 버튼인지
     // 색보다 굵기로 먼저 읽히는 착시가 생긴다 — CRS 만 13px 보통 글씨였고,
     // BRG·RNP·STOP WATCH 도 보통 글씨, 시계는 글꼴마저 달랐다.
-    // 기준은 AHRS 버튼이다(계기판에서 가장 큰 버튼 글씨였다).
     const ref = a.fonts['기준'];
     const odd = Object.entries(a.fonts).filter(([k, v]) => k !== '기준' && v !== ref);
     t.eq(odd.length, 0,
-      `${L} — 조작부 글씨가 NAV 소스 버튼과 같다 (${ref})` +
+      `${L} — 조작부 글씨가 하나로 맞아 있다 (${ref})` +
       (odd.length ? ' — 다른 것: ' + odd.map(([k, v]) => `${k}=${v}`).join(' · ') : ''));
     t.ok(/(^|[^\d])(700|bold)([^\d]|$)/.test(ref), `${L} — 그 글씨가 볼드체다 (${ref})`);
     // 시계·RNP 는 맨 아래 — 앞줄(CRS·BRG·SUSP)보다 아래에 있어야 한다
@@ -518,21 +505,16 @@ export async function run(page, t) {
   t.eq(lsk.btnPe, 'auto', '버튼만 터치를 받는다');
   t.eq(lsk.midIsMap, true, '두 칸 사이 가운데는 지도가 그대로 보인다');
 
-  // ── ⑨ 값은 나침반 모서리, 고르는 버튼만 조작부 ────────────────
+  // ── ⑨ 값도 고르는 것도 나침반 모서리에서 ──────────────────────
   // 값이 놓인 자리가 세 번 옮겨 다녔다. 나침반 좌·우 여백(캔버스) → 조작부
   // 맨 윗줄(HTML) → 다시 나침반 네 모서리(캔버스). 마지막 자리가 이유가 있다:
   // 좌우 기둥(속도·고도 테이프·승강계)을 걷어내 화면 폭이 통째로 남았고,
-  // 나침반을 보는 눈이 그대로 값을 읽을 수 있다. 조작부에는 고르는 버튼
-  // 한 줄만 남아 계기가 그만큼 커진다.
+  // 나침반을 보는 눈이 그대로 값을 읽을 수 있다. 이제 그 모서리 테두리가 곧
+  // 소스를 고르는 버튼이라, 조작부에는 두 줄만 남는다.
   await phone.evaluate(() => navGo('pfd'));
   await phone.waitForTimeout(500);
 
   const info = await phone.evaluate(() => {
-    const nav = document.getElementById('pi-nav');
-    // 조작부에는 고르는 버튼만 — 값(이름·방위·래디얼·거리)은 없다
-    const sels = [...nav.querySelectorAll('.pi-sel')].map(e => e.textContent.trim());
-    const rows = new Set([...nav.querySelectorAll('.pi-sel')]
-      .map(e => Math.round(e.getBoundingClientRect().top)));
     // 화면(캔버스)에 실제로 찍히는 글자
     resizePFD();
     const g = ctx, orig = g.fillText, seen = [];
@@ -545,7 +527,7 @@ export async function run(page, t) {
     const ctrlH = document.querySelector('.ctrl-bar').offsetHeight;
     const usableH = cvs.height - ctrlH;
     const bandH = hsiBandH();
-    const hsiWant = Math.round(W * 0.34 * 2 + bandH * 2 + 10);
+    const hsiWant = Math.round(W * 0.40 * 2 + bandH * 2 + 10);
     const hsiH = Math.max(Math.round(usableH * 0.34),
                           Math.min(Math.round(usableH * 0.50), hsiWant));
     const hsiY = usableH - hsiH;
@@ -556,22 +538,23 @@ export async function run(page, t) {
       if (!e) return null;
       return { top: e.y < hsiY + bandH + 4, bot: e.y > hsiY + hsiH - bandH - 4,
                left: e.x < W / 2, right: e.x > W / 2 }; };
-    return { sels, rows: rows.size,
-             // 값은 계기로 갔다 — 조작부에는 방위(°)도 거리(NM)도 없다
-             navHasValues: /°|NM/.test(nav.textContent),
-             infoH: Math.round(document.getElementById('pfd-info').getBoundingClientRect().height),
+    return { ctrlRows: (() => {
+               // 조작부에 남은 줄 수 — 눈에 보이는 것들의 윗변이 몇 가지인가
+               const bar = document.querySelector('.ctrl-bar');
+               const tops = new Set([...bar.querySelectorAll('button, .ctrl-lbl-btn, .cbtn, .sw-display')]
+                 .filter(e => e.getBoundingClientRect().width > 0)
+                 .map(e => Math.round(e.getBoundingClientRect().top / 6)));
+               return tops.size; })(),
              fms: corner('FMS'), nav1: corner('NAV1'), nav2: corner('NAV2'),
-             oat: corner('OAT'), tas: corner('TAS'),
+             oat: corner('OAT'), tas: corner('TAS'), crs: corner('CRS'),
              all: seen.map(e => e.t) };
   });
-  t.eq(info.sels.join(','), 'FMS,NAV1,NAV2', `조작부에 고르는 버튼 셋이 있다 (${info.sels.join(',')})`);
-  t.eq(info.rows, 1, `그 셋이 한 줄에 선다 (${info.rows}줄)`);
-  t.eq(info.navHasValues, false, '조작부에는 숫자가 없다 — 값은 계기로 갔다');
-  t.ok(info.infoH > 10 && info.infoH < 60, `고르는 줄이 한 줄 높이다 (${info.infoH}px)`);
+  t.ok(info.ctrlRows <= 2, `조작부가 두 줄로 줄었다 (${info.ctrlRows}줄)`);
 
   // 네 모서리 — 왼쪽 위 FMS · 오른쪽 위 NAV1 · 오른쪽 아래 NAV2 · 왼쪽 아래 OAT
   const where = [['FMS', info.fms, 'top', 'left'], ['NAV1', info.nav1, 'top', 'right'],
-                 ['NAV2', info.nav2, 'bot', 'right'], ['OAT', info.oat, 'bot', 'left']];
+                 ['NAV2', info.nav2, 'bot', 'right'], ['OAT', info.oat, 'bot', 'left'],
+                 ['CRS', info.crs, 'bot', 'left']];
   for (const [name, c, vert, horz] of where) {
     t.ok(c, `${name} 가 계기에 그려진다`);
     if (!c) continue;
@@ -696,7 +679,7 @@ export async function run(page, t) {
     const W = cvs.width, H = cvs.height;
     const usableH = H - document.querySelector('.ctrl-bar').offsetHeight;
     const bandH = hsiBandH();
-    const hsiWant = Math.round(W * 0.34 * 2 + bandH * 2 + 10);
+    const hsiWant = Math.round(W * 0.40 * 2 + bandH * 2 + 10);
     const hsiH = Math.max(Math.round(usableH * 0.34),
                           Math.min(Math.round(usableH * 0.50), hsiWant));
     return { fn: dead('drawCrhtDisplay'), flag: dead('crhtOn'), sel: dead('selCrht'),
@@ -829,36 +812,43 @@ export async function run(page, t) {
   t.eq(hdgRef.kmh, 20, `헤딩이 나침반으로 넘어가는 기준이 20km/h 다 (${hdgRef.kmh})`);
   t.ok(Math.abs(hdgRef.kt - 10.8) < 0.05, `kt 로는 약 10.8kt 다 (${hdgRef.kt.toFixed(2)})`);
 
-  // ── ⑬ NAV 소스 — 버튼으로 고르고, 값은 나침반 모서리에 ──────
+  // ── ⑬ NAV 소스 — 모서리 글자판이 곧 버튼이다 ────────────────
+  // 조작부에 있던 FMS·NAV1·NAV2 버튼 세 개를 내렸다. 바로 위 나침반 모서리에
+  // 같은 이름이 이미 서 있어서 한 화면에 같은 글자가 두 번 뜨는 자리였고,
+  // 그 한 줄만큼 나침반이 눌렸다. 이제 모서리 테두리를 누르면 소스가 바뀐다.
   await phone.evaluate(() => navGo('pfd'));
   await phone.waitForTimeout(400);
   const src = await phone.evaluate(() => {
     S.lat = 38.0; S.lon = 128.6; S.alt = 3000; S.awp = -1;
     setNavRadio('NAV1', '109.30', null);
-    setNavSrc('FMS'); _piLast = ''; updatePfdInfo();
+    setNavSrc('FMS');
+    resizePFD(); drawPFD();
     const before = navSrc;
-    // 버튼을 누르면 그 소스가 선택된다
-    [...document.querySelectorAll('#pi-nav .pi-sel')]
-      .find(e => e.textContent === 'NAV1').click();
-    _piLast = ''; updatePfdInfo();
+    // 모서리 테두리를 누르면 그 소스가 선택된다
+    const rect = cvs.getBoundingClientRect();
+    const b = hsiHitBoxes.find(q => q.src === 'NAV1');
+    cvs.dispatchEvent(new MouseEvent('click', { bubbles: true,
+      clientX: rect.left + (b.x + b.w / 2) * (rect.width / cvs.width),
+      clientY: rect.top  + (b.y + b.h / 2) * (rect.height / cvs.height) }));
     const after = navSrc;
-    const lit = [...document.querySelectorAll('#pi-nav .pi-sel.on')].map(e => e.textContent);
     // 값은 계산부(navInfoRows)가 내고 나침반 모서리에 그려진다
     const row = navInfoRows().find(r => r.src === 'NAV1');
-    resizePFD();
     const g = ctx, orig = g.fillText, seen = [];
     g.fillText = function (tx) { seen.push(String(tx)); return orig.apply(this, arguments); };
     try { drawPFD(); } finally { g.fillText = orig; }
-    return { before, after, lit,
+    return { before, after,
              brg: row.brg, rad: row.rad, dst: row.dst, ident: row.ident,
              drawn: [row.ident, row.brg, row.dst].every(v => seen.includes(v)),
              radDrawn: seen.includes(row.rad),
-             oldBtns: !document.getElementById('nav-fms') && !document.querySelector('.nav-src-btn') };
+             boxes: hsiHitBoxes.filter(q => q.act === 'navSrc').map(q => q.src),
+             oldBtns: !document.getElementById('nav-fms') && !document.querySelector('.nav-src-btn')
+                      && !document.querySelector('.pi-sel')
+                      && !document.getElementById('pfd-info') };
   });
-  t.eq(src.oldBtns, true, '종전 NAV SRC 버튼은 없어졌다');
+  t.eq(src.boxes.join(','), 'FMS,NAV1,NAV2', `모서리 셋이 누를 자리다 (${src.boxes.join(',')})`);
+  t.eq(src.oldBtns, true, '조작부의 NAV SRC 버튼은 없어졌다');
   t.eq(src.before, 'FMS', '누르기 전에는 FMS 였다');
-  t.eq(src.after, 'NAV1', '버튼을 누르면 그 소스가 선택된다');
-  t.eq(src.lit.join(','), 'NAV1', `고른 버튼만 켜져 보인다 (${src.lit.join(',')})`);
+  t.eq(src.after, 'NAV1', '모서리 테두리를 누르면 그 소스가 선택된다');
   t.eq(src.drawn, true, '이름·방위·거리가 나침반 모서리에 그려진다');
   // 래디얼은 계산에는 남기고 화면에서는 뺐다 — 방위의 반대편이라 한쪽만
   // 읽으면 나머지는 머릿속에서 나오고, 글씨를 키운 지금은 모서리를 넘는다.

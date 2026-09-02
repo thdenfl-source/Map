@@ -302,21 +302,18 @@ function init(){
     const px   = (clientX - rect.left) * scX;
     const py   = (clientY - rect.top)  * scY;
 
-    // drawPFD 와 같은 셈을 쓴다 — 글씨 배율(pfdFontScale)까지 따라가야 한다.
-    // 여기가 어긋나면 눌러도 엉뚱한 자리가 잡힌다.
-    const ctrlEl = document.querySelector('.ctrl-bar');
-    const CTRL_H = ctrlEl ? ctrlEl.offsetHeight : 80;
-    const W = cvs.width, H = cvs.height;
-    const usableH = H - CTRL_H;
-    const bandH   = hsiBandH();
-    const hsiWant = Math.round(W * 0.34 * 2 + bandH * 2 + 10);
-    const hsiH = Math.max(Math.round(usableH * 0.34),
-                          Math.min(Math.round(usableH * 0.50), hsiWant));
-    const hsiY = usableH - hsiH;
-
-    // 나침반 왼쪽 아래 띠 — TAS·GS·OAT
-    if (py >= hsiY + hsiH - bandH && py <= hsiY + hsiH && px <= W * 0.5) {
+    // 어디를 눌렀는지는 계기를 그린 쪽이 적어 둔 판정 상자로 가른다
+    // (03-pfd.js 의 hsiHitBoxes). 종전에는 여기서 나침반 칸 높이를 다시
+    // 계산했는데, 계기 쪽 셈이 바뀔 때마다 이쪽이 뒤처져 엉뚱한 자리가 잡혔다.
+    const boxes = (typeof hsiHitBoxes !== 'undefined' && hsiHitBoxes) ? hsiHitBoxes : [];
+    const hit = boxes.find(b => px >= b.x && px <= b.x + b.w &&
+                                py >= b.y && py <= b.y + b.h);
+    if (!hit) return;
+    if (hit.act === 'oat') {
       try { oatInfo(); } catch (e) { _swallow(e); }
+    } else if (hit.act === 'navSrc') {
+      // 모서리 글자판이 곧 NAV 소스 버튼이다 — 누른 것을 항법 소스로 삼는다
+      try { setNavSrc(hit.src); drawPFD(); } catch (e) { _swallow(e); }
     }
   }
 
@@ -333,133 +330,8 @@ function init(){
   }, { passive: true });
   cvs.addEventListener('click', e => onPfdTap(e.clientX, e.clientY));
 }
-// ── Ship Feature ──
-let shipLat = null, shipLon = null;
-let shipHdg = 0, shipSpd = 0;
-let shipMarker = null, shipVisible = false, shipDragging = false;
-let shipInputMode = 'SPD', shipInput = '';
-
-function shipIcon() {
-  return L.divIcon({
-    html: `<div data-act="openShipPanel" style="transform:rotate(${shipHdg}deg);transform-origin:12px 20px;line-height:0;cursor:pointer;"><svg width="24" height="40" viewBox="0 0 24 40" xmlns="http://www.w3.org/2000/svg"><path d="M12 1 Q20 7 21 17 L21 33 Q21 39 12 39 Q3 39 3 33 L3 17 Q4 7 12 1Z" fill="#1a5fa8" stroke="#7ab8f5" stroke-width="1.5"/><rect x="8" y="16" width="8" height="10" rx="2" fill="#2277bb" stroke="#7ab8f5" stroke-width="0.7"/><circle cx="12" cy="5" r="2.5" fill="#7ab8f5" opacity="0.9"/><line x1="12" y1="1" x2="12" y2="39" stroke="#88ccff" stroke-width="0.5" stroke-dasharray="2,3" opacity="0.4"/></svg></div>`,
-    iconSize: [24, 40], iconAnchor: [12, 20], className: ''
-  });
-}
-
-// 하단 SHIP 버튼: INHIBIT처럼 선택 메뉴(배 표시 / 설정창) 열기·닫기
-function toggleShip(force) {
-  const m = document.getElementById('ship-menu');
-  if (force === false) m.classList.remove('open');
-  else m.classList.toggle('open');
-  renderShipOnOff();
-}
-
-// 메뉴: 배 표시 ON/OFF (마커 생성/제거)
-function shipToggleOn() {
-  if (shipVisible) {
-    if (shipMarker) { leafMap.removeLayer(shipMarker); shipMarker = null; }
-    shipVisible = false;
-    shipTrail = []; updateShipTrail();
-    document.getElementById('ship-panel').style.display = 'none';   // 배 끄면 설정창도 닫음
-  } else {
-    const c = leafMap.getCenter();
-    shipLat = c.lat; shipLon = c.lng;
-    shipTrail = []; updateShipTrail();
-    shipVisible = true;
-    createShipMarker();
-  }
-  renderShipOnOff();
-}
-
-// 메뉴: 설정창 ON/OFF (배가 있어야 열림)
-function shipTogglePanel() {
-  const panel = document.getElementById('ship-panel');
-  const open = panel.style.display === 'block';
-  if (open) { panel.style.display = 'none'; }
-  else {
-    if (!shipVisible) shipToggleOn();   // 설정창을 열면 배도 자동 ON
-    openShipPanel();
-  }
-  renderShipOnOff();
-}
-
-// 상태 표시 갱신(메뉴·패널 토글·하단 버튼)
-function renderShipOnOff() {
-  const panelOpen = document.getElementById('ship-panel').style.display === 'block';
-  const sShow = document.getElementById('ship-menu-show');
-  if (sShow) { sShow.classList.toggle('on', shipVisible); sShow.querySelector('span').textContent = shipVisible ? 'ON' : 'OFF'; }
-  const sPanel = document.getElementById('ship-menu-panel');
-  if (sPanel) { sPanel.classList.toggle('on', panelOpen); sPanel.querySelector('span').textContent = panelOpen ? 'ON' : 'OFF'; }
-  const mb = document.getElementById('map-ship-btn');
-  if (mb) mb.classList.toggle('ship-active', shipVisible);
-}
-
-function createShipMarker() {
-  shipMarker = L.marker([shipLat, shipLon], { icon: shipIcon(), draggable: true, zIndexOffset: 500 }).addTo(leafMap);
-  shipMarker.on('drag', e => { shipLat = e.latlng.lat; shipLon = e.latlng.lng; shipDragging = true; });
-  shipMarker.on('dragend', () => { shipDragging = false; shipTrail = []; updateShipTrail(); });
-  // 배를 두 번 터치(더블탭/더블클릭)하면 속도·방향 설정 창 다시 열기
-  let _shipLastTap = 0;
-  shipMarker.on('click', e => {
-    const t = Date.now();
-    if (t - _shipLastTap < 450) { try { L.DomEvent.stop(e); } catch(_) { _swallow(_); } openShipPanel(); _shipLastTap = 0; }
-    else { _shipLastTap = t; }
-  });
-  shipMarker.on('dblclick', e => { try { L.DomEvent.stop(e); } catch(_) { _swallow(_); } openShipPanel(); });
-}
-
-function updateShipMarker() {
-  if (!shipMarker || shipDragging) return;
-  shipMarker.setLatLng([shipLat, shipLon]);
-  shipMarker.setIcon(shipIcon());
-}
-
-function openShipPanel() {
-  shipSetMode(shipInputMode);
-  updateShipStatus();
-  renderShipOnOff();
-  document.getElementById('ship-panel').style.display = 'block';
-}
-
-function shipSetMode(mode) {
-  shipInputMode = mode; shipInput = '';
-  ['SPD','CRS'].forEach(m => {
-    document.getElementById('ship-tab-' + m.toLowerCase()).classList.toggle('ship-tab-active', m === mode);
-  });
-  const units = { SPD: 'kt · max 50', CRS: '° · 000–359' };
-  document.getElementById('ship-unit').textContent = units[mode];
-  updateShipDisplay();
-}
-
-function updateShipDisplay() {
-  const cur = shipInputMode === 'SPD' ? String(shipSpd) : fmtA(toMag(shipHdg));
-  document.getElementById('ship-display').textContent = shipInput || cur;
-}
-
-function updateShipStatus() {
-  document.getElementById('ship-stat-spd').textContent = shipSpd + 'kt';
-  document.getElementById('ship-stat-crs').textContent = fmtA(toMag(shipHdg)) + '°';
-}
-
-function shipKey(k) {
-  if (k === 'CLR') { shipInput = shipInput.slice(0, -1); updateShipDisplay(); return; }
-  if (k === 'ENT') {
-    const v = parseInt(shipInput, 10);
-    if (!isNaN(v)) {
-      if (shipInputMode === 'SPD')      shipSpd = Math.min(50, Math.max(0, v));
-      else if (shipInputMode === 'CRS') shipHdg = toTrue(v);   // 입력은 자북 → 내부는 진북
-    }
-    shipInput = '';
-    updateShipDisplay();
-    updateShipStatus();
-    updateShipMarker();
-    return;
-  }
-  if (shipInput.length < 5) { shipInput += k; updateShipDisplay(); }
-}
-
-// Ship panel drag
-// 패널 헤더를 잡아 끌어 옮기는 공용 헬퍼 (SHIP·WX 패널이 같은 코드를 각자 갖고 있던 것을 통합)
+// ── 패널 끌어 옮기기 (WX 패널) ──
+// 패널 헤더를 잡아 끌어 옮기는 공용 헬퍼
 function makePanelDraggable(panelId, headerId) {
   const panel = document.getElementById(panelId);
   const hdr   = document.getElementById(headerId);
@@ -488,31 +360,6 @@ function makePanelDraggable(panelId, headerId) {
   hdr.addEventListener('mousedown', e=>{e.preventDefault();startD(e.clientX,e.clientY);});
   hdr.addEventListener('touchstart', e=>startD(e.touches[0].clientX,e.touches[0].clientY),{passive:true});
 }
-makePanelDraggable('ship-panel', 'ship-panel-header');
-
-// Ship marker tap on touch (Leaflet drag handler blocks touch→click on draggable markers)
-(function() {
-  let _tx = 0, _ty = 0;
-  const mc = document.getElementById('map');
-  mc.addEventListener('touchstart', function(e) {
-    _tx = e.touches[0].clientX;
-    _ty = e.touches[0].clientY;
-  }, {passive: true, capture: true});
-  mc.addEventListener('touchend', function(e) {
-    if (!shipVisible || !shipMarker) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - _tx, dy = t.clientY - _ty;
-    if (dx * dx + dy * dy > 100) return; // moved >10px = drag, skip
-    const rect = mc.getBoundingClientRect();
-    const cx = t.clientX - rect.left;
-    const cy = t.clientY - rect.top;
-    const mp = leafMap.latLngToContainerPoint(shipMarker.getLatLng());
-    if ((cx - mp.x) * (cx - mp.x) + (cy - mp.y) * (cy - mp.y) < 900) {
-      openShipPanel(); // tapped within 30px of marker center
-    }
-  }, {passive: true, capture: true});
-})();
-
 // ── METAR / TAF Weather Panel ────────────────────────────────────────────
 function openWxPanel() {
   document.getElementById('wx-panel').style.display = 'block';
@@ -824,7 +671,7 @@ function renderWxTaf(text, el, icao) {
     `<pre style="color:#aaa;font-size:16px;white-space:pre-wrap;word-break:break-all;line-height:1.6;margin:0;border-left:2px solid #1a3a1a;padding-left:5px;">${fmt}</pre>`;
 }
 
-// WX panel drag (same pattern as ship panel)
+// WX 패널 끌어 옮기기
 makePanelDraggable('wx-panel', 'wx-panel-header');
 
 init();

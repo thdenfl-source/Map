@@ -61,7 +61,7 @@ function drawPFD() {
   // 나침반 칸은 비율이 아니라 실제로 차지할 높이로 잡는다. 위·아래 두 띠에
   // 모서리 글자판(FMS·NAV1·NAV2·TAS/GS/OAT)이 들어가고 그 사이가 나침반이다.
   const bandH   = hsiBandH();
-  const hsiR    = aiW * 0.34;                            // 폭에 걸릴 때의 반지름
+  const hsiR    = aiW * 0.40;                            // 폭에 걸릴 때의 반지름
   const hsiWant = Math.round(hsiR * 2 + bandH * 2 + 10);
   // 절반을 넘기지 않는다. 나침반 칸은 위·아래 띠에 글자판을 이고 있어 그냥
   // 두면 자세계보다 커진다 — "갈색이 너무 넓다" 던 자리로 되돌아간다.
@@ -101,8 +101,8 @@ function hsiBandH() { return Math.round(38 * pfdFontScale); }
 // ── 칸 크기 (drawAI 와 CDU 의 터치 판정이 함께 쓴다) ──
 const FMA_MARGIN = 2;
 const FMA_GAP    = 3;
-// HDG·CRS 상자와 같은 규격으로 읽는다(라벨 22 · 값 26). 계기에서 가장 자주
-// 읽는 숫자들이 서로 다른 크기로 서 있으면 눈이 그때마다 다시 맞춘다.
+// 라벨 22 · 값 26 — 계기에서 가장 크게 읽는 줄이다. 나침반 모서리 글자판
+// (이름표 14 · 값 21)보다 한 단계 크다.
 const FMA_LBL_H  = 26;                    // 이름표 줄
 const FMA_VAL_H  = 34;                    // 값 상자
 const FMA_BOX_H  = FMA_LBL_H + FMA_VAL_H; // 배율 1 일 때의 줄 높이
@@ -142,8 +142,8 @@ function drawTopReadout(x, y, w) {
     const wide = Math.max(...texts.map(tx => ctx.measureText(tx).width));
     return wide <= room ? want : Math.max(min, Math.floor(want * room / wide));
   };
-  // HDG·CRS 와 같은 크기(라벨 22 · 값 26)를 목표로 잡고, 칸에 안 들어가면
-  // 그만큼만 줄인다. 단위(KT·FT·FPM)는 이름표보다 한 단계 작게 둔다.
+  // 계기에서 가장 자주 읽는 숫자들이다 — 이름표 22 · 값 26 을 목표로 잡고,
+  // 칸에 안 들어가면 그만큼만 줄인다. 단위(KT·FT·FPM)는 한 단계 작게 둔다.
   const valFs  = fit(26, cells.map(c => c.val), cellW - 6, 11);
   const lblFs  = fit(22, cells.map(c => c.lbl + ' ' + c.unit), cellW - 4, 8);
   const unitFs = Math.max(7, Math.round(lblFs * 0.72));
@@ -347,7 +347,7 @@ function drawHSI(x, y, w, h) {
   // 이제 나침반 크기를 정하는 것은 폭이 아니라 남은 높이인 경우가 많다.
   const bandH  = hsiBandH();
   const availH = h - bandH * 2;
-  const r    = Math.max(24, Math.min(w * 0.36, availH * 0.47));
+  const r    = Math.max(24, Math.min(w * 0.40, availH * 0.47));
   const cy   = y + bandH + availH / 2;
   const arrowR = r * 0.84;
 
@@ -375,12 +375,10 @@ function drawHSI(x, y, w, h) {
   // 내보이는 자리라, 없느니만 못했다.
   // (지도의 공항별 바람 표시는 실제 관측·예보라 그대로 둔다)
 
-  // ── 나침반 옆 글자판은 조작부로 옮겼다 ──
+  // ── 나침반 옆 글자판은 네 모서리로 옮겼다 ──
   // 종전에는 여기(HSI 좌·우 여백)에 TAS·OAT·GS 와 NAV 소스 3줄을 그렸다.
   // 그러느라 나침반을 폭의 38% 로 줄여야 했고, 아래쪽 갈색이 넓게 남았다.
-  // 지금은 조작부 맨 윗줄(#pfd-info)이 같은 값을 HTML 로 보여 준다 —
-  // 캔버스를 다시 그리지 않아도 되고, 글자도 기기 글꼴이라 훨씬 잘 읽힌다.
-  // 계산은 updatePfdInfo() 에 있다(03-pfd.js 끝).
+  // 지금은 위·아래 띠의 네 모서리에 나눠 적는다 — drawHsiCorners().
 
   // ── compass ──
   ctx.save(); ctx.translate(cx, cy);
@@ -576,74 +574,19 @@ function drawHSI(x, y, w, h) {
 
   ctx.restore(); // end translate cx,cy
 
-  // ── HDG / CRS readout boxes (Garmin 스타일: 시안 라벨 + 흰 숫자) ──
-  // HSI 윗 테두리(y)에 박스 아랫변이 맞닿도록 위로 올려 컴퍼스 로즈와 겹치지 않게 함
-  // 상자 크기도 글씨 배율을 따른다 — px 로 못 박아 두면 글씨를 키운 순간
-  // 라벨(HDG)과 값(009°)이 겹친다.
-  // 글씨를 두 배로 키운다 — 라벨 11→22, 값 13→26. 비행 중 가장 자주 읽는 두
-  // 숫자인데 나침반 눈금 글자보다도 작았다.
-  //
-  // 다만 두 상자는 HSI 폭(속도·고도 테이프 사이) 안에 서야 한다. 좁은 화면에서는
-  // 두 배 크기가 그 폭을 넘으므로 들어갈 만큼만 줄인다. 줄이더라도 종전 크기
-  // 아래로는 내려가지 않는다 — 키우려다 되레 작아지면 고친 뜻이 없다.
-  // (실제로 한 번 그랬다: 320px 화면에서 값이 13.75px 로 종전 16.25px 보다 작아졌다)
-  //
-  // 상자 폭도 글자를 재서 정한다. px 로 못 박아 두면 글씨를 키운 순간
-  // 라벨(HDG)과 값(009°)이 겹친다.
-  const FONT = 'Helvetica Neue, Arial, sans-serif';
-  const LBL_MAX = 22, VAL_MAX = 26, LBL_MIN = 11, VAL_MIN = 13;
-  const gap = 4;
-  // 라벨·값·여백을 합쳐 상자 하나에 필요한 폭(그려질 실제 px — font 배율이 함께 걸린다)
-  const needW = (l, v) => {
-    ctx.font = `bold ${l}px ${FONT}`;
-    const wl = ctx.measureText('HDG').width;
-    ctx.font = `bold ${v}px ${FONT}`;
-    // 여백 세 몫(왼쪽·가운데·오른쪽) + 3px 여유 — 여유가 없으면 반올림 탓에
-    // 라벨과 값이 1px 씩 맞닿는다
-    return wl + ctx.measureText('000°').width + Math.max(3, Math.round(6 * l / LBL_MAX)) * 3 + 3;
-  };
-  const room = Math.floor((w - gap) / 2);
-  const k = Math.max(LBL_MIN / LBL_MAX,
-                     Math.min(1, room / Math.max(1, needW(LBL_MAX, VAL_MAX))));
-  const lblFs = Math.max(LBL_MIN, Math.round(LBL_MAX * k));
-  const valFs = Math.max(VAL_MIN, Math.round(VAL_MAX * k));
-  const pad   = Math.max(3, Math.round(6 * k));
-  // 아주 좁은 화면에서는 가장 작은 글씨조차 HSI 폭에 안 들어간다. 그때는
-  // 글자를 자르는 대신 상자가 몇 px 넘어서게 둔다 — 종전에도 그랬다.
-  const bw = Math.max(40, Math.ceil(needW(LBL_MIN, VAL_MIN)),
-                      Math.min(room, Math.ceil(needW(lblFs, valFs))));
-  const bh = Math.round(Math.max(20, 36 * k) * pfdFontScale);
-  const boxY = y - bh;                                 // 박스 아랫변 = HSI 윗 테두리
-  const txtY = boxY + Math.round(bh * 0.74);           // 텍스트 베이스라인
-  const hdgX = cx - bw - gap/2;
-  const crsX = cx + gap/2;
-  const lblFont = `bold ${lblFs}px ${FONT}`;
-  const valFont = `bold ${valFs}px ${FONT}`;
-  ctx.lineWidth=1;
-  // HDG box
-  ctx.fillStyle='#000'; ctx.strokeStyle='#555';
-  ctx.fillRect(hdgX,boxY,bw,bh); ctx.strokeRect(hdgX,boxY,bw,bh);
-  ctx.textAlign='left';
-  ctx.fillStyle='#00cfff'; ctx.font=lblFont;
-  ctx.fillText('HDG', hdgX+pad, txtY);
-  ctx.fillStyle='#fff'; ctx.font=valFont; ctx.textAlign='right';
-  ctx.fillText(fmtA(toMag(S.hdg))+'°', hdgX+bw-pad, txtY);
-  // CRS box
-  ctx.fillStyle='#000'; ctx.strokeStyle='#555';
-  ctx.fillRect(crsX,boxY,bw,bh); ctx.strokeRect(crsX,boxY,bw,bh);
-  ctx.textAlign='left';
-  ctx.fillStyle='#00cfff'; ctx.font=lblFont;
-  ctx.fillText('CRS', crsX+pad, txtY);
-  ctx.fillStyle='#fff'; ctx.font=valFont; ctx.textAlign='right';
-  ctx.fillText(fmtA(toMag(activeCrs()))+'°', crsX+bw-pad, txtY);
+  // ── HDG·CRS 상자는 나침반 위에 없다 ──────────────────────────
+  // HDG 는 뺐다. 나침반 꼭대기 삼각형이 가리키는 눈금이 곧 기수방위라,
+  // 같은 값을 바로 그 위에 한 번 더 적는 자리였다.
+  // CRS 는 나침반 왼쪽 아래(OAT 아래)로 내렸다 — drawHsiCorners().
+  // 그만큼 나침반이 위아래로 넓어진다.
   ctx.restore();  // outer restore — matches save at function entry
 }
 
 // ── Hover Page HSI: Garmin-style compass rose + GPS speed readouts ──
-// HOVER PAGE 전 반경(ft) — 위치 지시자·SHIP·WPT가 모두 이 축척을 공유한다
+// HOVER PAGE 전 반경(ft) — 위치 지시자와 WPT가 이 축척을 공유한다
 const HOVER_FT = 50;
 // 어떤 좌표의 기체 기준(body frame) 상대 위치를 ft로 반환.
-// HOVER PAGE의 세 지시자(호버 위치·SHIP·WPT)가 같은 계산을 각자 갖고 있던 것을 통합.
+// HOVER PAGE의 두 지시자(호버 위치·WPT)가 같은 계산을 각자 갖고 있던 것을 통합.
 function bodyRelFt(lat, lon) {
   const M_PER_DEG = 111320, FT_PER_M = 3.28084;
   const relN = (lat - S.lat) * M_PER_DEG * FT_PER_M;
@@ -757,57 +700,7 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
   }
   ctx.restore(); // end clip
 
-  // ── SHIP 상대 위치 지시자 (지도 SHIP 기능 연동) ──
-  // 로즈가 heading-up이므로 상대방위 = 화면 각도. 선박 방향으로 포인터를 그린다.
-  let _shipRel = null, _shipDistNM = null, _shipBrgT = null, _shipDistFt = null, _shipNear = false;
-  if (typeof shipVisible !== 'undefined' && shipVisible && shipLat !== null && shipLon !== null) {
-    _shipDistNM = distance(S.lat, S.lon, shipLat, shipLon);
-    _shipBrgT   = bearing(S.lat, S.lon, shipLat, shipLon);
-    _shipRel    = normA(_shipBrgT - S.hdg);
-
-    // 호버 위치 지시자와 동일 축척(전 반경 = HOVER_FT)으로 기체 기준 상대위치 산출
-    const b = bodyRelFt(shipLat, shipLon);
-    _shipDistFt = b.dist;
-    _shipNear   = _shipDistFt <= HOVER_FT;
-
-    // 선체 심볼(원점 기준, 이물이 -Y 방향)
-    const hull = sz => {
-      ctx.beginPath();
-      ctx.moveTo(0, -sz);
-      ctx.lineTo(sz * 0.55, sz * 0.35);
-      ctx.lineTo(sz * 0.35, sz * 0.75);
-      ctx.lineTo(-sz * 0.35, sz * 0.75);
-      ctx.lineTo(-sz * 0.55, sz * 0.35);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(0,229,255,0.35)'; ctx.fill();
-      ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 1.6; ctx.stroke();
-    };
-
-    if (_shipNear) {
-      // ── 반경 내: 실제 축척 위치에 표시(호버 위치 지시자와 동일 축척) ──
-      const pxPerFt = r / HOVER_FT;
-      const sx =  b.lat * pxPerFt, sy = -b.fwd * pxPerFt;
-      ctx.save();
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.94, 0, Math.PI*2); ctx.clip();
-      ctx.translate(sx, sy);
-      ctx.rotate(normA(shipHdg - S.hdg) * D2R);   // 선박 침로 방향으로 정렬
-      hull(Math.max(9, r * 0.13));
-      ctx.restore();
-    } else {
-      // ── 반경 밖: 로즈 가장자리 니들 + 중심→선박 점선 ──
-      const rad = _shipRel * D2R;
-      const pr  = r * 0.70;
-      const px  = Math.sin(rad) * pr, py = -Math.cos(rad) * pr;
-      ctx.save();
-      ctx.strokeStyle = 'rgba(0,229,255,0.55)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(px, py); ctx.stroke(); ctx.setLineDash([]);
-      ctx.translate(px, py); ctx.rotate(rad);     // 바깥쪽(선박 방향)을 향함
-      hull(Math.max(7, r * 0.10));
-      ctx.restore();
-    }
-  }
-
-  // ── 활성 비행계획 웨이포인트 상대 위치 (SHIP과 동일 방식, 빨간 삼각형) ──
+  // ── 활성 비행계획 웨이포인트 상대 위치 (빨간 삼각형) ──
   let _wpRel = null, _wpDistNM = null, _wpBrgT = null, _wpDistFt = null, _wpNear = false, _wpName = '';
   if (S.awp >= 0 && S.awp < S.wps.length) {
     const wp = S.wps[S.awp];
@@ -863,9 +756,7 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
     ctx.save();
     ctx.font = `bold ${fs}px Helvetica Neue, Arial, sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    // SHIP 판독이 함께 나오면 그 위 줄에 배치
-    const shipShown = (typeof _shipRel !== 'undefined' && _shipRel !== null);
-    const ty = Math.min(y + h - 3, cy + r + fs * 1.6) - (shipShown ? fs + 7 : 0);
+    const ty = Math.min(y + h - 3, cy + r + fs * 1.6);
     const tw = ctx.measureText(txt).width;
     ctx.fillStyle = 'rgba(20,0,0,0.75)';
     ctx.fillRect(cx - tw/2 - 5, ty - fs - 2, tw + 10, fs + 6);
@@ -876,27 +767,6 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
     ctx.restore();
   }
 
-  // ── 하단 SHIP 판독: 상대방위 · 자방위 · 거리 ──
-  if (_shipRel !== null) {
-    const fs = Math.max(9, r * 0.115);
-    const magB = ((Math.round(_shipBrgT - RULER_VAR) % 360) + 360) % 360;
-    const relTxt = String(Math.round(_shipRel) % 360).padStart(3,'0');   // 360 → 000
-    // 근접(반경 내)에서는 NM 대신 ft/m로 표기
-    const distTxt = _shipNear ? uAlt(_shipDistFt) : uDist(_shipDistNM, 2);
-    const txt = `SHIP  R${relTxt}°  ${String(magB % 360).padStart(3,'0')}°M  ${distTxt}`;
-    ctx.save();
-    ctx.font = `bold ${fs}px Helvetica Neue, Arial, sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-    const ty = Math.min(y + h - 3, cy + r + fs * 1.6);
-    const tw = ctx.measureText(txt).width;
-    ctx.fillStyle = 'rgba(0,10,16,0.75)';
-    ctx.fillRect(cx - tw/2 - 5, ty - fs - 2, tw + 10, fs + 6);
-    ctx.strokeStyle = '#00e5ff66'; ctx.lineWidth = 1;
-    ctx.strokeRect(cx - tw/2 - 5, ty - fs - 2, tw + 10, fs + 6);
-    ctx.fillStyle = '#00e5ff';
-    ctx.fillText(txt, cx, ty);
-    ctx.restore();
-  }
 
   // ── Side panels: speed readouts left (actual) / right (reference) ──
   if (sideW < 20) return;
@@ -1014,32 +884,33 @@ function navInfoRows() {
   });
 }
 
-// ── 조작부에 남는 것 — 소스를 고르는 버튼 한 줄 ──────────────────
-// 프레임마다 DOM 을 건드리지 않는다. 고른 소스가 바뀔 때만 다시 쓴다.
-let _piLast = '';
-function updatePfdInfo() {
-  const nav = document.getElementById('pi-nav');
-  if (!nav) return;
-  const html = ['FMS', 'NAV1', 'NAV2'].map(src =>
-    `<button class="pi-sel${navSrc === src ? ' on' : ''}" data-act="setNavSrc" ` +
-    `data-arg='["${src}"]' title="${src} 를 항법 소스로">${src}</button>`).join('');
-  if (html === _piLast) return;
-  _piLast = html;
-  nav.innerHTML = html;
-}
+// ── 소스를 고르는 버튼은 조작부에서 내렸다 ────────────────────────
+// 종전에는 조작부 맨 윗줄(#pfd-info)에 FMS·NAV1·NAV2 버튼 세 개가 있었다.
+// 바로 위 나침반 모서리에 같은 이름이 이미 서 있어서, 한 화면에 같은 글자가
+// 두 번 뜨는 자리였다 — 그리고 그 한 줄만큼 나침반이 눌렸다.
+// 이제 모서리 글자판 자체가 버튼이다(사각 테두리, 누르면 그 소스로 바뀐다).
+// 판정 상자는 hsiHitBoxes 에 적어 두고 09-cdu.js 의 onPfdTap 이 읽는다.
 
 // ── 나침반 네 모서리 글자판 ──────────────────────────────────────
 // 위 띠는 나침반 위, 아래 띠는 나침반 아래다. 왼쪽은 왼쪽 끝에, 오른쪽은
 // 오른쪽 끝에 붙여 네 덩이가 서로 멀리 떨어지게 한다 — 가운데로 모으면
 // 나침반 눈금과 겹친다.
+// 나침반 모서리 글자판의 터치 판정 상자 — 그릴 때마다 새로 적는다.
+// 09-cdu.js 의 onPfdTap 은 이것만 보고 어디를 눌렀는지 가른다. 같은 셈을
+// 두 곳에 두면 한쪽만 고쳐져 엉뚱한 자리가 잡힌다(종전에 실제로 그랬다).
+let hsiHitBoxes = [];
+
 function drawHsiCorners(x, y, w, h, bandH) {
   const rows = navInfoRows();
   const air  = airInfo();
+  hsiHitBoxes = [];
 
   // 글씨를 1.3 배로 키웠다 — 나침반을 보는 눈이 고개를 돌리지 않고 읽는 값이다
   const lblFs = Math.round(11 * 1.3);                  // 이름표 (11 → 14)
   const valFs = Math.round(16 * 1.3);                  // 값     (16 → 21)
   const pad   = 6;
+  const boxPad = 5;                                    // 테두리와 글자 사이
+  const FONT  = 'Helvetica Neue, Arial, sans-serif';
   const l1 = bandH * 0.40, l2 = bandH * 0.82;          // 두 줄의 베이스라인
 
   // 한 덩이 = 이름표 + 값 두 줄. align 은 'left' | 'right'.
@@ -1047,17 +918,17 @@ function drawHsiCorners(x, y, w, h, bandH) {
     ctx.textAlign = align;
     ctx.textBaseline = 'alphabetic';
     // 1줄: 이름표 + 식별자
-    ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.font = `bold ${lblFs}px ${FONT}`;
     const hw = ctx.measureText(head).width;
     ctx.fillStyle = headCol;
     ctx.fillText(head, bx, by + l1);
     if (parts.ident !== undefined) {
-      ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+      ctx.font = `bold ${valFs}px ${FONT}`;
       ctx.fillStyle = '#ffffff';
       ctx.fillText(parts.ident, align === 'left' ? bx + hw + 6 : bx - hw - 6, by + l1);
     }
     // 2줄: 이어 붙인 조각들(색이 저마다다) — align 에 맞춰 왼쪽부터 쌓는다
-    ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+    ctx.font = `bold ${valFs}px ${FONT}`;
     const gap = 6;
     const widths = parts.line2.map(p => ctx.measureText(p.t).width);
     const total  = widths.reduce((a, b) => a + b, 0) + gap * (parts.line2.length - 1);
@@ -1070,19 +941,29 @@ function drawHsiCorners(x, y, w, h, bandH) {
     });
   };
 
+  // NAV 소스 한 덩이 = 사각 테두리 + 두 줄. 테두리째가 버튼이다.
+  // 고른 소스는 바탕을 검게 깐다 — 갈색 위에서 검정이 가장 크게 튄다.
+  // (CRS 상자가 검은 바탕이라 눈에 잘 들어왔던 것을 그대로 가져왔다)
   const navBlock = (rw, bx, by, align) => {
-    // 고른 소스는 옅은 바탕을 깔아 한눈에 보이게 한다. 상자는 글자를 재서
-    // 그만큼만 — 넉넉히 잡으면 빈 회색 띠가 나침반 옆에 덩그러니 남는다.
-    if (rw.sel) {
-      ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
-      const w2 = ctx.measureText(`${rw.brg} ${rw.dst}`).width + 8;
-      ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
-      const w1 = ctx.measureText(rw.src).width + 6;
-      ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
-      const wBox = Math.max(w1 + ctx.measureText(rw.ident).width, w2) + 8;
-      ctx.fillStyle = 'rgba(255,255,255,0.09)';
-      ctx.fillRect(align === 'left' ? bx - 4 : bx - wBox + 4, by + 1, wBox, bandH - 2);
-    }
+    // 상자는 글자를 재서 그만큼만. 넉넉히 잡으면 빈 띠가 나침반 옆에 남는다.
+    ctx.font = `bold ${lblFs}px ${FONT}`;
+    const hw = ctx.measureText(rw.src).width;
+    ctx.font = `bold ${valFs}px ${FONT}`;
+    const w1 = hw + 6 + ctx.measureText(rw.ident).width;
+    const w2 = ctx.measureText(rw.brg).width + 6 + ctx.measureText(rw.dst).width;
+    const cw = Math.max(w1, w2);
+    const boxX = (align === 'left' ? bx : bx - cw) - boxPad;
+    const boxW = cw + boxPad * 2;
+    const boxY = by + 1, boxH = bandH - 2;
+    ctx.save();
+    if (rw.sel) { ctx.fillStyle = '#000'; ctx.fillRect(boxX, boxY, boxW, boxH); }
+    ctx.strokeStyle = rw.sel ? '#ffffff' : '#a08d70';
+    ctx.lineWidth   = rw.sel ? 2 : 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.restore();
+    // 누를 자리 — 테두리 그대로다
+    hsiHitBoxes.push({ act: 'navSrc', src: rw.src, x: boxX, y: boxY, w: boxW, h: boxH });
+
     // 래디얼(R###)은 뺐다. 방위의 반대편이라 한쪽만 읽으면 나머지는 머릿속에서
     // 나오고, 글씨를 키운 지금은 세 값이 한 줄에 서면 모서리를 넘는다.
     block(bx, by, align, rw.src, rw.has ? rw.color : '#667', {
@@ -1092,12 +973,15 @@ function drawHsiCorners(x, y, w, h, bandH) {
     });
   };
 
+  // 글자 자리는 테두리 안쪽이다 — 테두리가 계기 가장자리에 물리지 않도록
+  // 안쪽 여백(boxPad)만큼 들여 잡는다. 종전에는 오른쪽 테두리가 화면 끝에
+  // 딱 붙어 선 한 줄이 잘려 보였다.
   ctx.save();
-  navBlock(rows[0], x + pad,     y,             'left');   // 왼쪽 위 — FMS
-  navBlock(rows[1], x + w - pad, y,             'right');  // 오른쪽 위 — NAV1
-  navBlock(rows[2], x + w - pad, y + h - bandH, 'right');  // 오른쪽 아래 — NAV2
+  navBlock(rows[0], x + pad + boxPad,     y,             'left');   // 왼쪽 위 — FMS
+  navBlock(rows[1], x + w - pad - boxPad, y,             'right');  // 오른쪽 위 — NAV1
+  navBlock(rows[2], x + w - pad - boxPad, y + h - bandH, 'right');  // 오른쪽 아래 — NAV2
 
-  // 왼쪽 아래 — OAT 하나.
+  // ── 왼쪽 아래 — OAT(윗줄) · CRS(아랫줄) ──
   // TAS·GS 는 뺐다. 맨 윗줄에 GS 가 이미 크게 서 있고, TAS 는 대기속도계가
   // 없는 이 앱에서는 대지속도에 고도 보정을 먹인 값이라 GS 와 거의 같은
   // 숫자가 나란히 뜬다 — 어느 쪽이 실제인지 헷갈리기만 했다.
@@ -1105,13 +989,28 @@ function drawHsiCorners(x, y, w, h, bandH) {
   // OAT 는 지금 고도의 기온이다. 받아 둔 지면 기온(기상청 격자 → METAR)에
   // 표준 감률(1000ft 당 2°C)을 먹여 낸다 — oatNow(). 자료가 없으면 '---' 로
   // 비운다. 누르면 어디서 온 값인지 알려 준다(09-cdu.js 의 onPfdTap).
+  //
+  // CRS 는 나침반 위 검은 상자에서 이리로 내려왔다. 바탕은 깔지 않는다 —
+  // 검은 바탕은 이제 '고른 NAV 소스' 하나만 쓰는 표시다.
   ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
   const by = y + h - bandH, bx = x + pad;
-  ctx.font = `bold ${lblFs}px Helvetica Neue, Arial, sans-serif`;
-  ctx.fillStyle = '#8fa3b8'; ctx.fillText('OAT', bx, by + l2);
+  ctx.font = `bold ${lblFs}px ${FONT}`;
+  ctx.fillStyle = '#8fa3b8'; ctx.fillText('OAT', bx, by + l1);
   const ow = ctx.measureText('OAT').width;
-  ctx.font = `bold ${valFs}px Helvetica Neue, Arial, sans-serif`;
+  ctx.font = `bold ${valFs}px ${FONT}`;
   ctx.fillStyle = air.oat.c === null ? '#777' : '#ffd54f';
-  ctx.fillText(uTemp(air.oat.c), bx + ow + 5, by + l2);
+  const oatTxt = uTemp(air.oat.c);
+  ctx.fillText(oatTxt, bx + ow + 5, by + l1);
+  // OAT 를 누르면 출처를 알려 준다 — 그 글자만큼만 판정한다(아래 CRS 와 다투지 않게)
+  hsiHitBoxes.push({ act: 'oat', x: bx - 4, y: by,
+                     w: ow + 10 + ctx.measureText(oatTxt).width,
+                     h: Math.round(bandH * 0.55) });
+
+  ctx.font = `bold ${lblFs}px ${FONT}`;
+  ctx.fillStyle = '#00cfff'; ctx.fillText('CRS', bx, by + l2);
+  const cw2 = ctx.measureText('CRS').width;
+  ctx.font = `bold ${valFs}px ${FONT}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(fmtA(toMag(activeCrs())) + '°', bx + cw2 + 5, by + l2);
   ctx.restore();
 }
