@@ -441,14 +441,20 @@ body.solo-mode .solo-panel-visible {
 }
 #map-crosshair .ch-h { left: -11px; top: -1px; width: 22px; height: 2px; }
 #map-crosshair .ch-v { left: -1px; top: -11px; width: 2px; height: 22px; }
-/* ── 중앙 좌표 표시 (좌하단 최하단: 축척 → 좌표) ── */
+/* ── 중앙 좌표 표시 (우하단) ────────────────────────────────────
+   종전에는 좌·우로 폭을 다 쓰고(left:6px right:6px) 글자를 왼쪽에 붙였다.
+   그 자리가 곧 왼쪽 버튼 줄 아래라, 줄 맨 끝 버튼과 좌표가 같은 세로선에서
+   맞물려 보였다. 상자를 오른쪽에 붙이고 글자도 오른쪽으로 몰아, 버튼 줄이
+   차지하는 왼쪽 띠를 통째로 비워 둔다.
+   상자 폭은 내용에 맞춘다(left 를 주지 않으면 absolute 는 내용 폭이 된다). */
 #center-coord {
-  position: absolute; bottom: calc(20% + 6px); left: 6px; right: 6px; z-index: 1100;
+  position: absolute; bottom: calc(20% + 6px); right: 6px; z-index: 1100;
+  max-width: calc(100% - 93px);     /* 버튼 줄(81) + 좌우 여백 — 그 아래로 들어가지 않는다 */
   background: rgba(0,0,0,0.72); border: 1px solid #444; border-radius: 4px;
   padding: 4px 9px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   /* 십자(지도 중앙) 좌표 — 읽으라고 띄운 값이다. 10px 로는 못 읽는다. */
   font-size: 15px; font-weight: bold; line-height: 1.4; color: #ffd54f; white-space: nowrap;
-  pointer-events: none;
+  text-align: right; pointer-events: none;
 }
 /* REC 은 지도 아래 라인 셀렉터에 있다 — 규격은 .sim-btn 이 정한다.
    여기서는 켜졌을 때의 색만 따로 둔다. */
@@ -712,16 +718,25 @@ body.solo-mode .solo-panel-visible {
 #vnav-alert.pre   { display: block; background: rgba(60,45,0,0.92); border: 1px solid #ffaa00; color: #ffd24d; }
 #vnav-alert.begin { display: block; background: rgba(50,0,50,0.94); border: 1px solid #ff4dd2; color: #ff9de8; animation: aspcBlink 1s step-end infinite; }
 
-/* GPS 상태창: 하단 좌표창(#center-coord, left:10px) 오른쪽에 나란히 배치 */
+/* GPS 상태창: 좌표창 바로 위, 같은 오른쪽 선에 맞춰 선다 */
 #gps-status {
-  position: absolute; bottom: calc(20% + 32px); left: 6px; right: 6px; z-index: 1100;
+  position: absolute; bottom: calc(20% + 32px); right: 6px; z-index: 1100;
+  max-width: calc(100% - 93px);
   background: rgba(0,20,0,0.80); border: 1px solid #226622; color: #00cc66;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   /* 실제 위치(GPS) — 관제에 불러 줄 좌표다. 여기가 가장 커야 한다. */
   font-size: 15px;
   padding: 4px 9px; border-radius: 3px; display: none;
-  text-align: left; line-height: 1.5; white-space: nowrap;
+  /* 좌표에 속도·고도·방위·오차까지 붙어 한 줄로는 폰 폭을 넘는다. 잘라내는
+     대신 접어 내린다 — 상자 아랫변이 붙박이라 위로 자란다(좌표창을 덮지 않는다).
+     좌표 한 벌은 가운뎃점(·) 자리에서만 끊기게 nowrap 을 걸어 둔다. */
+  text-align: right; line-height: 1.5;
 }
+#gps-status .gs-part { white-space: nowrap; }
+/* 버튼 줄을 접으면 왼쪽 띠가 비므로 폭을 다 쓴다 — 접힌 채로는 한 줄에 든다.
+   (#map-lsk 는 두 창보다 앞에 있는 형제라 ~ 로 짚는다) */
+#map-lsk.collapsed ~ #center-coord,
+#map-lsk.collapsed ~ #gps-status { max-width: calc(100% - 12px); }
 #map-wrap.tcut-off #gps-status { bottom: 32px; }
 #wx-btn.wx-active {
   background: rgba(0,20,40,0.92); border-color: #00aaff; color: #66ccff;

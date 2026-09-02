@@ -163,10 +163,13 @@ function drRender(sinceMs) {
   el.style.display = 'block';
   el.style.borderColor = drLost ? '#aa3322' : '#b4632a';
   el.style.color       = drLost ? '#ff7766' : '#ffb066';
+  // 덩이를 묶어 둔다 — 접히더라도 좌표 한 벌은 붙어 있어야 읽힌다(_gsPart)
   el.innerHTML = drLost
-    ? `✖ 위치 상실 — GPS 두절 ${age} · 표시 위치를 믿지 마십시오`
-    : `⚠ DR 추측항법 — GPS 두절 ${age} · ${decToDMS(S.lat, true)} ${decToDMS(S.lon, false)} · ` +
-      `${uSpd(Math.round(_drAnchor ? _drAnchor.gs : 0))} · ${fmtA(toMag(_drAnchor ? _drAnchor.trk : S.hdg))}°`;
+    ? `✖ 위치 상실 — GPS 두절 ${_gsPart(age)} · 표시 위치를 믿지 마십시오`
+    : `⚠ DR 추측항법 — GPS 두절 ${_gsPart(age)} · ` +
+      `${_gsPart(decToDMS(S.lat, true) + ' ' + decToDMS(S.lon, false))} · ` +
+      `${_gsPart(uSpd(Math.round(_drAnchor ? _drAnchor.gs : 0)))} · ` +
+      `${_gsPart(fmtA(toMag(_drAnchor ? _drAnchor.trk : S.hdg)) + '°')}`;
 }
 
 function drTick() {
