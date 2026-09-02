@@ -7,6 +7,10 @@
 //     기수방위인지 한눈에 안 잡혔다.
 //   · 상자 폭을 글자를 재서 정한다 — px 로 못 박아 두면 글씨를 키운 순간
 //     라벨(HDG)과 값(009°)이 겹친다.
+//
+// 같은 자리에 있던 풍향/풍속(279°/00kt)도 내렸다. 이 앱에는 대기속도(IAS)가
+// 없어 바람을 잴 방법이 없다 — 시뮬레이터 시절 조작부로만 바뀌던 값이라
+// 늘 처음 값이 그대로 떠 있었다.
 export const name = 'HDG · CRS 상자';
 
 // 이 자리의 종전 크기. 여기서부터 두 배(22 · 26)로 키웠고, 좁은 화면이라도
@@ -42,6 +46,8 @@ export async function run(page, t) {
       hdgDrawn: calls.filter(c => c.txt === hdgTxt).length,
       selDrawn: calls.filter(c => c.txt === selTxt).length,
       hdgTxt, selTxt,
+      // 풍향/풍속은 '279°/00kt' 꼴로 한 덩이로 그려졌다
+      windDrawn: calls.filter(c => /^\d{3}°\/\d+kt$/.test(c.txt)).map(c => c.txt),
     };
   });
 
@@ -58,6 +64,13 @@ export async function run(page, t) {
       `${L} — 컴퍼스 옆 회색 헤딩(${r.selTxt})을 더는 적지 않는다 (${r.selDrawn}번)`);
     // 그렇다고 기수방위가 사라지면 안 된다 — HDG 상자에 그대로 있어야 한다
     t.eq(r.hdgDrawn, 1, `${L} — 기수방위(${r.hdgTxt})는 HDG 상자에 한 번 뜬다 (${r.hdgDrawn}번)`);
+
+    // ── 바람은 내렸다 ────────────────────────────────────────
+    // 바람은 대기속도 벡터와 대지속도 벡터의 차로 나온다. 이 앱에는
+    // 대기속도가 없으니 잴 수가 없고, 값은 시뮬레이터 시절 조작부(WDIR·WSPD)
+    // 로만 바뀌던 것이라 늘 처음 값(270°/0kt)이 그대로 떠 있었다.
+    t.eq(r.windDrawn.length, 0,
+      `${L} — 잴 수 없는 바람을 적지 않는다${r.windDrawn.length ? ' (' + r.windDrawn.join(',') + ')' : ''}`);
 
     // ── 종전보다 작아지지 않는다 ──────────────────────────────
     // 좁은 화면에서는 두 배가 HSI 폭에 안 들어가 줄여야 하는데, 줄이다 종전

@@ -432,6 +432,20 @@ export async function run(page, t) {
                  return { crsLbl: one('#crs-lbl-btn'), crsUp: one('#crs-up'),
                           obs: one('#obs-btn'), brg: one('#brg1-tog'),
                           susp: one('#susp-btn'), suspAuto, rnp: one('#rnp-1') };
+               })(),
+               // 글꼴·크기·굵기도 하나로 — NAV 소스 버튼(.pi-sel)이 기준이다
+               fonts: (() => {
+                 const f = e => { const c = getComputedStyle(e);
+                   return [c.fontFamily, c.fontSize, c.fontWeight].join(' / '); };
+                 const out = { 기준: f(document.querySelector('#pi-nav .pi-sel')) };
+                 for (const [k, sel] of [['CRS', '#crs-lbl-btn'], ['◄', '#crs-dn'],
+                       ['OBS', '#obs-btn'], ['BRG1', '#brg1-tog'], ['SUSP', '#susp-btn'],
+                       ['시계', '#sw-display'], ['STOP WATCH', '#sw-btns-clock .sw-btn'],
+                       ['RNP', '#rnp-1']]) {
+                   const e = document.querySelector(sel);
+                   if (e) out[k] = f(e);
+                 }
+                 return out;
                })() };
     });
     const L = vp.width + '×' + vp.height;
@@ -450,6 +464,15 @@ export async function run(page, t) {
     t.eq(hs.length, 0,
       `${L} — 조작부 버튼 높이가 모두 ${a.selH}px 로 같다` +
       (hs.length ? ' (' + hs.map(([k, h]) => `${k}=${h}`).join(', ') + ')' : ''));
+    // 글꼴·크기·굵기도 하나여야 한다. 저마다이면 어느 것이 눌린 버튼인지
+    // 색보다 굵기로 먼저 읽히는 착시가 생긴다 — CRS 만 13px 보통 글씨였고,
+    // BRG·RNP·STOP WATCH 도 보통 글씨, 시계는 글꼴마저 달랐다.
+    const ref = a.fonts['기준'];
+    const odd = Object.entries(a.fonts).filter(([k, v]) => k !== '기준' && v !== ref);
+    t.eq(odd.length, 0,
+      `${L} — 조작부 글씨가 NAV 버튼과 같다 (${ref})` +
+      (odd.length ? ' — 다른 것: ' + odd.map(([k, v]) => `${k}=${v}`).join(' · ') : ''));
+    t.ok(/(^|[^\d])(700|bold)([^\d]|$)/.test(ref), `${L} — 그 글씨가 볼드체다 (${ref})`);
     // 시계·RNP 는 맨 아래 — 앞줄(CRS·BRG·SUSP)보다 아래에 있어야 한다
     const front = Math.max(a.crs.t, a.brg.t, a.susp.t);
     t.ok(a.sw.t > front, `${L} — 시계가 앞줄보다 아래다 (시계 ${Math.round(a.sw.t)} > 앞줄 ${Math.round(front)})`);

@@ -604,9 +604,8 @@ function drawHSI(x, y, w, h) {
   ctx.fillRect(x,y,w,h);
 
   const cx   = x + w / 2;
-  // 옆 글자판을 조작부로 내보낸 만큼 나침반을 키운다. 왼쪽에 바람 표시 하나만
-  // 남았으므로 그 폭(sideW)만 남기면 된다 — 종전 0.38w 는 글자판 두 벌을
-  // 재우던 값이라 지금은 나침반을 공연히 작게 만든다.
+  // 옆 글자판을 조작부로 내보낸 만큼 나침반을 키운다 — 종전 0.38w 는 글자판
+  // 두 벌을 재우던 값이라 지금은 나침반을 공연히 작게 만든다.
   const r    = Math.min(w * 0.44, h * 0.47);
   const cy   = y + h * 0.54;
   const arrowR = r * 0.84;
@@ -618,48 +617,19 @@ function drawHSI(x, y, w, h) {
     return;
   }
 
-  // ── side panel widths ──
-  const sideW = (w - r * 2) / 2 - 8;  // 남은 여백(바람 표시가 쓴다)
-  const leftX  = x + 4;
-
   // ── BRG1·BRG2 좌우 패널은 아래 NAV SOURCE 3줄이 대신한다 ──
   // 그 3줄에 FMS·NAV1·NAV2 의 식별자·방위·거리가 이미 다 있어서, 좌측 BRG1
   // 패널은 같은 값을 한 번 더 적는 자리였다. 나침반의 BRG1·BRG2 니들은
   // brg1Visible·brg2Visible 토글로 그대로 유지된다 — 지우는 것은 숫자판뿐이다.
 
-  // ── Wind display (HSI top-left) ──
-  {
-    const wdirFmt = fmtA(toMag(windDir));   // 바람도 자북 기준으로 표기
-    const wspdFmt = String(Math.round(windSpd)).padStart(2,'0');
-    // 나침반을 키운 뒤로 옆 여백(sideW)이 거의 없다. 가운데 정렬로 두면
-    // 글자가 왼쪽 속도 테이프 위로 넘어간다 — 왼쪽 끝에 붙여 쓰고, 화살표는
-    // 글자 오른쪽에 세운다.
-    const wdY = y + 3;
-    const fs  = Math.max(9, r * 0.105);
-    ctx.save();
-    ctx.font = `bold ${fs}px Helvetica Neue, Arial, sans-serif`;
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'left';
-    const wTxt = `${wdirFmt}°/${wspdFmt}kt`;
-    ctx.fillText(wTxt, leftX, wdY + fs);
-    const wdX = leftX + ctx.measureText(wTxt).width + 10;
-
-    // Wind arrow: points in direction wind is blowing TO (windDir + 180)
-    const aLen = Math.min(Math.max(sideW, 20) * 0.32, 14);
-    const wto  = normA(windDir + 180) * D2R;
-    const ax   = Math.sin(wto) * aLen;
-    const ay   = -Math.cos(wto) * aLen;
-    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(wdX, wdY); ctx.lineTo(wdX + ax, wdY + ay); ctx.stroke();
-    // arrowhead
-    const hs = 4, ba = wto + Math.PI;
-    ctx.beginPath();
-    ctx.moveTo(wdX + ax, wdY + ay);
-    ctx.lineTo(wdX + ax + Math.sin(ba + 0.45)*hs, wdY + ay - Math.cos(ba + 0.45)*hs);
-    ctx.lineTo(wdX + ax + Math.sin(ba - 0.45)*hs, wdY + ay - Math.cos(ba - 0.45)*hs);
-    ctx.closePath(); ctx.fillStyle = '#ffffff'; ctx.fill();
-    ctx.restore();
-  }
+  // ── 바람 표시는 내렸다 ──────────────────────────────────────
+  // 종전에는 HSI 왼쪽 위에 풍향/풍속(279°/00kt)을 적었다. 그런데 이 앱에는
+  // 대기속도(IAS)가 없다 — 바람은 대기속도 벡터와 대지속도 벡터의 차로
+  // 나오므로, 잴 방법이 없다. windDir·windSpd 는 시뮬레이터 시절의 조작부
+  // (WDIR·WSPD)로만 바뀌던 값이고 그 버튼은 이미 화면에서 내렸다. 그래서
+  // 늘 처음 값(270°/0kt)이 그대로 떠 있었다 — 재지 않은 것을 잰 것처럼
+  // 내보이는 자리라, 없느니만 못했다.
+  // (지도의 공항별 바람 표시는 실제 관측·예보라 그대로 둔다)
 
   // ── 나침반 옆 글자판은 조작부로 옮겼다 ──
   // 종전에는 여기(HSI 좌·우 여백)에 TAS·OAT·GS 와 NAV 소스 3줄을 그렸다.
