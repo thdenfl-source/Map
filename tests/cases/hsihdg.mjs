@@ -150,6 +150,62 @@ export async function run(page, t) {
     }
   }
 
+  // ── 나침반 칸 배색 ──────────────────────────────────────────
+  // 종전에는 이 칸이 자세계의 '땅' 과 같은 갈색(#654321)이었다. 밝기가
+  // 어중간해 파랑·초록 글자가 묻혔고, 자세계와 경계도 흐렸다.
+  // 색 자체는 취향이지만, 아래 세 가지는 지켜야 읽힌다.
+  await page.setViewportSize({ width: 412, height: 900 });
+  await page.evaluate(() => setSolo('pfd'));
+  await page.waitForTimeout(250);
+  const col = await page.evaluate(() => {
+    // 상대휘도(WCAG) — 색끼리 얼마나 갈리는지 재는 자
+    const lum = h => {
+      const v = h.replace('#', '');
+      const c = [0, 2, 4].map(i => parseInt(v.slice(i, i + 2), 16) / 255)
+        .map(x => x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4));
+      return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    };
+    const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+      return (x + 0.05) / (y + 0.05); };
+    // 자세계 '땅' 색은 drawAI 가 그린다 — 그때 쓰는 값을 그대로 받아 온다
+    let ground = null;
+    const g = ctx, orig = g.createLinearGradient;
+    const seen = [];
+    g.createLinearGradient = function () {
+      const grd = orig.apply(this, arguments);
+      const add = grd.addColorStop.bind(grd);
+      grd.addColorStop = (o, c) => { seen.push(c); return add(o, c); };
+      return grd;
+    };
+    try { drawPFD(); } finally { g.createLinearGradient = orig; }
+    ground = seen.find(c => c === '#654321') || null;
+    return { bg: HSI_BG, face: HSI_FACE, tick5: HSI_TICK5, ground,
+             bgVsBlack: ratio(HSI_BG, '#000000'),
+             faceVsBg: ratio(HSI_FACE, HSI_BG),
+             tickVsFace: ratio(HSI_TICK5, HSI_FACE),
+             yellowVsBg: ratio('#ffd54f', HSI_BG),
+             blueVsBg: ratio('#44aaff', HSI_BG),
+             greenVsBg: ratio('#00cc44', HSI_BG),
+             lumBg: lum(HSI_BG), lumGround: ground ? lum(ground) : null };
+  });
+  t.ok(col.bg !== col.ground,
+    `나침반 칸이 자세계 '땅' 과 다른 색이다 (${col.bg} vs ${col.ground})`);
+  t.ok(col.lumBg < col.lumGround,
+    `자세계보다 어둡다 — 위에서 아래로 어두워진다 (${col.lumBg.toFixed(3)} < ${col.lumGround.toFixed(3)})`);
+  // 고른 NAV 소스는 검은 바탕으로 표시한다. 칸 바탕이 검정에 너무 가까우면
+  // 그 표시가 사라진다 — 눈에 띄려면 최소한의 차가 있어야 한다.
+  t.ok(col.bgVsBlack >= 1.35,
+    `고른 소스의 검은 바탕이 칸 바탕과 갈린다 (대비 ${col.bgVsBlack.toFixed(2)})`);
+  t.ok(col.faceVsBg > 1.1,
+    `나침반 원판이 칸 바탕과 갈린다 (대비 ${col.faceVsBg.toFixed(2)})`);
+  t.ok(col.tickVsFace >= 1.8,
+    `가장 흐린 눈금(5°)도 원판 위에서 보인다 (대비 ${col.tickVsFace.toFixed(2)})`);
+  // 모서리 글자판이 쓰는 세 색 — 갈색 위에서 파랑이 특히 묻혔다
+  for (const [k, v] of [['OAT 노랑', col.yellowVsBg], ['NAV 파랑', col.blueVsBg],
+                        ['FMS 초록', col.greenVsBg]]) {
+    t.ok(v >= 4.5, `${k} 글자가 바탕 위에서 읽힌다 (대비 ${v.toFixed(2)})`);
+  }
+
   // ── 테두리를 누르면 그 소스가 선택된다 ──────────────────────
   await page.setViewportSize({ width: 412, height: 900 });
   await page.evaluate(() => setSolo('pfd'));

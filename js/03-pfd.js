@@ -64,7 +64,7 @@ function drawPFD() {
   const hsiR    = aiW * 0.40;                            // 폭에 걸릴 때의 반지름
   const hsiWant = Math.round(hsiR * 2 + bandH * 2 + 10);
   // 절반을 넘기지 않는다. 나침반 칸은 위·아래 띠에 글자판을 이고 있어 그냥
-  // 두면 자세계보다 커진다 — "갈색이 너무 넓다" 던 자리로 되돌아간다.
+  // 두면 자세계보다 커진다 — "빈 바탕이 너무 넓다" 던 자리로 되돌아간다.
   const hsiH = Math.max(Math.round(usableH * 0.34),
                         Math.min(Math.round(usableH * 0.50), hsiWant));
   const aiH  = usableH - hsiH;
@@ -79,6 +79,24 @@ function drawPFD() {
   drawAI(aiX, 0, aiW, aiH);
   drawHSI(aiX, aiH, aiW, hsiH);
 }
+
+// ── 나침반 칸 배색 ──────────────────────────────────────────────
+// 종전에는 나침반 칸이 자세계의 '땅' 과 같은 갈색(#654321)이었다. 시뮬레이터
+// 시절 두 칸이 이어져 보이게 하려던 색인데, 계기로 쓰기에는 두 가지가 걸렸다.
+//   · 갈색은 밝기가 어중간하다. 그 위에 얹은 파랑(#44aaff)·초록 글자가
+//     묻혔고, 고른 NAV 소스의 검은 바탕도 덜 튀었다.
+//   · 자세계의 땅과 같은 색이라 두 계기의 경계가 한눈에 안 잡혔다.
+// 지금은 짙은 청회색이다. 실제 EFIS(G1000 계열)의 HSI 칸이 쓰는 계열이고,
+// 이 앱의 다른 어두운 부분(맨 윗줄 값 상자·조작부)과 한 식구가 된다.
+// 하늘색 자세계 → 짙은 청회색 나침반 → 검은 조작부로 위에서 아래로 어두워져
+// 세 칸의 경계가 색만으로 읽힌다.
+// 검정에 너무 붙이지 않는다 — 고른 NAV 소스를 검은 바탕으로 표시하므로,
+// 칸 바탕이 검정이면 그 표시가 사라진다(대비 1.5 를 남겨 두었다).
+const HSI_BG   = '#1f2d3b';   // 나침반 칸 바탕
+const HSI_FACE = '#2e404f';   // 나침반 원판 — 바탕보다 한 단계 밝게 띄운다
+const HSI_RIM  = '#0a0f14';   // 원판 테두리(그림자 몫)
+// 눈금은 원판 위에서 세 단계로 읽힌다(30° · 10° · 5°).
+const HSI_TICK30 = '#e2e8ef', HSI_TICK10 = '#93a3b5', HSI_TICK5 = '#66768d';
 
 // 나침반 위·아래에 두는 글자판 띠의 높이(두 줄)
 function hsiBandH() { return Math.round(38 * pfdFontScale); }
@@ -344,7 +362,7 @@ function drawGlidePath(x, y, w, h) {
 function drawHSI(x, y, w, h) {
   if (!(w >= 40) || !(h >= 40)) return;   // 반지름이 음수가 되는 것을 원천 차단
   ctx.save();  // outer save — ensure lineWidth/strokeStyle don't bleed into drawPFD
-  ctx.fillStyle='#654321';
+  ctx.fillStyle=HSI_BG;
   ctx.fillRect(x,y,w,h);
 
   const cx   = x + w / 2;
@@ -383,16 +401,20 @@ function drawHSI(x, y, w, h) {
 
   // ── 나침반 옆 글자판은 네 모서리로 옮겼다 ──
   // 종전에는 여기(HSI 좌·우 여백)에 TAS·OAT·GS 와 NAV 소스 3줄을 그렸다.
-  // 그러느라 나침반을 폭의 38% 로 줄여야 했고, 아래쪽 갈색이 넓게 남았다.
+  // 그러느라 나침반을 폭의 38% 로 줄여야 했고, 아래쪽 바탕이 넓게 남았다.
   // 지금은 위·아래 띠의 네 모서리에 나눠 적는다 — drawHsiCorners().
 
   // ── compass ──
   ctx.save(); ctx.translate(cx, cy);
 
   ctx.beginPath(); ctx.arc(0,0,r+3,0,Math.PI*2);
-  ctx.strokeStyle='#1a0e04'; ctx.lineWidth=3; ctx.stroke();
+  ctx.strokeStyle=HSI_RIM; ctx.lineWidth=3; ctx.stroke();
   ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
-  ctx.fillStyle='#654321'; ctx.fill();
+  ctx.fillStyle=HSI_FACE; ctx.fill();
+  // 원판 가장자리에 옅은 테를 둘러 바탕과 갈라 놓는다 — 두 색의 차가 작아
+  // 테가 없으면 원판이 어디서 끝나는지 흐릿하다.
+  ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.strokeStyle='#5d7286'; ctx.lineWidth=1; ctx.stroke();
 
   // rotating rose
   ctx.save();
@@ -400,7 +422,7 @@ function drawHSI(x, y, w, h) {
   for (let a=0;a<360;a+=5) {
     const rad=a*D2R, is30=a%30===0, is10=a%10===0;
     const rOut=r*0.97, rIn=r*(is30?0.87:is10?0.915:0.955);
-    ctx.strokeStyle=is30?'#bbb':is10?'#777':'#3a3a3a';
+    ctx.strokeStyle=is30?HSI_TICK30:is10?HSI_TICK10:HSI_TICK5;
     ctx.lineWidth=is30?2:is10?1.5:0.8;
     ctx.beginPath();
     ctx.moveTo(Math.sin(rad)*rOut,-Math.cos(rad)*rOut);
@@ -497,10 +519,12 @@ function drawHSI(x, y, w, h) {
   // Deviation scale dots ±1, ±2
   for (let i = -2; i <= 2; i++) {
     if (i === 0) continue;
+    // 편차 눈금 점 — 원판보다 어둡게 파고 밝은 테를 둘러 '구멍' 으로 읽힌다.
+    // 종전(#333/#666)은 갈색 원판 위에서 잡혔지만 청회색 위에서는 흐렸다.
     ctx.beginPath(); ctx.arc(i * dotGap, 0, 3.5, 0, Math.PI*2);
-    ctx.fillStyle = '#333'; ctx.fill();
+    ctx.fillStyle = '#101820'; ctx.fill();
     ctx.beginPath(); ctx.arc(i * dotGap, 0, 3.5, 0, Math.PI*2);
-    ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = '#a8b8c8'; ctx.lineWidth = 1; ctx.stroke();
   }
 
   // CDB needle — vertical bar that moves laterally
@@ -613,15 +637,15 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
   ctx.save();
   ctx.translate(cx, cy);
 
-  // Dark-brown inner fill (Garmin style)
+  // 원판 — 보통 HSI 와 같은 색이다(같은 계기의 다른 화면일 뿐이다)
   ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2);
-  ctx.fillStyle = '#654321'; ctx.fill();
+  ctx.fillStyle = HSI_FACE; ctx.fill();
 
   // Outer bezel
   ctx.beginPath(); ctx.arc(0, 0, r + 3, 0, Math.PI*2);
-  ctx.strokeStyle = '#111'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.strokeStyle = HSI_RIM; ctx.lineWidth = 5; ctx.stroke();
   ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2);
-  ctx.strokeStyle = '#999'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.strokeStyle = '#8fa3b8'; ctx.lineWidth = 1.5; ctx.stroke();
 
   // ── Rotating rose (heading-up) ──
   ctx.save();
@@ -630,7 +654,7 @@ function drawHsiHoverPage(x, y, w, h, cx, cy, rFull) {
     const rad = a * D2R, is30 = a % 30 === 0, is10 = a % 10 === 0;
     const rOut = r * 0.97;
     const rIn  = r * (is30 ? 0.87 : is10 ? 0.915 : 0.955);
-    ctx.strokeStyle = is30 ? '#ddd' : is10 ? '#888' : '#555';
+    ctx.strokeStyle = is30 ? HSI_TICK30 : is10 ? HSI_TICK10 : HSI_TICK5;
     ctx.lineWidth   = is30 ? 2 : is10 ? 1.5 : 0.8;
     ctx.beginPath();
     ctx.moveTo(Math.sin(rad)*rOut, -Math.cos(rad)*rOut);
@@ -948,7 +972,8 @@ function drawHsiCorners(x, y, w, h, bandH) {
   };
 
   // NAV 소스 한 덩이 = 사각 테두리 + 두 줄. 테두리째가 버튼이다.
-  // 고른 소스는 바탕을 검게 깐다 — 갈색 위에서 검정이 가장 크게 튄다.
+  // 고른 소스는 바탕을 검게 깐다. 칸 바탕(#16202a)이 짙어도 검정은 그보다
+  // 한참 어두워, 흰 테두리와 함께 어느 것을 골랐는지 멀리서도 읽힌다.
   // (CRS 상자가 검은 바탕이라 눈에 잘 들어왔던 것을 그대로 가져왔다)
   const navBlock = (rw, bx, by, align) => {
     // 상자는 글자를 재서 그만큼만. 넉넉히 잡으면 빈 띠가 나침반 옆에 남는다.
@@ -963,7 +988,7 @@ function drawHsiCorners(x, y, w, h, bandH) {
     const boxY = by + 1, boxH = bandH - 2;
     ctx.save();
     if (rw.sel) { ctx.fillStyle = '#000'; ctx.fillRect(boxX, boxY, boxW, boxH); }
-    ctx.strokeStyle = rw.sel ? '#ffffff' : '#a08d70';
+    ctx.strokeStyle = rw.sel ? '#ffffff' : '#6b7d90';
     ctx.lineWidth   = rw.sel ? 2 : 1;
     ctx.strokeRect(boxX, boxY, boxW, boxH);
     ctx.restore();
