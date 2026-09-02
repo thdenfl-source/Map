@@ -62,10 +62,12 @@ export async function run(page, t) {
     try { drawPFD(); } finally { g.fillText = orig; }
     return fromCalc.filter(v => drawn.includes(v));
   }, [SEL]);
-  t.ok(nmTxt.includes('1.0 NM'),
-    `PFD NAV1 자리가 1.0 NM 을 보여 준다 (${nmTxt.join(' / ') || '없음'})`);
-  t.ok(!nmTxt.includes('0.0 NM'),
-    '종전처럼 0.0 NM 으로 떨어지지 않는다');
+  // 단위는 소문자로 적는다(NM → nm) — 한 줄에 하나씩만 적으니 굳이
+  // 대문자로 존재감을 다툴 필요가 없다.
+  t.ok(nmTxt.includes('1.0 nm'),
+    `PFD NAV1 자리가 1.0 nm 을 보여 준다 (${nmTxt.join(' / ') || '없음'})`);
+  t.ok(!nmTxt.includes('0.0 nm'),
+    '종전처럼 0.0 nm 으로 떨어지지 않는다');
 
   // ── FMS(GPS) 거리는 수평거리 그대로다 ──
   const fms = await page.evaluate(([SEL]) => {

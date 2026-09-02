@@ -632,11 +632,13 @@ export async function run(page, t) {
                           Math.min(Math.round(usableH * 0.50), hsiWant));
     const hsiY = usableH - hsiH;
     // 화면 좌표로 들어온 것만(translate 로 그리는 눈금·장미는 0 이하다).
-    // 같은 글자가 맨 윗줄(GS·ALT·VS)에도 있으므로 나침반 칸 안에서 찾는다.
+    // 같은 글자가 맨 윗줄(GS·HDG·ALT·VS)에도 있으므로 나침반 칸 안에서 찾는다.
+    // 위/아래 판정은 칸의 세로 가운데를 기준으로 나눈다 — NAV 상자(넉 줄)와
+    // OAT·CRS 상자(두 줄)가 높이가 서로 달라, 한 값(bandH)으로는 못 가른다.
     const corner = t => {
       const e = seen.find(q => q.t === t && q.y > hsiY && q.y <= hsiY + hsiH);
       if (!e) return null;
-      return { top: e.y < hsiY + bandH + 4, bot: e.y > hsiY + hsiH - bandH - 4,
+      return { top: e.y < hsiY + hsiH / 2, bot: e.y > hsiY + hsiH / 2,
                left: e.x < W / 2, right: e.x > W / 2 }; };
     return { ctrlRows: (() => {
                // 조작부에 남은 줄 수 — 눈에 보이는 것들의 윗변이 몇 가지인가
@@ -667,7 +669,9 @@ export async function run(page, t) {
   // 먹인 값이라, 맨 윗줄의 GS 와 거의 같은 숫자가 나란히 떴다.
   t.eq(info.tas, null, '나침반 모서리에 TAS 가 없다');
 
-  // 모서리 글씨는 1.3 배로 키웠고, OAT 도 NAV 자리와 같은 크기다.
+  // OAT·CRS 는 두 줄(이름표+값을 나란히 적는다) 규격 그대로 1.3 배다.
+  // NAV 소스(FMS·NAV1·NAV2)는 넉 줄로 쌓으면서 그보다 작게 줄였다 — 한 줄에
+  // 하나씩이라 서로 다투지 않고, 그만큼 나침반이 커진다(hsiRadius).
   // 자세계 한가운데 녹색 원(비행경로 벡터)은 내렸다 — 편류는 지금 나침반을
   // GPS 항적으로 맞춰 쓰는 탓에 센서 보정 잔차에 가깝고, 경로각도 대기속도가
   // 없어 대지속도로 대신 낸 값이다. 자세를 보는 자리 한복판에서 그런 값이
@@ -684,13 +688,16 @@ export async function run(page, t) {
     const px = f => parseFloat(String(f).match(/(\d*\.?\d+)px/)[1]);
     const top = 2 + fmaStripH();
     const at = t => { const a2 = seen.filter(q => q.t === t && q.y > top); return a2.length ? px(a2[0].f) : null; };
-    return { oat: at('OAT'), fms: at('FMS'), nav1: at('NAV1'),
-             fpv: cols.includes('#00ff88') };
+    return { oat: at('OAT'), crs: at('CRS'), fms: at('FMS'), nav1: at('NAV1'), nav2: at('NAV2'),
+             scale: pfdFontScale, fpv: cols.includes('#00ff88') };
   });
-  t.eq(corners.oat, corners.fms,
-    `OAT 이름표가 FMS 와 같은 크기다 (${corners.oat}px vs ${corners.fms}px)`);
-  t.eq(corners.nav1, corners.fms, 'NAV1 도 같은 크기다');
-  t.ok(corners.fms >= 14, `모서리 글씨를 1.3 배로 키웠다 (${corners.fms}px)`);
+  t.eq(corners.oat, corners.crs, `OAT 이름표가 CRS 와 같은 크기다 (${corners.oat}px)`);
+  t.eq(corners.oat, Math.round(11 * 1.3) * corners.scale,
+    `OAT·CRS 는 종전 규격(1.3배) 그대로다 (${corners.oat}px)`);
+  t.eq(corners.fms, corners.nav1, 'FMS·NAV1 이름표 크기가 같다');
+  t.eq(corners.nav1, corners.nav2, 'NAV1·NAV2 도 같은 크기다');
+  t.ok(corners.fms < corners.oat,
+    `NAV 소스 이름표는 OAT·CRS 보다 작다 — 넉 줄을 쌓은 만큼 줄였다 (${corners.fms}px < ${corners.oat}px)`);
   t.eq(corners.fpv, false, '자세계 한가운데 녹색 원(비행경로 벡터)이 없다');
 
   // ── AHRS·GPS 는 맨 위 탭바에 있다 ───────────────────────────

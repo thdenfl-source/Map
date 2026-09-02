@@ -57,8 +57,9 @@ export async function run(page, t) {
       crs: last('CRS'), crsVal: last(crsTxt), oat: last('OAT'),
       crsLblPx: px(last('CRS').font), crsValPx: px(last(crsTxt).font),
       crsSpan: span(last('CRS')), crsValSpan: span(last(crsTxt)),
-      // 모서리 NAV 값과 같은 규격이어야 한다
-      navLblPx: px(last('NAV1').font),
+      // NAV 소스 세 자리의 이름표·값 크기 — 셋이 같아야 한다
+      fmsLblPx: px(last('FMS').font), nav1LblPx: px(last('NAV1').font),
+      nav2LblPx: px(last('NAV2').font),
       navValPx: px(calls.filter(c => c.txt === 'FMS').length
         ? last(navInfoRows()[0].dst).font : last(crsTxt).font),
       // 'HDG' 는 맨 윗줄 값판에도 있다. 여기서 세는 것은 나침반 칸 안이다.
@@ -121,11 +122,18 @@ export async function run(page, t) {
     t.eq(crsBg.length, 0,
       `${L} — CRS 글자 뒤에 바탕을 깔지 않는다 (${crsBg.length}겹)`);
 
-    // ── 글씨는 모서리 규격(이름표 14 · 값 21)이다 ─────────────
-    t.eq(r.crsLblPx, r.navLblPx,
-      `${L} — CRS 이름표가 NAV 이름표와 같은 크기다 (${r.crsLblPx}px)`);
+    // ── 글씨 크기 ────────────────────────────────────────────
+    // OAT·CRS 는 그대로 두 줄(이름표+값을 나란히 적는다) — 종전 규격
+    // (이름표 14 · 값 21, 1.3배) 그대로다.
+    t.eq(r.crsLblPx, Math.round(11 * 1.3) * r.scale,
+      `${L} — CRS 이름표는 OAT·CRS 규격 그대로다 (${r.crsLblPx}px)`);
     t.eq(r.crsValPx, Math.round(16 * 1.3) * r.scale,
-      `${L} — CRS 값이 모서리 값 크기다 (${r.crsValPx}px)`);
+      `${L} — CRS 값도 그대로다 (${r.crsValPx}px)`);
+    // NAV 소스(FMS·NAV1·NAV2)는 넉 줄로 쌓으면서 글자를 줄였다 — 한 줄에
+    // 하나씩이라 서로 다투지 않고, 그만큼 나침반이 커진다(hsiRadius). 셋은
+    // 서로 같은 크기라야 한다.
+    t.eq(r.fmsLblPx, r.nav1LblPx, `${L} — FMS·NAV1 이름표 크기가 같다`);
+    t.eq(r.nav1LblPx, r.nav2LblPx, `${L} — NAV1·NAV2 이름표 크기가 같다`);
 
     // ── 소스 셋이 사각 테두리를 두른다 ────────────────────────
     const navHits = r.hits.filter(b => b.act === 'navSrc');
