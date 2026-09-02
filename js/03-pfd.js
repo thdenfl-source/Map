@@ -486,20 +486,29 @@ function drawHSI(x, y, w, h) {
   const dotGap = r * 0.248;
   let cdiOff = 0, cdbActive = false, cdbWp = null;
 
-  if (navSrc === 'FMS' && S.awp >= 0 && S.awp < S.wps.length) {
-    // FMS: cross-track error from fwp→awp leg (positive = right of course)
-    // CDI deflects opposite: right of course → needle left (negative cdiOff)
-    cdbWp = S.wps[S.awp];
-    const xtk = courseXtk(activeCourseLine());   // updateNav·지도·AP와 동일 기준선
+  // ── 편차 축척은 소스와 무관하게 RNP 하나로 잡는다 (2점 = RNP) ──
+  // 종전에는 FMS 만 RNP 를 따랐고, NAV1·NAV2 는 각도 15° 로 못 박혀 있었다.
+  // 그래서 NAV 소스를 골라 둔 채 아래 RNP 버튼(4·2·1·0.3)을 눌러도 니들이
+  // 꿈쩍하지 않았다 — 버튼은 켜지는데 계기는 그대로라 고장으로 보인다.
+  //
+  // 이 앱의 VOR·LOC 편차도 실제 수신기가 준 값이 아니다. 국(局)의 좌표와
+  // GPS 위치로 계산한 값이라, 재는 자가 애초에 거리(NM)다. 그것을 각도로
+  // 되돌려 보이는 것은 없는 수신기를 흉내 내는 셈이었다.
+  // 이제 세 소스가 같은 자를 쓴다 — 어느 소스든 2점이 곧 RNP 다.
+  //
+  // 기준선(코스선)은 activeCourseLine() 이 소스에 맞게 낸다.
+  //   FMS  — 구간(leg) · 지정 진입코스 · 홀딩 인바운드 · DME 아크
+  //   NAV  — 국을 지나는 OBS 코스선
+  // updateNav·지도 코스선·NAV 오토파일럿이 모두 이 선을 쓴다.
+  const cdbHasSrc = (navSrc === 'FMS')
+    ? (S.awp >= 0 && S.awp < S.wps.length)
+    : (navLat !== null && navLon !== null);
+  const cdbLine = cdbHasSrc ? activeCourseLine() : null;
+  if (cdbLine) {
+    cdbWp = (navSrc === 'FMS') ? S.wps[S.awp] : { lat: navLat, lon: navLon };
+    // 코스 오른쪽으로 벗어나면(+) 니들은 왼쪽으로 간다 — 니들이 코스를 가리킨다
+    const xtk = courseXtk(cdbLine);
     cdiOff = Math.max(-1, Math.min(1, -xtk / rnp)) * 2 * dotGap;
-    cdbActive = true;
-  } else if ((navSrc !== 'FMS') && navLat !== null && navLon !== null) {
-    cdbWp = { lat: navLat, lon: navLon };
-    const brgFromNav = bearing(navLat, navLon, S.lat, S.lon);
-    const devDeg     = normAS(brgFromNav - normA(vorObsCrs + 180));
-    const fullScale  = 15;   // NAV1/NAV2 = VOR full-scale
-    cdiOff = Math.max(-1, Math.min(1,
-      Math.sin(devDeg * D2R) / Math.sin(fullScale * D2R))) * 2 * dotGap;
     cdbActive = true;
   }
   const CG = '#ffffff';
