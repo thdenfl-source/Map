@@ -204,7 +204,7 @@ function oatInfo() {
     m += `출처: ${k.name}\n`;
     m += `격자 기온: ${uTemp(k.c)} (표고 ${uAlt(k.elevFt)})\n`;
     m += `받은 지: ${min(k.at)}분 전\n\n`;
-    m += '격자 표고의 기온에 표준 감률(1000ft 당 1.98°C)을 먹여\n지금 고도의 기온을 냅니다.';
+    m += '격자 표고의 기온에 표준 감률(1000ft 당 2°C)을 먹여\n지금 고도의 기온을 냅니다.';
   } else {
     m += `${uTemp(o.c)} (고도 ${uAlt(S.alt)})\n\n`;
     m += `출처: ${_autoMetarIcao || '근처 공항'} METAR (실측)\n`;

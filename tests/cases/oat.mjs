@@ -9,7 +9,7 @@
 export const name = '외기온도(OAT)';
 
 export async function run(page, t) {
-  const LAPSE = 1.98;   // °C / 1000ft
+  const LAPSE = 2;   // °C / 1000ft — 조종석 어림값(ISA 정확값 1.98 을 반올림)
 
   // 검사 중에는 바깥 망을 쓰지 않는다. 앱은 켜지고 1.5초 뒤 스스로 기온을
   // 받으러 나가는데, 그 요청이 검사 도중에 끝나면 여기서 세워 둔 상태를
