@@ -30,7 +30,8 @@ export async function run(page, t) {
     return n;
   }`;
 
-  // 한 점(dot) 의 폭. drawHSI 와 같은 셈이라 화면 크기가 달라져도 따라간다.
+  // 한 점(dot) 의 폭. 반지름은 hsiRadius() 를 그대로 부른다 — 여기서 다시
+  // 계산하면 계기 쪽 셈이 바뀔 때마다 이 검사가 뒤처진다(종전에 실제로 그랬다).
   const dot = await page.evaluate(() => {
     const ctrlH = document.querySelector('.ctrl-bar').offsetHeight;
     const usableH = cvs.height - ctrlH;
@@ -38,9 +39,7 @@ export async function run(page, t) {
     const hsiWant = Math.round(cvs.width * 0.40 * 2 + bandH * 2 + 10);
     const hsiH = Math.max(Math.round(usableH * 0.34),
                           Math.min(Math.round(usableH * 0.50), hsiWant));
-    const availH = hsiH - bandH * 2;
-    const r = Math.max(24, Math.min(cvs.width * 0.40, availH * 0.47));
-    return r * 0.248;
+    return hsiRadius(cvs.width, hsiH) * 0.248;
   });
 
   // 코스 오른쪽으로 xtkNM 만큼 벗어난 자리에서, RNP 별 니들 자리를 잰다.
