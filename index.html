@@ -1575,7 +1575,7 @@ body.phone-mode .pi-src i { font-size: 16px; }
 body.phone-mode .pi-src .pi-id { font-size: 22px; }
 body.phone-mode .pi-src .pi-brg, body.phone-mode .pi-src .pi-rad,
 body.phone-mode .pi-src .pi-dst { font-size: 20px; }
-body.phone-mode .pi-sel { font-size: 14px; min-width: 50px; padding: 3px 6px; }
+body.phone-mode .pi-sel { font-size: 17px; min-width: 54px; padding: 4px 8px; }
 body.phone-mode .pi-ahrs { font-size: 17px; min-width: 0; padding: 4px 8px; letter-spacing: 0.5px; }
 body.phone-mode .pi { gap: 2px; }
 
@@ -1645,25 +1645,30 @@ body.phone-mode .nav-src-group { gap: 2px; }
 /* 줄바꿈 표식 — 이 항목이 한 줄을 다 차지해 뒤를 다음 줄로 넘긴다 */
 .ctrl-break { display: none; }
 body.phone-mode .ctrl-break { display: block; flex: 0 0 100%; height: 0; order: 4; }
-/* 조작부 버튼을 NAV 소스 선택 버튼(.pi-sel)과 같은 규격으로 — 위아래로 이어지는
-   같은 성격의 버튼이라 크기가 다르면 줄이 어긋나 보인다 */
+/* 계기 아래의 버튼은 전부 한 규격이다 — 글자 17px, 높이 30px.
+   기준은 AHRS 버튼(.pi-ahrs)이다. 이 판에서 가장 큰 버튼 글씨였고, 나머지를
+   거기에 올려 맞추면 판 전체가 한 벌로 읽힌다. 위아래로 이어지는 같은 성격의
+   버튼이라 크기가 다르면 줄이 어긋나 보인다. */
 body.phone-mode .obs-btn,
 body.phone-mode .susp-btn,
 body.phone-mode .brg-tog-btn,
 body.phone-mode .rnp-btn,
 body.phone-mode .sw-btn {
-  font-size: 14px; min-width: 50px; padding: 3px 6px; border-radius: 4px;
+  /* 글자를 키운 만큼 최소폭·여백은 줄인다. 종전 값(54px·8px)을 그대로 두면
+     앞줄 일곱 개가 폰 폭을 넘어 조작부가 두 줄에서 네 줄로 늘어난다 —
+     그만큼 계기가 눌린다. 글자에 맞는 폭이면 두 줄에 그대로 들어간다. */
+  font-size: 17px; min-width: 0; padding: 4px 4px; border-radius: 4px;
 }
 /* RNP 는 글자가 한 자(4·2·1·0.3)다. 높이·글자 크기는 맞추되 폭까지 50px 로
    잡으면 넷이 한 줄을 다 먹어 시계와 같은 줄에 서지 못한다. */
-body.phone-mode .rnp-btn { min-width: 34px; }
-body.phone-mode .cbtn { width: 40px; font-size: 15px; }
-body.phone-mode .ctrl-lbl-btn { font-size: 13px; padding: 0 5px; }
+body.phone-mode .rnp-btn { min-width: 27px; }
+body.phone-mode .cbtn { width: 28px; }
+body.phone-mode .ctrl-lbl-btn { padding: 0 4px; }
 /* 한 줄에 나란히 서는 것들은 높이를 하나로 못 박는다. 글자 수·줄 수에 맡겨
    두면 제각각 자란다 — CRS 의 ◄► 는 28px 로 이웃보다 솟았고, CRS 이름표는
    17px 로 주저앉았으며, SUSP 는 '자동' 이 붙는 순간 두 줄이 되어 혼자 커졌다.
    기준은 NAV 소스 선택 버튼(.pi-sel)과 같은 24px 다. */
-body.phone-mode .ctrl-bar { --ctrl-btn-h: 24px; }
+body.phone-mode .ctrl-bar { --ctrl-btn-h: 30px; }
 body.phone-mode .obs-btn,
 body.phone-mode .susp-btn,
 body.phone-mode .brg-tog-btn,
@@ -1679,7 +1684,7 @@ body.phone-mode .ctrl-lbl-btn {
 body.phone-mode .susp-btn .susp-auto {
   display: inline; margin-left: 4px; font-size: 10px; letter-spacing: 0;
 }
-body.phone-mode .sw-display { min-width: 76px; }
+body.phone-mode .sw-display { min-width: 66px; }
 /* 조작부 두 줄(CRS·OBS·BRG·SUSP / 시계·STOP WATCH·RNP)의 글씨를 바로 위
    NAV 소스 버튼(.pi-sel)에 통째로 맞춘다. 같은 자리에 이어 붙은 버튼들인데
    저마다였다 — CRS 만 13px 보통 글씨였고, BRG·RNP·STOP WATCH 도 보통 글씨,
@@ -1695,7 +1700,7 @@ body.phone-mode .ctrl-bar .rnp-btn,
 body.phone-mode .ctrl-bar .sw-btn,
 body.phone-mode .ctrl-bar .sw-display {
   font-family: 'Helvetica Neue', Arial, sans-serif;
-  font-size: 14px; font-weight: bold; letter-spacing: 0.5px;
+  font-size: 17px; font-weight: bold; letter-spacing: 0.5px;
 }
 /* 시계도 같은 줄에 서므로 높이를 나란히 맞춘다 */
 body.phone-mode .ctrl-bar .sw-display {
