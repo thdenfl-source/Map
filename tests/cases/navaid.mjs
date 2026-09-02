@@ -433,12 +433,14 @@ export async function run(page, t) {
                           obs: one('#obs-btn'), brg: one('#brg1-tog'),
                           susp: one('#susp-btn'), suspAuto, rnp: one('#rnp-1') };
                })(),
-               // 글꼴·크기·굵기도 하나로 — NAV 소스 버튼(.pi-sel)이 기준이다
+               // 글꼴·크기·굵기도 하나로 — 기준은 AHRS 버튼이다.
+               // 이 판에서 가장 큰 버튼 글씨였고, 나머지를 거기에 올려 맞췄다.
                fonts: (() => {
                  const f = e => { const c = getComputedStyle(e);
                    return [c.fontFamily, c.fontSize, c.fontWeight].join(' / '); };
-                 const out = { 기준: f(document.querySelector('#pi-nav .pi-sel')) };
-                 for (const [k, sel] of [['CRS', '#crs-lbl-btn'], ['◄', '#crs-dn'],
+                 const out = { 기준: f(document.getElementById('ahrs-btn')) };
+                 for (const [k, sel] of [['NAV 소스', '#pi-nav .pi-sel'],
+                       ['CRS', '#crs-lbl-btn'], ['◄', '#crs-dn'],
                        ['OBS', '#obs-btn'], ['BRG1', '#brg1-tog'], ['SUSP', '#susp-btn'],
                        ['시계', '#sw-display'], ['STOP WATCH', '#sw-btns-clock .sw-btn'],
                        ['RNP', '#rnp-1']]) {
@@ -467,10 +469,11 @@ export async function run(page, t) {
     // 글꼴·크기·굵기도 하나여야 한다. 저마다이면 어느 것이 눌린 버튼인지
     // 색보다 굵기로 먼저 읽히는 착시가 생긴다 — CRS 만 13px 보통 글씨였고,
     // BRG·RNP·STOP WATCH 도 보통 글씨, 시계는 글꼴마저 달랐다.
+    // 기준은 AHRS 버튼이다(계기판에서 가장 큰 버튼 글씨였다).
     const ref = a.fonts['기준'];
     const odd = Object.entries(a.fonts).filter(([k, v]) => k !== '기준' && v !== ref);
     t.eq(odd.length, 0,
-      `${L} — 조작부 글씨가 NAV 버튼과 같다 (${ref})` +
+      `${L} — 버튼 글씨가 AHRS 와 같다 (${ref})` +
       (odd.length ? ' — 다른 것: ' + odd.map(([k, v]) => `${k}=${v}`).join(' · ') : ''));
     t.ok(/(^|[^\d])(700|bold)([^\d]|$)/.test(ref), `${L} — 그 글씨가 볼드체다 (${ref})`);
     // 시계·RNP 는 맨 아래 — 앞줄(CRS·BRG·SUSP)보다 아래에 있어야 한다
@@ -622,8 +625,13 @@ export async function run(page, t) {
   t.eq(crht.btn, true, 'CRHT 버튼도 마크업에 없다');
   t.ok(crht.hsiH < crht.aiH,
     `나침반 칸(갈색)이 자세계보다 좁다 (${crht.hsiH}px < ${crht.aiH}px)`);
-  t.ok(crht.hsiH < crht.usableH * 0.42,
-    `갈색이 계기의 42% 아래다 (${crht.hsiH}px / ${crht.usableH}px)`);
+  // 45% — 종전에는 42% 로 잡았다. 나침반 칸의 절대 높이는 그대로인데,
+  // 버튼 글씨를 AHRS 에 맞추며 조작부가 21px 두꺼워져 계기가 그만큼 줄었고
+  // 그 바람에 같은 칸의 몫이 40.6% → 42.03% 로 올라갔다. 지켜야 할 것은
+  // '나침반이 자세계보다 작다'(바로 위 검사)이고, 이 몫은 그것이 아슬아슬해지지
+  // 않게 두는 여유선이다.
+  t.ok(crht.hsiH < crht.usableH * 0.45,
+    `갈색이 계기의 45% 아래다 (${crht.hsiH}px / ${crht.usableH}px = ${(100 * crht.hsiH / crht.usableH).toFixed(1)}%)`);
 
   // ── ⑪ 하위 창이 그 버튼에서 가지 치는가 ──────────────────────
   // 옛 가로 툴바 시절 좌표(top:44px·right:8px)에 못 박혀 있어, 라인 셀렉터로
