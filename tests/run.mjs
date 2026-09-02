@@ -36,8 +36,9 @@ import * as joystick from './cases/joystick.mjs';
 import * as geosearch from './cases/geosearch.mjs';
 import * as navaid from './cases/navaid.mjs';
 import * as oat from './cases/oat.mjs';
+import * as hsihdg from './cases/hsihdg.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, brglbl, directto, crssync, locsta, susp, layout, gslope, joystick, geosearch, navaid, oat];
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, brglbl, directto, crssync, locsta, susp, layout, gslope, joystick, geosearch, navaid, oat, hsihdg];
 const filter = process.argv.slice(2);
 
 function makeT() {

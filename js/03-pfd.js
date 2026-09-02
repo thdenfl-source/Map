@@ -735,12 +735,11 @@ function drawHSI(x, y, w, h) {
     ctx.lineTo(-bw * 0.35, -bR + bh); ctx.lineTo(-bw, -bR + bh);
     ctx.closePath(); ctx.fill();
     ctx.restore();
-    // 선택 헤딩 수치(컴퍼스 상단)
-    ctx.fillStyle = hdgSelOn ? '#00e5ff' : '#4a6a72';
-    ctx.font = `bold ${Math.max(9, r * 0.115)}px Helvetica Neue, Arial, sans-serif`;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(fmtA(toMag(selHdg)) + '°', -r + 2, -r + 6);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+    // 숫자는 적지 않는다. 종전에는 컴퍼스 왼쪽 위에 선택 헤딩을 회색으로
+    // 적었는데, 바로 위 HDG 상자와 같은 자리를 두고 다투는 숫자였다 —
+    // 둘이 나란히 뜨면 어느 쪽이 지금 기수방위인지 한눈에 안 잡힌다.
+    // 노치(청록 표식)는 남긴다. 그것은 링 위의 '어느 방향' 이라 겹치지 않고,
+    // CDU 의 HDG preselect 로 세운 값이 어디인지 보여 준다.
   }
 
   // ── CRS arrow + CDB (Course Deviation Bar) ──
@@ -867,28 +866,62 @@ function drawHSI(x, y, w, h) {
   // HSI 윗 테두리(y)에 박스 아랫변이 맞닿도록 위로 올려 컴퍼스 로즈와 겹치지 않게 함
   // 상자 크기도 글씨 배율을 따른다 — px 로 못 박아 두면 글씨를 키운 순간
   // 라벨(HDG)과 값(009°)이 겹친다.
-  const bw = Math.round(64 * pfdFontScale), bh = Math.round(20 * pfdFontScale), gap = 4;
-  const boxY = y - bh;              // 박스 아랫변 = HSI 윗 테두리
-  const txtY = boxY + Math.round(14 * pfdFontScale);   // 텍스트 베이스라인
+  // 글씨를 두 배로 키운다 — 라벨 11→22, 값 13→26. 비행 중 가장 자주 읽는 두
+  // 숫자인데 나침반 눈금 글자보다도 작았다.
+  //
+  // 다만 두 상자는 HSI 폭(속도·고도 테이프 사이) 안에 서야 한다. 좁은 화면에서는
+  // 두 배 크기가 그 폭을 넘으므로 들어갈 만큼만 줄인다. 줄이더라도 종전 크기
+  // 아래로는 내려가지 않는다 — 키우려다 되레 작아지면 고친 뜻이 없다.
+  // (실제로 한 번 그랬다: 320px 화면에서 값이 13.75px 로 종전 16.25px 보다 작아졌다)
+  //
+  // 상자 폭도 글자를 재서 정한다. px 로 못 박아 두면 글씨를 키운 순간
+  // 라벨(HDG)과 값(009°)이 겹친다.
+  const FONT = 'Helvetica Neue, Arial, sans-serif';
+  const LBL_MAX = 22, VAL_MAX = 26, LBL_MIN = 11, VAL_MIN = 13;
+  const gap = 4;
+  // 라벨·값·여백을 합쳐 상자 하나에 필요한 폭(그려질 실제 px — font 배율이 함께 걸린다)
+  const needW = (l, v) => {
+    ctx.font = `bold ${l}px ${FONT}`;
+    const wl = ctx.measureText('HDG').width;
+    ctx.font = `bold ${v}px ${FONT}`;
+    // 여백 세 몫(왼쪽·가운데·오른쪽) + 3px 여유 — 여유가 없으면 반올림 탓에
+    // 라벨과 값이 1px 씩 맞닿는다
+    return wl + ctx.measureText('000°').width + Math.max(3, Math.round(6 * l / LBL_MAX)) * 3 + 3;
+  };
+  const room = Math.floor((w - gap) / 2);
+  const k = Math.max(LBL_MIN / LBL_MAX,
+                     Math.min(1, room / Math.max(1, needW(LBL_MAX, VAL_MAX))));
+  const lblFs = Math.max(LBL_MIN, Math.round(LBL_MAX * k));
+  const valFs = Math.max(VAL_MIN, Math.round(VAL_MAX * k));
+  const pad   = Math.max(3, Math.round(6 * k));
+  // 아주 좁은 화면에서는 가장 작은 글씨조차 HSI 폭에 안 들어간다. 그때는
+  // 글자를 자르는 대신 상자가 몇 px 넘어서게 둔다 — 종전에도 그랬다.
+  const bw = Math.max(40, Math.ceil(needW(LBL_MIN, VAL_MIN)),
+                      Math.min(room, Math.ceil(needW(lblFs, valFs))));
+  const bh = Math.round(Math.max(20, 36 * k) * pfdFontScale);
+  const boxY = y - bh;                                 // 박스 아랫변 = HSI 윗 테두리
+  const txtY = boxY + Math.round(bh * 0.74);           // 텍스트 베이스라인
   const hdgX = cx - bw - gap/2;
   const crsX = cx + gap/2;
+  const lblFont = `bold ${lblFs}px ${FONT}`;
+  const valFont = `bold ${valFs}px ${FONT}`;
   ctx.lineWidth=1;
   // HDG box
   ctx.fillStyle='#000'; ctx.strokeStyle='#555';
   ctx.fillRect(hdgX,boxY,bw,bh); ctx.strokeRect(hdgX,boxY,bw,bh);
   ctx.textAlign='left';
-  ctx.fillStyle='#00cfff'; ctx.font='bold 11px Helvetica Neue, Arial, sans-serif';
-  ctx.fillText('HDG', hdgX+4, txtY);
-  ctx.fillStyle='#fff'; ctx.font='bold 13px Helvetica Neue, Arial, sans-serif'; ctx.textAlign='right';
-  ctx.fillText(fmtA(toMag(S.hdg))+'°', hdgX+bw-4, txtY);
+  ctx.fillStyle='#00cfff'; ctx.font=lblFont;
+  ctx.fillText('HDG', hdgX+pad, txtY);
+  ctx.fillStyle='#fff'; ctx.font=valFont; ctx.textAlign='right';
+  ctx.fillText(fmtA(toMag(S.hdg))+'°', hdgX+bw-pad, txtY);
   // CRS box
   ctx.fillStyle='#000'; ctx.strokeStyle='#555';
   ctx.fillRect(crsX,boxY,bw,bh); ctx.strokeRect(crsX,boxY,bw,bh);
   ctx.textAlign='left';
-  ctx.fillStyle='#00cfff'; ctx.font='bold 11px Helvetica Neue, Arial, sans-serif';
-  ctx.fillText('CRS', crsX+4, txtY);
-  ctx.fillStyle='#fff'; ctx.font='bold 13px Helvetica Neue, Arial, sans-serif'; ctx.textAlign='right';
-  ctx.fillText(fmtA(toMag(activeCrs()))+'°', crsX+bw-4, txtY);
+  ctx.fillStyle='#00cfff'; ctx.font=lblFont;
+  ctx.fillText('CRS', crsX+pad, txtY);
+  ctx.fillStyle='#fff'; ctx.font=valFont; ctx.textAlign='right';
+  ctx.fillText(fmtA(toMag(activeCrs()))+'°', crsX+bw-pad, txtY);
   ctx.restore();  // outer restore — matches save at function entry
 }
 
