@@ -10,47 +10,12 @@ const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png
 const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:19});
 let currentLayer = 'sat';
 const leafMap = L.map('map',{center:[37.3895,126.6550],zoom:12,zoomControl:false,attributionControl:false});
-L.control.zoom({position:'bottomright'}).addTo(leafMap);
+// 확대·축소 버튼과 축척 막대는 두지 않는다.
+// 손가락 두 개로 벌리고 오므리는 것이 지도를 키우고 줄이는 자연스러운 길이고,
+// 축척은 항법에 쓰는 값이 아니라 지도가 얼마나 확대돼 있는지를 알려 줄 뿐이다.
+// 화면 네 귀퉁이는 좁다 — 늘 떠 있어야 하는 것(좌표·GPS 상태)에 내준다.
 satLayer.addTo(leafMap);
 
-// Custom dual-unit scale bar (km + NM)
-L.Control.DualScale = L.Control.extend({
-  options: { position: 'bottomleft', maxWidth: 120 },
-  onAdd(map) {
-    const div = L.DomUtil.create('div', 'vfr-scale');
-    this._kmRow = L.DomUtil.create('div', 'vfr-scale-row', div);
-    this._kmBar = L.DomUtil.create('div', 'vfr-scale-bar vfr-scale-km', this._kmRow);
-    this._kmLbl = L.DomUtil.create('span', '', this._kmRow);
-    this._nmRow = L.DomUtil.create('div', 'vfr-scale-row', div);
-    this._nmBar = L.DomUtil.create('div', 'vfr-scale-bar vfr-scale-nm', this._nmRow);
-    this._nmLbl = L.DomUtil.create('span', '', this._nmRow);
-    map.on('zoomend moveend', this._update, this);
-    this._update();
-    return div;
-  },
-  _mpp() {
-    const z = this._map.getZoom(), lat = this._map.getCenter().lat;
-    return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, z);
-  },
-  _nice(maxM, unitM, unit) {
-    const steps = [0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000];
-    const maxU = maxM / unitM;
-    // largest clean step that fits within maxWidth (≤ maxU)
-    let v = steps[0];
-    for (const s of steps) { if (s <= maxU) v = s; else break; }
-    return { px: v * unitM / this._mpp(), label: v + ' ' + unit };
-  },
-  _update() {
-    const maxM = this.options.maxWidth * this._mpp();
-    const km = this._nice(maxM, 1000, 'km');
-    const nm = this._nice(maxM, 1852, 'NM');
-    this._kmBar.style.width = Math.min(km.px, this.options.maxWidth) + 'px';
-    this._kmLbl.textContent = km.label;
-    this._nmBar.style.width = Math.min(nm.px, this.options.maxWidth) + 'px';
-    this._nmLbl.textContent = nm.label;
-  }
-});
-new L.Control.DualScale().addTo(leafMap);
 
 // ── 단일 공항 마스터 데이터 ──
 // WX_AIRPORTS, APT_LATLNG, APT_NAME 모두 여기서 파생
@@ -300,62 +265,10 @@ function _init3dMap() {
     _ml3d.resize();
   });
 
-  _ml3d.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right');
-  // 2D와 동일한 km+NM 이중 축척 위젯(.vfr-scale) — maplibre 컨트롤 컨테이너를
-  // 거치지 않고 지도 컨테이너에 직접 절대배치(left:10px)해 2D와 픽셀 단위로 정렬
-  const _sc3d = new DualScale3D();
-  const _sc3dEl = _sc3d.onAdd(_ml3d);
-  _sc3dEl.style.cssText += ';position:absolute;left:10px;bottom:62px;z-index:850;margin:0;';
-  _ml3d.getContainer().appendChild(_sc3dEl);
+  // 2D 와 마찬가지로 확대·축소 버튼과 축척 막대는 두지 않는다.
+  // 기울기는 #tilt-ctrl 의 ▲▼ 로 잡는다.
 }
 
-// 3D(maplibre)용 이중 축척 — 2D L.Control.DualScale과 동일한 마크업/CSS·계산방식
-class DualScale3D {
-  onAdd(map) {
-    this._map = map;
-    const div = document.createElement('div');
-    div.className = 'vfr-scale';
-    const kmRow = document.createElement('div'); kmRow.className = 'vfr-scale-row';
-    this._kmBar = document.createElement('div'); this._kmBar.className = 'vfr-scale-bar vfr-scale-km';
-    this._kmLbl = document.createElement('span');
-    kmRow.appendChild(this._kmBar); kmRow.appendChild(this._kmLbl);
-    const nmRow = document.createElement('div'); nmRow.className = 'vfr-scale-row';
-    this._nmBar = document.createElement('div'); this._nmBar.className = 'vfr-scale-bar vfr-scale-nm';
-    this._nmLbl = document.createElement('span');
-    nmRow.appendChild(this._nmBar); nmRow.appendChild(this._nmLbl);
-    div.appendChild(kmRow); div.appendChild(nmRow);
-    this._div = div;
-    this._upd = () => this._update();
-    map.on('move', this._upd);
-    this._update();
-    return div;
-  }
-  onRemove() { if (this._map) this._map.off('move', this._upd); if (this._div) this._div.remove(); }
-  _mpp() {
-    // 화면 하단(축척 위치) 부근에서 가로 100px에 해당하는 지상거리로 m/px 산출
-    // → 3D 틸트/원근에서도 실제 축척과 근사
-    const c = this._map.getContainer();
-    const y = Math.max(1, c.clientHeight - 60);
-    const p0 = this._map.unproject([20, y]), p1 = this._map.unproject([120, y]);
-    return (distance(p0.lat, p0.lng, p1.lat, p1.lng) * 1852) / 100;   // m/px
-  }
-  _nice(maxM, unitM, unit, mpp) {
-    const steps = [0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000];
-    const maxU = maxM / unitM;
-    let v = steps[0];
-    for (const s of steps) { if (s <= maxU) v = s; else break; }
-    return { px: v * unitM / mpp, label: v + ' ' + unit };
-  }
-  _update() {
-    const MAXW = 120, mpp = this._mpp();
-    if (!isFinite(mpp) || mpp <= 0) return;
-    const maxM = MAXW * mpp;
-    const km = this._nice(maxM, 1000, 'km', mpp);
-    const nm = this._nice(maxM, 1852, 'NM', mpp);
-    this._kmBar.style.width = Math.min(km.px, MAXW) + 'px'; this._kmLbl.textContent = km.label;
-    this._nmBar.style.width = Math.min(nm.px, MAXW) + 'px'; this._nmLbl.textContent = nm.label;
-  }
-}
 
 function _update3dMarker() {
   if (!_ml3d || !_view3dOn || !_ml3dMarker) return;
