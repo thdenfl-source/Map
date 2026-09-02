@@ -1,8 +1,8 @@
 // 나침반 모서리 — CRS 자리 · NAV 소스 테두리 버튼
 //
 // 세 가지가 한꺼번에 바뀐 자리다.
-//   · HDG 상자를 내렸다. 나침반 꼭대기 삼각형이 가리키는 눈금이 곧 기수방위라,
-//     같은 값을 바로 그 위에 한 번 더 적는 자리였다.
+//   · 나침반 위 HDG 상자를 내렸다. 기수방위는 맨 윗줄(GS·HDG·ALT·VS)에서
+//     읽는다 — 나침반 바로 위에 또 적으면 두 자리가 같은 값을 두고 다툰다.
 //   · CRS 는 왼쪽 아래(OAT 아래)로 내려왔다. 바탕은 깔지 않는다 —
 //     검은 바탕은 이제 '고른 NAV 소스' 하나만 쓰는 표시다.
 //   · FMS·NAV1·NAV2 글자판이 사각 테두리를 두르고, 그 테두리가 곧 버튼이다.
@@ -61,7 +61,9 @@ export async function run(page, t) {
       navLblPx: px(last('NAV1').font),
       navValPx: px(calls.filter(c => c.txt === 'FMS').length
         ? last(navInfoRows()[0].dst).font : last(crsTxt).font),
-      hdgLbl: calls.filter(c => c.txt === 'HDG').length,
+      // 'HDG' 는 맨 윗줄 값판에도 있다. 여기서 세는 것은 나침반 칸 안이다.
+      hdgLbl: calls.filter(c => c.txt === 'HDG' && c.y > hsiY).length,
+      hdgTop: calls.filter(c => c.txt === 'HDG' && c.y > 0 && c.y <= hsiY).length,
       hdgDrawn: calls.filter(c => c.txt === hdgTxt).length,
       selDrawn: calls.filter(c => c.txt === selTxt).length,
       hdgTxt, selTxt, crsTxt,
@@ -81,9 +83,10 @@ export async function run(page, t) {
     const r = await draw();
     const L = `${label} ${w}px`;
 
-    // ── HDG 상자는 없다 ──────────────────────────────────────
-    // 나침반 꼭대기 삼각형이 가리키는 눈금이 곧 기수방위다.
-    t.eq(r.hdgLbl, 0, `${L} — 계기에 HDG 라 적힌 상자가 없다 (${r.hdgLbl}곳)`);
+    // ── 나침반 위에는 HDG 상자가 없다 ────────────────────────
+    // 기수방위는 맨 윗줄에서 읽고, 어느 쪽인지는 나침반 꼭대기 삼각형이 본다.
+    t.eq(r.hdgLbl, 0, `${L} — 나침반 칸에 HDG 상자가 없다 (${r.hdgLbl}곳)`);
+    t.eq(r.hdgTop, 1, `${L} — 대신 맨 윗줄에 HDG 가 한 번 선다 (${r.hdgTop}곳)`);
     t.eq(r.selDrawn, 0,
       `${L} — 컴퍼스 옆 회색 헤딩(${r.selTxt})도 적지 않는다 (${r.selDrawn}번)`);
 

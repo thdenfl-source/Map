@@ -25,7 +25,6 @@ import * as dmearc from './cases/dmearc.mjs';
 import * as dme from './cases/dme.mjs';
 import * as fporder from './cases/fporder.mjs';
 import * as wptcrs from './cases/wptcrs.mjs';
-import * as brglbl from './cases/brglbl.mjs';
 import * as directto from './cases/directto.mjs';
 import * as crssync from './cases/crssync.mjs';
 import * as locsta from './cases/locsta.mjs';
@@ -40,7 +39,7 @@ import * as hsihdg from './cases/hsihdg.mjs';
 import * as hdghybrid from './cases/hdghybrid.mjs';
 import * as topbox from './cases/topbox.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, brglbl, directto, crssync, locsta, susp, layout, gslope, joystick, geosearch, navaid, oat, hsihdg, hdghybrid, topbox];
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, joystick, geosearch, navaid, oat, hsihdg, hdghybrid, topbox];
 const filter = process.argv.slice(2);
 
 function makeT() {

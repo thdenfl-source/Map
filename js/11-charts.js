@@ -2165,8 +2165,6 @@ appRegister({
   toggleGs,
   toggleBrg1,
   toggleBrg2,
-  toggleBrg1Lbl,
-  toggleBrg2Lbl,
   toggleFixPanel,
   toggleFollow,
   toggleGPS,

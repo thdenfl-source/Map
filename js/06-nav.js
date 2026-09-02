@@ -32,7 +32,6 @@ function updateNav(){
 
 
   updateCrsLine();
-  updateBrgLines();
 }
 
 // ══════════════════════════════════════════════════════

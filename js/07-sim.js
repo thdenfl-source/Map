@@ -705,11 +705,9 @@ function _rulerRender() {
 
 // 창 전환 뒤에 딸려 오는 일들 — 종전 updateSoloBtn 이 하던 자리다.
 // 분할이 없어져 '단독 ⇄ 분할' 버튼은 사라졌지만, 창이 바뀔 때마다 해야 하는
-// 일은 그대로 남는다(상단 탭 표시 갱신, 지도 라인 셀렉터 다시 재기).
+// 일은 그대로 남는다(상단 탭 표시 갱신).
 function updateSoloBtn() {
   try { if (typeof updateNavBar === 'function') updateNavBar(); } catch(e) { _swallow(e); }
-  // 지도가 새로 자리를 잡으면 라인 셀렉터 칸도 다시 잰다(접혀 있을 때는 못 잰다)
-  try { if (typeof layoutMapLsk === 'function') setTimeout(layoutMapLsk, 80); } catch(e) { _swallow(e); }
 }
 
 // Flight Plan 하단 Home 버튼 — CDU 홈 화면으로 전환

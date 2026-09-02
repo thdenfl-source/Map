@@ -100,22 +100,6 @@ let altHoldOn = true;
 let brg1Visible = true;
 let brg2Visible = true;
 
-// 지도에 BRG 를 그릴지(선 + 방위·거리 이름표) — 기본은 끔.
-// BRG1·BRG2 버튼은 계기의 니들, 이 토글(#1BDP·#2BDP)은 지도 시현이다.
-// 지도에 늘 선과 글자가 붙어 있으면 지형·항로를 가린다.
-let brg1LblOn = false, brg2LblOn = false;
-function toggleBrg1Lbl() {
-  brg1LblOn = !brg1LblOn;
-  const btn = document.getElementById('brg1-bdp');
-  if (btn) btn.classList.toggle('brg1-on', brg1LblOn);
-  if (typeof updateBrgLines === 'function') updateBrgLines();
-}
-function toggleBrg2Lbl() {
-  brg2LblOn = !brg2LblOn;
-  const btn = document.getElementById('brg2-bdp');
-  if (btn) btn.classList.toggle('brg2-on', brg2LblOn);
-  if (typeof updateBrgLines === 'function') updateBrgLines();
-}
 // ── G/S (글라이드 패스 추종) ──────────────────────────────────────
 // 무장(armed)해 두면 강하선에 닿는 순간 스스로 붙잡아(captured) 고도를 맡는다.
 // 실제 오토파일럿과 같은 순서다 — 아래에서 접근하다 강하선을 만나면 잡는다.
@@ -207,13 +191,11 @@ function toggleBrg1() {
   brg1Visible = !brg1Visible;
   const btn = document.getElementById('brg1-tog');
   btn.classList.toggle('brg1-on', brg1Visible);
-  if (typeof updateBrgLines === 'function') updateBrgLines();   // 지도 BRG 라인 즉시 반영
 }
 function toggleBrg2() {
   brg2Visible = !brg2Visible;
   const btn = document.getElementById('brg2-tog');
   btn.classList.toggle('brg2-on', brg2Visible);
-  if (typeof updateBrgLines === 'function') updateBrgLines();
 }
 
 // ── Hover Page / GSPD mode ──
