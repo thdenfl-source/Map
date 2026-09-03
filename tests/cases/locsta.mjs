@@ -222,7 +222,7 @@ export async function run(page, t) {
              radDrawn: seen.includes(row.rad) };
   });
   // 이름 · 방위 · 래디얼(R###) · 거리 순이다
-  t.ok(/^NAV1 IYAN \d{3}° R\d{3} [\d.]+ nm$/.test(pfd.txt),
+  t.ok(/^NAV1 IYAN \d{3}° R\d{3} [\d.]+$/.test(pfd.txt),
     `PFD NAV1 자리에 명칭·방위·래디얼·거리가 나온다 (${pfd.txt || '없음'})`);
   t.eq(pfd.drawn, true, '이름·방위·거리가 실제로 나침반 모서리에 그려진다');
   t.eq(pfd.radDrawn, false, '래디얼은 화면에 적지 않는다 — 방위의 반대편이다');
