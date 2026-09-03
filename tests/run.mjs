@@ -31,7 +31,6 @@ import * as locsta from './cases/locsta.mjs';
 import * as susp from './cases/susp.mjs';
 import * as layout from './cases/layout.mjs';
 import * as gslope from './cases/gslope.mjs';
-import * as joystick from './cases/joystick.mjs';
 import * as geosearch from './cases/geosearch.mjs';
 import * as navaid from './cases/navaid.mjs';
 import * as oat from './cases/oat.mjs';
@@ -40,7 +39,7 @@ import * as hdghybrid from './cases/hdghybrid.mjs';
 import * as topbox from './cases/topbox.mjs';
 import * as cdiscale from './cases/cdiscale.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, joystick, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale];
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale];
 const filter = process.argv.slice(2);
 
 function makeT() {

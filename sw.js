@@ -1,6 +1,6 @@
 // GPS 보조 항법장치 — Service Worker
 // 버전을 올리면 캐시가 갱신됩니다
-const CACHE = 'vfr-flight-v442';
+const CACHE = 'vfr-flight-v443';
 const CORE  = [
   './index.html',
   './manifest.json',
@@ -38,8 +38,6 @@ const CORE  = [
   './js/09-cdu.js',
   './js/10-tools.js',
   './js/11-charts.js',
-  './js/12-joystick.js',
-  './js/13-joyhid.js',
   './js/14-navaid.js',
 ];
 
