@@ -312,8 +312,15 @@ function init(){
     if (hit.act === 'oat') {
       try { oatInfo(); } catch (e) { _swallow(e); }
     } else if (hit.act === 'navSrc') {
-      // 모서리 글자판이 곧 NAV 소스 버튼이다 — 누른 것을 항법 소스로 삼는다
-      try { setNavSrc(hit.src); drawPFD(); } catch (e) { _swallow(e); }
+      // 모서리 글자판이 곧 NAV 소스 버튼이다 — 누른 것을 항법 소스로 삼는다.
+      // 이미 그 소스가 골라진 채로 또 누르면(같은 자리를 두 번), 그 소스를
+      // 손볼 CDU Audio & Radios 의 NAV 탭(주파수 튜닝)으로 건너간다.
+      if (navSrc === hit.src) {
+        try { CDU_ACT.switchAudioTab('NAV'); CDU_ACT.switchMode('AUDIO'); setSolo('cdu'); }
+        catch (e) { _swallow(e); }
+      } else {
+        try { setNavSrc(hit.src); drawPFD(); } catch (e) { _swallow(e); }
+      }
     }
   }
 
