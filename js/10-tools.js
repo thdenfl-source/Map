@@ -20,10 +20,19 @@ function _trkSaveBackup() {
   } catch(e) { _swallow(e); }
 }
 function _trkClearBackup() { try { localStorage.removeItem(TRK_BAK_KEY); } catch(e) { _swallow(e); } }
+// REC 버튼은 지도 아래 줄과 PFD 조작부(SUSP 옆)에 하나씩 있다 — 같은 기록을
+// 켜고 끄는 같은 버튼이다. 한쪽만 고치면 기록 중인데도 다른 쪽은 꺼진 얼굴로
+// 남아, 어느 쪽을 믿어야 할지 알 수 없게 된다. 늘 둘을 함께 바꾼다.
+// 켜졌다는 표시(●)는 글자를 갈아 끼우지 않고 CSS 로 보였다 감췄다 한다.
+// 글자를 바꾸면 버튼 폭이 그만큼 넓어지는데, 조작부는 폭이 모자라면 줄을
+// 바꾸는 자리라 녹화를 켜는 순간 버튼 하나가 다음 줄로 밀려났다 — 조작부가
+// 한 줄 늘면 그만큼 계기가 눌린다. 자리는 늘 잡아 두고 색만 바꾼다.
+function _trkSyncBtns(on) {
+  document.querySelectorAll('.rec-btn').forEach(b => b.classList.toggle('active', on));
+}
 function _trkStartTimer() {
   if (_trkTimer) { clearInterval(_trkTimer); _trkTimer = null; }   // 이중 기동 방지
-  document.getElementById('rec-btn').classList.add('active');
-  document.getElementById('rec-btn').textContent = '● REC';
+  _trkSyncBtns(true);
   _trkCapture();
   _trkTimer = setInterval(_trkCapture, 2000);   // 2초 간격 기록
 }
@@ -51,8 +60,7 @@ document.addEventListener('visibilitychange', () => {
 async function _trkStop() {
   _trkRec = false;
   if (_trkTimer) { clearInterval(_trkTimer); _trkTimer = null; }
-  const btn = document.getElementById('rec-btn');
-  btn.classList.remove('active'); btn.textContent = 'REC';
+  _trkSyncBtns(false);
   _trkClearBackup();   // 정상 종료 → 백업 불필요
   if (_trkPts.length < 2) { uiAlert('기록된 항적이 없습니다 (2점 미만).'); return; }
   // 종전에는 로그북(IndexedDB)에 담아 두고 FDR 패널에서 다시 꺼낼 수

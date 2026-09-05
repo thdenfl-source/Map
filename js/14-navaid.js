@@ -85,6 +85,32 @@ function applyDeviceLayout() {
 //   --app-h        지금 실제로 보이는 높이(visualViewport 가 있으면 그쪽이 정확하다)
 //   --phone-bar-h  폰 탭바가 실제로 차지한 높이(글꼴·안전영역에 따라 달라진다)
 // 재서 넣지 않고 px 로 못 박으면 기기마다 아래가 잘리거나 검은 띠가 남는다.
+// ── PFD 조작부의 REC — 자리가 있을 때만 세운다 ────────────────────
+// 계기는 (패널 높이 − 조작부 높이) 안에 그려진다(03-pfd.js drawPFD). 조작부가
+// 버튼 하나 때문에 한 줄 늘면 계기가 그만큼 눌린다 — 나침반을 몇 %씩 키워 온
+// 자리라 그 대가는 크다. 그렇다고 폭이 넉넉한 기기에서까지 버튼을 안 둘 이유도
+// 없다. 그래서 폭을 재서 정한다(기기 폭을 미리 못 박지 않는다 — 글꼴·안전영역·
+// 배속 버튼 유무에 따라 같은 폭에서도 줄이 달라진다).
+//   ① 'REC' 글자 그대로 들어가면 그대로 둔다
+//   ② 줄이 늘면 ● 만 남겨 좁혀 본다
+//   ③ 그래도 늘면 세우지 않는다 — 지도 아래 REC 은 그대로 있다
+function fitPfdRecBtn() {
+  const g = document.querySelector('.rec-group');
+  const bar = document.querySelector('.ctrl-bar');
+  const btn = document.getElementById('pfd-rec-btn');
+  if (!g || !bar || !btn) return;
+  const H = () => bar.getBoundingClientRect().height;
+  g.style.display = 'none';
+  btn.classList.remove('rec-compact');
+  const base = H();                       // 이 버튼이 없을 때의 조작부 높이
+  if (!base) { g.style.display = ''; return; }   // 아직 안 보이는 화면이면 그대로 둔다
+  g.style.display = '';
+  if (H() <= base + 0.5) return;          // ① 글자째로 들어간다
+  btn.classList.add('rec-compact');
+  if (H() <= base + 0.5) return;          // ② ● 만이면 들어간다
+  g.style.display = 'none';               // ③ 어느 쪽도 안 되면 내린다
+}
+
 function fitAppViewport() {
   const vv = window.visualViewport;
   const h = Math.round((vv && vv.height) || window.innerHeight || 0);
@@ -94,6 +120,9 @@ function fitAppViewport() {
   const barH = (bar && getComputedStyle(bar).display !== 'none')
     ? Math.round(bar.getBoundingClientRect().height) : 0;
   document.documentElement.style.setProperty('--phone-bar-h', barH + 'px');
+
+  // 조작부 높이가 정해져야 계기 높이가 정해진다 — REC 자리부터 가린다
+  try { fitPfdRecBtn(); } catch (e) { _swallow(e); }
 
   // 계기·지도는 자기 상자 크기를 따로 들고 있다 — 상자가 바뀌었으니 다시 잡는다
   try { resizePFD(); drawPFD(); } catch (e) { _swallow(e); }

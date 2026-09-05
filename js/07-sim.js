@@ -610,7 +610,13 @@ function applyPanels() {
   leftPage = cur === 'map' ? 1 : 0;
   currentPage = cur === 'map' ? 0 : cur === 'plan' ? 1 : cur === 'cdu' ? 2 : 0;
 
-  requestAnimationFrame(() => { resizePFD(); drawPFD(); scaleCdu(); });
+  // 조작부 폭에 따라 REC 버튼을 세울지부터 정한다 — 조작부 높이가 정해져야
+  // 계기 높이가 정해진다(14-navaid.js fitPfdRecBtn). 창이 바뀌어 조작부가
+  // 이제야 보이는 참이라, 여기서 한 번 더 재야 제 폭으로 잡힌다.
+  requestAnimationFrame(() => {
+    try { if (typeof fitPfdRecBtn === 'function') fitPfdRecBtn(); } catch (e) { _swallow(e); }
+    resizePFD(); drawPFD(); scaleCdu();
+  });
   setTimeout(() => {
     try { leafMap.invalidateSize(); } catch(e) { _swallow(e); }
     try { if (_ml3d) _ml3d.resize(); } catch(e) { _swallow(e); }
