@@ -456,13 +456,29 @@ body.solo-mode .solo-panel-visible {
   font-size: 15px; font-weight: bold; line-height: 1.4; color: #ffd54f; white-space: nowrap;
   text-align: right; pointer-events: none;
 }
-/* REC 은 지도 아래 라인 셀렉터에 있다 — 규격은 .sim-btn 이 정한다.
-   여기서는 켜졌을 때의 색만 따로 둔다. */
-#rec-btn:hover  { background: rgba(60,0,0,0.92); border-color: #ff4444; color: #ff8888; }
-#rec-btn.active {
+/* REC 은 두 곳에 하나씩 있다 — 지도 아래 버튼 줄과 PFD 조작부(SUSP 옆).
+   같은 기능·같은 표시라 색은 여기서 한 벌로 매기고, 크기·글꼴은 각자 서 있는
+   줄이 정한다(.sim-btn · .susp-btn). 그래야 두 줄 어느 쪽에서도 이웃과
+   높이가 어긋나지 않는다.
+   꺼져 있을 때의 글자색을 따로 둔다 — .susp-btn 의 기본색(#555)을 그대로
+   물려받으면 조작부에서 '못 누르는 버튼' 처럼 보인다. */
+.rec-btn { color: #ddd; }
+.rec-btn:hover  { background: rgba(60,0,0,0.92); border-color: #ff4444; color: #ff8888; }
+.rec-btn.active {
   background: rgba(90,0,0,0.92); border-color: #ff4444; color: #ff6666;
   animation: recblink 1.2s infinite;
 }
+/* 녹화 중 표시(●)는 자리를 늘 잡아 두고 보였다 감췄다 한다. 글자를
+   'REC' ↔ '● REC' 로 갈아 끼우면 버튼이 그만큼 넓어지는데, 조작부는 폭이
+   모자라면 줄을 바꾸는 자리라 녹화를 켜는 순간 버튼이 다음 줄로 밀려났다
+   (조작부가 한 줄 늘면 그만큼 계기가 눌린다). */
+.rec-dot { visibility: hidden; margin-right: 3px; }
+.rec-btn.active .rec-dot { visibility: visible; }
+/* 조작부가 좁아 'REC' 글자까지는 들어가지 않을 때 — ● 만 남겨 폭을 줄인다.
+   이때 ● 은 상태 표시가 아니라 버튼 이름이므로 꺼져 있어도 보인다.
+   접을지 말지는 폭을 재서 정한다(14-navaid.js fitPfdRecBtn). */
+.rec-btn.rec-compact .rec-dot { visibility: visible; margin-right: 0; }
+.rec-btn.rec-compact .rec-txt { display: none; }
 @keyframes recblink { 0%,100%{ box-shadow: 0 0 6px rgba(255,68,68,0.7);} 50%{ box-shadow: none;} }
 /* ── Map button rail ── */
 /* ── MAP 버튼은 왼쪽 한 줄에 모은다 ─────────────────────────────
@@ -1435,6 +1451,7 @@ body.phone-mode .ctrl-sub-row { display: contents; }
 body.phone-mode .ctrl-group    { order: 1; }   /* CRS · AP(OBS) */
 body.phone-mode .brg-tog-group { order: 2; }
 body.phone-mode .susp-group    { order: 3; }
+body.phone-mode .rec-group     { order: 3; }   /* SUSP 바로 오른쪽(마크업 순서대로) */
 /* .ctrl-break 가 order:4 — 여기서 줄이 갈린다 */
 body.phone-mode .sw-group      { order: 5; }
 body.phone-mode .nav-src-group { order: 6; }
@@ -1442,7 +1459,8 @@ body.phone-mode .ctrl-group,
 body.phone-mode .sw-group,
 body.phone-mode .brg-tog-group,
 body.phone-mode .nav-src-group,
-body.phone-mode .susp-group {
+body.phone-mode .susp-group,
+body.phone-mode .rec-group {
   flex-direction: row; align-items: center; gap: 3px;
 }
 body.phone-mode .ctrl-lbl { font-size: 9px; letter-spacing: 0; }
@@ -1463,6 +1481,7 @@ body.phone-mode .nav-src-group .rnp-btns { margin: 0; }
    RNP 만 남긴다: 버튼이 '4 2 1 0.3' 이라 이름표가 없으면 무슨 값인지 알 수 없다. */
 body.phone-mode .brg-tog-group > .ctrl-lbl,
 body.phone-mode .susp-group > .ctrl-lbl,
+body.phone-mode .rec-group > .ctrl-lbl,
 body.phone-mode .ctrl-group > .ctrl-lbl:not(.ctrl-lbl-btn):not([id]) { display: none; }
 /* 조작부 배치 — 왼쪽부터 채우고, 자주 만지는 것을 앞줄에 둔다.
      윗줄  CRS · OBS · BRG · SUSP
@@ -2088,6 +2107,17 @@ body.phone-mode .ctrl-bar .sw-display {
                   title="SUSPEND — 다음 웨이포인트로 자동으로 넘어가지 않고 지금 구간을 계속 유지합니다. 홀딩·미스드어프로치에서 자동으로 켜집니다.">SUSP</button>
         </div>
 
+        <!-- REC — 지도 아래 줄의 REC 과 같은 버튼(같은 기능·같은 표시)이다.
+             항적을 기록하다 보면 계기를 보고 있을 때가 많은데, 켜고 끄려고
+             매번 지도로 건너가야 했다. SUSP 오른쪽이 비어 있어 그 자리에 둔다.
+             둘 중 어느 것을 눌러도 같은 기록이며(toggleTrackRec), 얼굴도
+             함께 바뀐다(_trkSyncBtns). -->
+        <div class="rec-group">
+          <div class="ctrl-lbl">TRACK</div>
+          <button class="susp-btn rec-btn" id="pfd-rec-btn" data-act="toggleTrackRec"
+                  title="REC — 항적 기록. 멈추면 GPX 로 저장할 수 있습니다. 지도 아래 REC 과 같은 버튼입니다."><span class="rec-dot">●</span><span class="rec-txt">REC</span></button>
+        </div>
+
         <div class="ctrl-div"></div>
 
         <div class="trim-group sim-only" id="trim-group">
@@ -2165,7 +2195,7 @@ body.phone-mode .ctrl-bar .sw-display {
           <button class="sim-btn" id="follow-btn" data-act="toggleFollow">1인칭</button>
           <button class="sim-btn sat" id="layer-btn" data-act="toggleLayer">MAP</button>
           <button class="sim-btn" id="layer-btn-3d" data-act="toggle3dMap">3D</button>
-          <button class="sim-btn" id="rec-btn" data-act="toggleTrackRec">REC</button>
+          <button class="sim-btn rec-btn" id="rec-btn" data-act="toggleTrackRec"><span class="rec-dot">●</span><span class="rec-txt">REC</span></button>
         </div>
       </div>
       <div id="geo-panel">

@@ -115,5 +115,76 @@ export async function run(page, t) {
     await ctx.close();
   }
 
+  // ── PFD 조작부의 REC — 자리가 있을 때만 서고, 조작부를 늘리지 않는다 ──
+  // 계기는 (패널 높이 − 조작부 높이) 안에 그려진다. 버튼 하나 때문에 조작부가
+  // 한 줄 늘면 그만큼 계기가 눌린다 — 어느 폭에서도 그 일이 없어야 한다.
+  // 폭이 넉넉하면 SUSP 오른쪽에 서고, 모자라면 ● 로 좁히거나 아예 서지 않는다
+  // (14-navaid.js fitPfdRecBtn). 지도 아래 REC 은 어느 쪽이든 그대로 있다.
+  for (const vw of [360, 390, 430, 1400]) {
+    const ctx = await browser.newContext({ viewport: { width: vw, height: 880 } });
+    const p = await ctx.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
+    await p.goto(url);
+    await p.waitForFunction(() => typeof S === 'object' && typeof navGo === 'function',
+      null, { timeout: 20000 });
+    await p.evaluate(() => navGo('pfd'));
+    await p.waitForTimeout(400);
+    const r = await p.evaluate(() => {
+      const bar = document.querySelector('.ctrl-bar');
+      const g = document.querySelector('.rec-group');
+      const btn = document.getElementById('pfd-rec-btn');
+      const susp = document.getElementById('susp-btn').getBoundingClientRect();
+      const shown = getComputedStyle(g).display !== 'none';
+      const withIt = bar.getBoundingClientRect().height;
+      const keep = g.style.display;
+      g.style.display = 'none'; void bar.offsetHeight;          // 이 버튼이 없을 때
+      const without = bar.getBoundingClientRect().height;
+      g.style.display = keep;
+      const rb = btn.getBoundingClientRect();
+      return { shown, withIt, without, mapRec: !!document.getElementById('rec-btn'),
+               nextToSusp: shown && Math.abs(rb.top - susp.top) < 2 && rb.left > susp.right - 1 };
+    });
+    t.ok(r.withIt <= r.without + 0.5,
+      `${vw}px — REC 때문에 조작부가 늘지 않는다 (${Math.round(r.without)}px → ${Math.round(r.withIt)}px)`);
+    t.eq(r.mapRec, true, `${vw}px — 지도 아래 REC 은 그대로 있다`);
+    if (r.shown) {
+      t.eq(r.nextToSusp, true, `${vw}px — 세울 자리가 있으면 SUSP 오른쪽에 선다`);
+    }
+  }
+
+  // ── 두 REC 은 같은 기록을 켜고 끄며, 얼굴도 함께 바뀐다 ──
+  // 한쪽만 고치면 기록 중인데 다른 쪽은 꺼진 얼굴로 남아 어느 쪽을 믿을지 알 수 없다.
+  {
+    const ctx = await browser.newContext({ viewport: { width: 430, height: 900 } });
+    const p = await ctx.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
+    await p.goto(url);
+    await p.waitForFunction(() => typeof S === 'object' && typeof navGo === 'function',
+      null, { timeout: 20000 });
+    await p.evaluate(() => { window.uiConfirm = async () => false; window.uiAlert = async () => {}; });
+    await p.evaluate(() => navGo('pfd'));
+    await p.waitForTimeout(400);
+    const state = () => p.evaluate(() => ({
+      rec: _trkRec,
+      pfd: document.getElementById('pfd-rec-btn').classList.contains('active'),
+      map: document.getElementById('rec-btn').classList.contains('active'),
+    }));
+    const before = await state();
+    await p.click('#pfd-rec-btn');
+    await p.waitForTimeout(250);
+    const on = await state();
+    await p.evaluate(() => navGo('map'));
+    await p.waitForTimeout(250);
+    await p.click('#rec-btn');
+    await p.waitForTimeout(350);
+    const off = await state();
+    await ctx.close();
+    t.eq(before.rec, false, '처음에는 기록 중이 아니다');
+    t.eq(on.rec, true, 'PFD 의 REC 을 누르면 기록이 시작된다');
+    t.ok(on.pfd && on.map, '기록 중에는 두 REC 이 함께 켜진 얼굴이다');
+    t.eq(off.rec, false, '지도 쪽 REC 으로 그 기록을 멈춘다(같은 기록이다)');
+    t.ok(!off.pfd && !off.map, '멈추면 두 REC 이 함께 꺼진 얼굴이 된다');
+  }
+
   await c1.close();
 }
