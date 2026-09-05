@@ -314,10 +314,16 @@ function init(){
     } else if (hit.act === 'navSrc') {
       // 모서리 글자판이 곧 NAV 소스 버튼이다 — 누른 것을 항법 소스로 삼는다.
       // 이미 그 소스가 골라진 채로 또 누르면(같은 자리를 두 번), 그 소스를
-      // 손볼 CDU Audio & Radios 의 NAV 탭(주파수 튜닝)으로 건너간다.
+      // 손볼 화면으로 건너간다. FMS 는 주파수가 아니라 활성 웨이포인트가
+      // 목표이므로 PLAN 화면의 웨이포인트 추가로, NAV1·NAV2 는 CDU Audio &
+      // Radios 의 NAV 탭(주파수 튜닝)으로 간다.
       if (navSrc === hit.src) {
-        try { CDU_ACT.switchAudioTab('NAV'); CDU_ACT.switchMode('AUDIO'); setSolo('cdu'); }
-        catch (e) { _swallow(e); }
+        if (hit.src === 'FMS') {
+          try { setSolo('plan'); fpGo('ADD'); } catch (e) { _swallow(e); }
+        } else {
+          try { CDU_ACT.switchAudioTab('NAV'); CDU_ACT.switchMode('AUDIO'); setSolo('cdu'); }
+          catch (e) { _swallow(e); }
+        }
       } else {
         try { setNavSrc(hit.src); drawPFD(); } catch (e) { _swallow(e); }
       }
