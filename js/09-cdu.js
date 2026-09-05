@@ -331,7 +331,21 @@ function init(){
   }
 
   // Touch: guard against scroll drags; click: desktop support
-  let pfdTouchX = 0, pfdTouchY = 0;
+  //
+  // 터치 기기는 손가락을 뗀 뒤 touchend 에 이어 click 을 한 번 더 만들어
+  // 보낸다(유령 클릭 — 마우스만 있던 시절 페이지가 그대로 돌아가게 하려는
+  // 브라우저의 배려다). 그래서 한 번 누른 것이 이 캔버스에서는 두 번으로
+  // 세어졌다. 종전에는 두 번째가 '같은 소스를 다시 고르기' 라 아무 일도
+  // 없었지만, 두 번째 누름에 따로 할 일이 생긴 뒤로는(고른 소스를 또 누르면
+  // 설정 화면으로) 폰에서 한 번만 눌러도 곧장 설정 화면으로 튀었다.
+  // DeX·데스크톱은 click 만 오므로 멀쩡했다 — 폰에서만 나던 증상이다.
+  //
+  // touchend 를 passive 로 듣고 있어 preventDefault 로 막을 수는 없다.
+  // 대신 손가락으로 만진 시각을 적어 두고, 그 직후의 click 은 유령으로 보고
+  // 흘린다. 폰에서 진짜로 두 번 누르면 두 번째도 touchend 로 들어오므로
+  // 이 창(700ms)에 걸려 사라지지 않는다.
+  const PFD_GHOST_MS = 700;
+  let pfdTouchX = 0, pfdTouchY = 0, pfdTouchAt = 0;
   cvs.addEventListener('touchstart', e => {
     pfdTouchX = e.touches[0].clientX;
     pfdTouchY = e.touches[0].clientY;
@@ -339,9 +353,14 @@ function init(){
   cvs.addEventListener('touchend', e => {
     const t = e.changedTouches[0];
     const dx = t.clientX - pfdTouchX, dy = t.clientY - pfdTouchY;
+    // 끌어서 넘긴 경우에도 유령 클릭은 뒤따른다 — 시각은 늘 적어 둔다
+    pfdTouchAt = Date.now();
     if (Math.sqrt(dx*dx + dy*dy) < 10) onPfdTap(t.clientX, t.clientY);
   }, { passive: true });
-  cvs.addEventListener('click', e => onPfdTap(e.clientX, e.clientY));
+  cvs.addEventListener('click', e => {
+    if (Date.now() - pfdTouchAt < PFD_GHOST_MS) return;   // 방금 만진 뒤의 유령 클릭
+    onPfdTap(e.clientX, e.clientY);
+  });
 }
 // ── 패널 끌어 옮기기 (WX 패널) ──
 // 패널 헤더를 잡아 끌어 옮기는 공용 헬퍼
