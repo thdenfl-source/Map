@@ -244,6 +244,24 @@ export async function run(page, t) {
   t.eq(tap.after, 'FMS', '빈 자리를 눌러도 소스는 그대로다');
   t.eq(tap.oatHit, 1, 'OAT 를 누를 자리도 그대로 있다');
 
+  // ── 이미 고른 소스를 또 누르면 CDU 로 건너간다 ──────────────────
+  // 그 소스를 손보려면(주파수 튜닝 등) Audio & Radios 의 NAV 탭이 있는
+  // CDU 로 가야 한다. 같은 자리를 두 번 누르는 것을 그 신호로 쓴다.
+  await page.evaluate(() => { setNavSrc('NAV1'); drawPFD(); });
+  const jump = await page.evaluate(() => {
+    const rect = cvs.getBoundingClientRect();
+    const b = hsiHitBoxes.find(q => q.src === 'NAV1');
+    const x = rect.left + (b.x + b.w / 2) * (rect.width / cvs.width);
+    const y = rect.top  + (b.y + b.h / 2) * (rect.height / cvs.height);
+    cvs.dispatchEvent(new MouseEvent('click', { clientX: x, clientY: y, bubbles: true }));
+    return { solo: _soloCurrent, tab: document.querySelector('#cdu-wrap .tab.active')?.innerText,
+             navSrc };
+  });
+  t.eq(jump.navSrc, 'NAV1', '건너가는 동안 소스는 그대로다(바뀌지 않는다)');
+  t.eq(jump.solo, 'cdu', '이미 고른 NAV1 을 또 누르면 CDU 로 건너간다');
+  t.eq(jump.tab, 'NAV', 'CDU 는 Audio & Radios 의 NAV 탭이 열린 채다');
+  await page.evaluate(() => setSolo('pfd'));
+
   // 뒷정리 — 다음 검사가 이 상태를 물려받지 않게 한다
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.evaluate(() => { setSolo('map'); });
