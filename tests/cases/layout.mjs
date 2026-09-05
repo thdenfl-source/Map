@@ -88,5 +88,32 @@ export async function run(page, t) {
       `그때 다른 창은 보이지 않는다${r.others.length ? ' (' + r.others.join(',') + ')' : ''}`);
   }
 
+  // ── CDU · Flight Plan 계기 틀이 위아래를 빈 칸 없이 채우는가 ──
+  // 354×567 규격 화면을 폭 기준으로 줄이면(세로로 긴 폰에서 흔하다) 원래는
+  // 위아래가 남았다. 그 자리를 비워 두지 않고 계기 틀 높이를 늘려 채운다
+  // (cduFrameRect 의 frameH). 좁은 폰(위아래가 남는 경우)과 넓은 화면
+  // (원래도 안 남는 경우) 둘 다 본다 — 넓은 화면에서 새로 틈이 생기면 안 된다.
+  for (const [vp, label] of [[{ width: 390, height: 844 }, '세로로 긴 폰'],
+                             [{ width: 1400, height: 900 }, '넓은 화면']]) {
+    const ctx = await browser.newContext({ viewport: vp });
+    const p = await ctx.newPage();
+    await p.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
+    await p.goto(url);
+    await p.waitForFunction(() => typeof S === 'object' && typeof navGo === 'function',
+      null, { timeout: 20000 });
+    await p.waitForTimeout(300);
+    for (const [screen, wrap, scaler] of [['cdu', 'cdu-wrap', 'cdu-scaler'], ['plan', 'fp-wrap', 'fp-scaler']]) {
+      const gap = await p.evaluate(([sc, wr, sca]) => {
+        navGo(sc);
+        const w = document.getElementById(wr), f = document.querySelector(`#${sca} .cdu-frame`);
+        const wr2 = w.getBoundingClientRect(), fr = f.getBoundingClientRect();
+        return { top: fr.top - wr2.top, bottom: wr2.bottom - fr.bottom };
+      }, [screen, wrap, scaler]);
+      t.ok(Math.abs(gap.top) < 1 && Math.abs(gap.bottom) < 1,
+        `${label} — ${screen.toUpperCase()} 계기 틀 위아래에 빈 칸이 없다 (위 ${gap.top.toFixed(1)}px · 아래 ${gap.bottom.toFixed(1)}px)`);
+    }
+    await ctx.close();
+  }
+
   await c1.close();
 }

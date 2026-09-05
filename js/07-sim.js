@@ -543,8 +543,11 @@ let currentPage = 0;
 let leftPage = 0;
 // 354×567 규격의 화면(CDU · Flight Plan)을 패널 크기에 맞춰 축소·중앙정렬
 // CDU 화면(354×567 규격)이 패널 안에서 실제로 차지하는 사각형.
-// 패널이 넓으면 좌우가, 높으면 위아래가 남는다(레터박스).
-// CDU 화면들은 이 사각형 안에 그린다 — 차트 뷰어만 예외로 패널 전체를 쓴다.
+// 폭에 맞춰 배율이 정해지면(세로로 긴 폰 — 흔한 경우) 위아래가 남는다.
+// 그 자리를 빈 칸으로 두지 않고 계기 틀 자체의 높이를 그만큼 늘린다 —
+// 안쪽 목록·본문은 이미 flex:1 + overflow-y:auto 라 늘어난 높이를 그대로
+// 받아 낸다. 높이에 맞춰 배율이 정해지는 경우(넓은 화면)는 원래도 위아래가
+// 남지 않으므로 그대로 둔다 — 그때 남는 것은 좌우이고, 요청받은 것은 위아래뿐이다.
 function cduFrameRect(wrapId) {
   const wrap = document.getElementById(wrapId);
   if (!wrap) return null;
@@ -552,13 +555,17 @@ function cduFrameRect(wrapId) {
   const w = wrap.clientWidth, h = wrap.clientHeight;
   if (!w || !h) return null;
   const s = Math.min(w / 354, h / 567);
-  return { left: (w - 354*s)/2, top: (h - 567*s)/2, w: 354*s, h: 567*s, scale: s };
+  const frameH = Math.max(567, h / s);
+  return { left: (w - 354*s)/2, top: (h - frameH*s)/2, w: 354*s, h: frameH*s, scale: s, frameH };
 }
 function _scaleFrame(wrapId, scalerId) {
   const scaler = document.getElementById(scalerId);
   const r = cduFrameRect(wrapId);
   if (!scaler || !r) return;
+  scaler.style.height = r.frameH + 'px';
   scaler.style.transform = `translate(${r.left}px,${r.top}px) scale(${r.scale})`;
+  const frame = scaler.querySelector('.cdu-frame');
+  if (frame) frame.style.height = r.frameH + 'px';
 }
 function scaleCdu() {
   _scaleFrame('cdu-wrap', 'cdu-scaler');
