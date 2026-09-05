@@ -518,10 +518,7 @@ leafMap.getContainer().addEventListener('click', e => {
 
 let trailLine = L.polyline([],{color:'#00ff88',weight:1.5,opacity:0.65}).addTo(leafMap);
 let routeLine = L.polyline([],{color:'#4488ff',weight:2,dashArray:'6 5',opacity:0.8}).addTo(leafMap);
-// CRS 라인 색은 HSI BRG 색 체계와 통일: FMS=BRG2 초록, VOR/LOC=BRG1 파랑
-let crsLine   = L.polyline([],{color:'#00cc44',weight:1.5,dashArray:'10 5',opacity:0.9}).addTo(leafMap);
 let holdLine  = L.polyline([],{color:'#ffcc44',weight:2,opacity:0.9}).addTo(leafMap);
-let vorCrsLine = L.polyline([],{color:'#44aaff',weight:1.5,dashArray:'10 5',opacity:0.9}).addTo(leafMap);
 
 // ── 속도 벡터 (헤딩 방향 붉은 화살표, 1분 예상위치 길이·최대 130kt) ──
 // 화살촉은 HSI 코스/BRG 니들과 같은 '채워진 삼각형' 스타일
@@ -883,59 +880,25 @@ function updateHoldLine() {
   } catch(e) { _swallow(e); }
 }
 
+// 골라 놓은 NAV 소스(FMS·NAV1·NAV2)로 가는 코스 점선은 지도에 긋지 않는다
+// — CDI(HSI)가 이미 편차를 보여 주고, 지도까지 선을 그으면 지형·항로와
+// 겹쳐 오히려 어수선했다. VOR/LOC 을 튜닝했을 때 그 국의 위치만 마름모
+// 아이콘으로 남긴다(어디를 잡고 있는지는 여전히 눈으로 확인할 수 있게).
 function updateCrsLine() {
   updateHoldLine();
-  if (navSrc !== 'FMS') {
-    crsLine.setLatLngs([]);
-    if (navLat === null) {
-      vorCrsLine.setLatLngs([]);
-      if (vorStationMarker) { leafMap.removeLayer(vorStationMarker); vorStationMarker = null; }
-    } else {
-      // CDI가 쓰는 대권과 같도록 다중선분으로(직선 2점이면 최대 0.2NM 어긋남)
-      vorCrsLine.setLatLngs(_gcCourseLatLngs(activeCourseLine(), 150));
-      if (vorStationMarker) { leafMap.removeLayer(vorStationMarker); vorStationMarker = null; }
-      const stIcon = L.divIcon({
-        html: `<div style="position:relative;">
-          <div style="width:10px;height:10px;background:#44aaff;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.7);transform:rotate(45deg);"></div>
-          <div style="position:absolute;left:13px;top:-3px;color:#44aaff;font-size:9px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;white-space:nowrap;text-shadow:1px 1px 2px #000;">${navSrc}${navIcao?':'+navIcao:''}</div>
-        </div>`,
-        iconSize:[10,10], iconAnchor:[5,5], className:''
-      });
-      vorStationMarker = L.marker([navLat, navLon], {icon: stIcon}).addTo(leafMap);
-    }
-  } else {
-    vorCrsLine.setLatLngs([]);
+  if (navSrc !== 'FMS' && navLat !== null) {
     if (vorStationMarker) { leafMap.removeLayer(vorStationMarker); vorStationMarker = null; }
-    const L = activeCourseLine();
-    if (!L) { crsLine.setLatLngs([]); return; }
-    crsLine.setLatLngs(_gcCourseLatLngs(L, 150));
+    const stIcon = L.divIcon({
+      html: `<div style="position:relative;">
+        <div style="width:10px;height:10px;background:#44aaff;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.7);transform:rotate(45deg);"></div>
+        <div style="position:absolute;left:13px;top:-3px;color:#44aaff;font-size:9px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;white-space:nowrap;text-shadow:1px 1px 2px #000;">${navSrc}${navIcao?':'+navIcao:''}</div>
+      </div>`,
+      iconSize:[10,10], iconAnchor:[5,5], className:''
+    });
+    vorStationMarker = L.marker([navLat, navLon], {icon: stIcon}).addTo(leafMap);
+  } else if (vorStationMarker) {
+    leafMap.removeLayer(vorStationMarker); vorStationMarker = null;
   }
-}
-
-// 코스선을 대권 다중선분으로 만든다.
-// Leaflet은 두 점을 머케이터 직선으로 잇기 때문에, 긴 구간을 두 점으로 그리면
-// CDI가 쓰는 대권과 지도의 선이 어긋난다(150NM에서 최대 0.6NM).
-function _gcCourseLatLngs(L, extNM) {
-  // 아크 구간은 원호 그대로 그린다 — 나는 길과 그려진 길이 달라선 안 된다
-  if (L.arc) {
-    return arcPoints(L.from[0], L.from[1], L.to[0], L.to[1],
-                     L.arc.clat, L.arc.clon, L.arc.dir, 64);
-  }
-  const b0 = bearing(L.from[0], L.from[1], L.to[0], L.to[1]);
-  const dTot = distance(L.from[0], L.from[1], L.to[0], L.to[1]);
-  // to 지점에서의 진행 방위(대권은 지점마다 방위가 달라진다)
-  const bAt = bearing(destPoint(L.from[0], L.from[1], b0, Math.max(0, dTot - 0.5))[0],
-                      destPoint(L.from[0], L.from[1], b0, Math.max(0, dTot - 0.5))[1],
-                      L.to[0], L.to[1]);
-  const pts = [];
-  const STEP = 10;   // 10NM 간격 — 대권 곡률을 눈에 띄지 않게 따라감
-  for (let d = -extNM; d < 0; d += STEP) {                       // to 이전(뒤쪽)
-    const back = Math.min(dTot, -d);
-    pts.push(destPoint(L.to[0], L.to[1], normA(bAt + 180), back));
-  }
-  pts.push([L.to[0], L.to[1]]);
-  for (let d = STEP; d <= extNM; d += STEP) pts.push(destPoint(L.to[0], L.to[1], bAt, d));
-  return pts;
 }
 
 function updateTrail(){

@@ -2,9 +2,10 @@
 //
 // 코스선은 '그 지점을 지나고, 그 지점에서의 방위가 CRS 인 대권' 이다.
 // 그래서 항공기에서 본 지점 방위를 그대로 CRS 에 넣으면 어긋난다 — 대권의
-// 방위는 양 끝에서 다르기 때문이다(수렴각). 82NM 에서 1° 는 1.4NM 이고,
-// 지도에서는 코스선이 항공기를 비켜 가는 것으로 그대로 보인다.
-// 여기서는 '눌렀을 때 정말로 코스선이 항공기를 지나는가' 를 편차로 잰다.
+// 방위는 양 끝에서 다르기 때문이다(수렴각). 82NM 에서 1° 는 1.4NM 이다.
+// 여기서는 '눌렀을 때 정말로 코스선이 항공기를 지나는가' 를 편차(xtk)로 잰다.
+// (코스선 자체는 지도에 긋지 않는다 — HSI 가 이미 편차를 보여 준다. 여기서
+//  재는 것은 activeCourseLine() 이 계산하는 코스선의 숫자값이다.)
 export const name = 'CRS 현 위치 동기';
 
 // 부산(김해) — 화면에서 재현된 것과 같은 먼 거리(약 82NM)
@@ -21,16 +22,7 @@ export async function run(page, t) {
     const beforeXtk = courseXtk(activeCourseLine());
     document.getElementById('crs-lbl-btn').click();
     const L = activeCourseLine();
-    // 지도에 그려지는 선에서도 같은지 — 그림과 숫자가 따로 놀면 안 된다
-    updateCrsLine();
-    const pts = crsLine.getLatLngs();
-    let near = 1e9;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1];
-      const seg = Math.abs(crossTrack(a.lat, a.lng, b.lat, b.lng, S.lat, S.lon));
-      near = Math.min(near, seg);
-    }
-    return { beforeXtk, xtk: courseXtk(L), near,
+    return { beforeXtk, xtk: courseXtk(L),
              dist: distance(S.lat, S.lon, W[0], W[1]),
              crsM: Math.round(toMag(S.crs)),
              brgM: Math.round(toMag(bearing(S.lat, S.lon, W[0], W[1]))),
@@ -43,8 +35,6 @@ export async function run(page, t) {
   t.ok(Math.abs(fms.xtk) < 0.02,
     `누르면 코스선이 지금 자리를 지난다 (편차 ${(fms.xtk * 1852).toFixed(0)}m · ` +
     `${fms.dist.toFixed(0)}NM 거리 — 종전에는 수렴각 때문에 1.4NM 벌어졌다)`);
-  t.ok(fms.near < 0.05,
-    `지도에 그려지는 코스선도 항공기를 지난다 (${(fms.near * 1852).toFixed(0)}m)`);
   t.eq(fms.fwp, -1, '앞 구간 대신 그 지점을 지나는 코스선을 쓴다');
   t.ok(Math.abs(fms.hereM - fms.brgM) <= 1,
     `지금 자리에서 본 코스는 그 지점 방위와 같다 (${fms.hereM}°M · 방위 ${fms.brgM}°M)`);

@@ -108,19 +108,4 @@ export async function run(page, t) {
     `(${fly.straight.worst.toFixed(2)}NM · 기하값 ${fly.sagitta.toFixed(2)}NM)`);
   t.ok(fly.arc.worst < fly.straight.worst / 4,
     `아크 추종이 직선보다 ${(fly.straight.worst / Math.max(1e-6, fly.arc.worst)).toFixed(0)}배 정확하다`);
-
-  // ── 그려지는 코스선도 원호인가 ──
-  // 나는 길과 그려진 길이 다르면 둘 중 하나는 거짓말이다.
-  await setup();   // 앞의 '직선' 비교가 arc 를 지운 채로 끝났다 — 다시 세운다
-  const drawn = await page.evaluate(([C]) => {
-    S.lat = 35.10; S.lon = 128.70;
-    updateNav(); updateCrsLine();
-    const pts = crsLine.getLatLngs();
-    const L = activeCourseLine();
-    let worst = 0;
-    pts.forEach(p => { worst = Math.max(worst, Math.abs(distance(p.lat, p.lng, C[0], C[1]) - L.arc.r)); });
-    return { n: pts.length, worst };
-  }, [C]);
-  t.ok(drawn.n > 20 && drawn.worst < 0.02,
-    `지도의 코스선도 같은 원호로 그려진다 (점 ${drawn.n}개 · 반지름 오차 ${(drawn.worst * 1852).toFixed(0)}m)`);
 }
