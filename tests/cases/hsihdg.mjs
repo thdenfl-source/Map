@@ -278,6 +278,44 @@ export async function run(page, t) {
   t.eq(jumpFms.fpMode, 'ADD', 'PLAN 은 웨이포인트 추가 화면이 열린 채다');
   await page.evaluate(() => setSolo('pfd'));
 
+  // ── 폰에서 한 번 누른 것이 한 번으로 세어지는가(유령 클릭) ────────
+  // 터치 기기는 touchend 뒤에 click 을 한 번 더 만들어 보낸다. 그대로 두면
+  // 한 번 누른 것이 두 번이 되어, 소스를 고르자마자 설정 화면으로 튀었다
+  // (DeX·마우스에서는 click 만 와서 멀쩡했다 — 폰에서만 나던 증상이다).
+  // 손가락으로 만진 그대로를 재현한다: touchstart · touchend · 유령 click.
+  const touchCtx = await page.context().browser().newContext({
+    viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+  const tp = await touchCtx.newPage();
+  await tp.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
+  await tp.goto(page.url());
+  await tp.waitForFunction(() => typeof S === 'object' && typeof setSolo === 'function',
+    null, { timeout: 20000 });
+  await tp.evaluate(() => setSolo('pfd'));
+  await tp.waitForTimeout(300);
+  // 한 번 누름 = touchstart + touchend + 브라우저가 뒤이어 보내는 click
+  const oneTap = src => tp.evaluate((s) => {
+    const b = hsiHitBoxes.find(q => q.src === s);
+    const r = cvs.getBoundingClientRect();
+    const x = r.left + (b.x + b.w / 2) * (r.width / cvs.width);
+    const y = r.top  + (b.y + b.h / 2) * (r.height / cvs.height);
+    const touch = (type) => {
+      const t = new Touch({ identifier: 1, target: cvs, clientX: x, clientY: y });
+      cvs.dispatchEvent(new TouchEvent(type, { bubbles: true, cancelable: true,
+        touches: type === 'touchend' ? [] : [t], changedTouches: [t] }));
+    };
+    touch('touchstart'); touch('touchend');
+    cvs.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
+    return { navSrc, solo: _soloCurrent };
+  }, src);
+  await tp.evaluate(() => { setNavSrc('FMS'); resizePFD(); drawPFD(); });
+  const t1 = await oneTap('NAV1');
+  t.eq(t1.navSrc, 'NAV1', '폰에서 한 번 누르면 그 소스가 고른 상태가 된다');
+  t.eq(t1.solo, 'pfd', '폰에서 한 번 누른 것으로 설정 화면까지 가지 않는다(유령 클릭을 흘린다)');
+  await tp.waitForTimeout(750);          // 유령 클릭 창을 지나 보낸다
+  const t2 = await oneTap('NAV1');
+  t.eq(t2.solo, 'cdu', '폰에서도 두 번째로 눌러야 설정 화면으로 건너간다');
+  await touchCtx.close();
+
   // 뒷정리 — 다음 검사가 이 상태를 물려받지 않게 한다
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.evaluate(() => { setSolo('map'); });
