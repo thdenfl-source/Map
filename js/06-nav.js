@@ -857,6 +857,9 @@ function fpRenderAdd(area, title, footer) {
       <div class="fp-input-type-btn fp-cyan" data-act="fpGo" data-arg='["GEO"]'>
         <span style="font-size:16px;">🔎</span><span>주소 검색</span>
       </div>
+      <div class="fp-input-type-btn" data-act="cduOpenMap">
+        <span style="font-size:16px;">🗺</span><span>MAP으로 이동</span>
+      </div>
     </div>
     <div style="color:#87ceeb;font-size:9px;font-weight:bold;letter-spacing:1px;margin:10px 0 5px;">국내 공항</div>
     <div class="fp-ap-grid">${apBtns}</div>`;

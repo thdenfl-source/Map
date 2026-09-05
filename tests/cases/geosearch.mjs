@@ -200,6 +200,21 @@ export async function run(page, t) {
   t.eq(cdu.mode, 'WPT', '넣자마자 상세 카드가 열린다');
   t.ok(cdu.wptTitle.includes('AD1'), `그 카드가 방금 넣은 지점이다 (${cdu.wptTitle})`);
 
+  // ── ADD WAYPOINT 의 '주소 검색' 옆 빈 칸에 MAP 이동 버튼이 있다 ──
+  // 2열 그리드에서 '주소 검색'이 홀로 한 줄을 차지해 그 옆이 비어 있었다.
+  // 그 자리에 지도로 바로 건너가는 버튼을 채웠다.
+  const mapBtn = await page.evaluate(() => {
+    fpGo('ADD');
+    const btn = document.querySelector('#fp-content-area [data-act="cduOpenMap"]');
+    if (!btn) return { found: false };
+    btn.click();
+    return { found: true, text: btn.textContent.trim(), solo: _soloCurrent };
+  });
+  t.eq(mapBtn.found, true, "ADD WAYPOINT 에 'MAP으로 이동' 버튼이 있다");
+  t.ok(mapBtn.text.includes('MAP'), `버튼 이름에 MAP 이 들어간다 (${mapBtn.text})`);
+  t.eq(mapBtn.solo, 'map', '누르면 지도 창으로 건너간다');
+  await page.evaluate(() => { openFlightPlan(); fpGo('ADD'); });
+
   // 빈 칸으로 찾으면 조르지 않고 안내만 한다
   const empty = await page.evaluate(async () => {
     fpGo('GEO');
