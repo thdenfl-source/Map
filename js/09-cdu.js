@@ -3405,10 +3405,14 @@ function act(name, ...args) {
             </div>`;
         };
         const grp = t => `<div style="color:#6a8494;font-size:9px;letter-spacing:1px;margin:10px 2px 5px;">${t}</div>`;
+        // 표지소 이름(ANYANG VORTAC 등) 순이 아니라 식별부호(SEL 등) 순으로 늘어놓는다
+        // — 조종사가 차트·관제에서 실제로 부르고 찾는 것은 그 약어다.
+        const byId = (a, b) => a.id.localeCompare(b.id);
         const vorRows = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).filter(v => v.freq)
+            .slice().sort(byId)
             .map(v => row(v.id, v.name, v.freq, '#00e5ff')).join('');
         // 로컬라이저는 공항끼리 주파수가 겹친다 — 이름으로 고르면 그 국이 확실히 잡힌다.
-        const locs = (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS : []);
+        const locs = (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS : []).slice().sort(byId);
         const locRows = locs.map(v => row(v.id, `${v.name} RWY ${v.rwy} LOC`, v.freq, '#f06292')).join('');
         const rows = grp('VOR · VORTAC') + vorRows +
                      (locRows ? grp(`로컬라이저(LOC) — ${locs.length}개소`) + locRows : '');
