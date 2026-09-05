@@ -251,12 +251,22 @@ export async function run(page, t) {
     const txt = document.getElementById('cdu-wrap').textContent.replace(/\s+/g, ' ');
     const rows = Array.from(document.querySelectorAll('[data-act="pickNavVor"]'))
       .map(e => (e.getAttribute('data-arg') || '').replace(/[\[\]"]/g, ''));
+    const vorN = ENR_VORS.filter(v => v.freq).length;
     return { hasGrp: /로컬라이저/.test(txt), hasName: /양양 RWY 33 LOC/.test(txt),
-             n: rows.length, hasIYAN: rows.includes('IYAN'), hasSEL: rows.includes('SEL') };
+             n: rows.length, hasIYAN: rows.includes('IYAN'), hasSEL: rows.includes('SEL'),
+             vorIds: rows.slice(0, vorN), locIds: rows.slice(vorN) };
   });
   t.eq(sel.hasGrp, true, '목록에 로컬라이저 묶음이 있다');
   t.eq(sel.hasName, true, '공항·활주로가 이름으로 나온다 (양양 RWY 33 LOC)');
   t.ok(sel.hasIYAN && sel.hasSEL, `VOR 과 로컬라이저를 한 목록에서 고른다 (${sel.n}줄)`);
+
+  // ── 이름(ANYANG VORTAC 등) 순이 아니라 식별부호 순으로 늘어선다 ──
+  // 원래 명칭 순으로는 조종사가 차트에서 찾는 약어와 목록 순서가 따로 놀았다.
+  const idCmp = (a, b) => a.localeCompare(b);
+  t.eq(sel.vorIds.join(','), sel.vorIds.slice().sort(idCmp).join(','),
+    `VOR 목록이 식별부호 순이다 (${sel.vorIds.slice(0, 5).join(',')}…)`);
+  t.eq(sel.locIds.join(','), sel.locIds.slice().sort(idCmp).join(','),
+    `로컬라이저 목록도 식별부호 순이다 (${sel.locIds.slice(0, 5).join(',')}…)`);
 
   // 이름으로 고르면 그 국이 확실히 잡힌다 — 주파수가 겹쳐도
   const pick = await page.evaluate(async () => {
