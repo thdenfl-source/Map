@@ -133,6 +133,102 @@ async function showAptWx(icao, name, latlng) {
   }
 }
 
+// ── ATIS 창 ─────────────────────────────────────────────────────
+// 지도 공항 아이콘 → 'ATIS' 버튼으로 연다. 문자 ATIS(D-ATIS)가 공개된
+// 공항이면 그 원문을 그대로 띄우고, 아닌 공항(국내 전부)은 ATIS 주파수와
+// 같은 관측을 담은 METAR 로 갈음한다 — 없는 것을 있는 척하지 않는다.
+let _aptAtisCtl = null;
+let _aptAtisPopup = null;   // 앞서 연 ATIS 창 — 새로 열 때 닫는다(창이 쌓이지 않게)
+
+function _atisBlock(d) {
+  const sim = d.src === 'VATSIM';
+  const tag = [d.type, d.code ? `INFO ${d.code}` : ''].filter(Boolean).join(' · ');
+  return `<div style="margin-top:8px;">` +
+    `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">` +
+      `<span style="color:${sim ? '#ffaa44' : '#00ff88'};font-size:16px;font-weight:bold;">` +
+        `${sim ? 'VATSIM (시뮬레이션)' : 'D-ATIS'}</span>` +
+      (tag ? `<span style="color:#77aa88;font-size:15px;">${tag}</span>` : '') +
+    `</div>` +
+    (sim ? `<div style="color:#ffaa44;font-size:14px;margin-bottom:3px;">실제 운항 정보가 아닙니다 — 참고용입니다.</div>` : '') +
+    `<div style="color:#cfe8dc;font-size:16px;line-height:1.6;word-break:break-word;` +
+      `border-left:2px solid ${sim ? '#5a4420' : '#1a3a1a'};padding-left:6px;max-height:40vh;overflow-y:auto;">` +
+      `${_escHtml(d.text)}</div></div>`;
+}
+
+async function showAptAtis(icao, name, latlng) {
+  if (_aptAtisCtl) _aptAtisCtl.abort();
+  // 창을 닫지 않으면(autoClose:false) 공항을 옮겨 누를 때마다 지도에 쌓인다
+  if (_aptAtisPopup) { try { leafMap.closePopup(_aptAtisPopup); } catch (e) { _swallow(e); } }
+  _aptAtisCtl = new AbortController();
+  const ctl = _aptAtisCtl;
+  const sig = ctl.signal;
+
+  const div = document.createElement('div');
+  div.style.cssText = 'background:#0a1a0a;padding:10px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;';
+  const head = `<div style="color:#00ff88;font-size:20px;font-weight:bold;margin-bottom:5px;letter-spacing:0.5px;">` +
+               `${icao} — ATIS${name ? ` <span style="color:#77aa88;font-size:16px;font-weight:normal;">${_escHtml(String(name))}</span>` : ''}</div>`;
+  div.innerHTML = head + `<div style="color:#888;font-size:16px;">조회 중...</div>`;
+
+  const popup = L.popup({ maxWidth: 340, className: 'apt-wx-popup', closeButton: true, autoClose: false })
+    .setLatLng(latlng).setContent(div).openOn(leafMap);
+  _aptAtisPopup = popup;
+  // 읽는 동안에는 왼쪽 버튼 줄을 비켜 둔다(창이 그 아래 깔려 글자가 잘린다)
+  try {
+    document.body.classList.add('map-read-open');
+    popup.on('remove', () => document.body.classList.remove('map-read-open'));
+  } catch (e) { _swallow(e); }
+
+  // 두 통로를 함께 던져 오는 대로 쓴다 — 어느 하나가 막혀도 나머지는 산다
+  const got = [];
+  const tries = await Promise.allSettled([_faaDatis(icao, sig), _vatsimAtis(icao, sig)]);
+  if (ctl.signal.aborted) return;
+  tries.forEach(r => { if (r.status === 'fulfilled') got.push(...r.value); });
+
+  let html = head;
+  if (got.length) {
+    html += got.map(_atisBlock).join('');
+  } else {
+    // 문자 ATIS 가 없는 공항 — 어디서 들어야 하는지와 같은 관측(METAR)을 준다
+    const fr = (typeof atisFreqOf === 'function') ? atisFreqOf(icao) : [];
+    html += `<div style="color:#ffcc00;font-size:16px;line-height:1.6;margin-top:4px;">` +
+      `문자 ATIS(D-ATIS)가 공개되지 않는 공항입니다.` +
+      `</div>` +
+      `<div style="color:#88aa99;font-size:15px;line-height:1.6;margin-top:3px;">` +
+      `국내 공항은 ATIS 를 음성·ACARS 로만 내보냅니다 — 아래 주파수로 들으십시오.` +
+      `</div>`;
+    if (fr.length) {
+      html += `<div style="margin-top:7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">` +
+        `<span style="color:#446644;font-size:18px;">ATIS</span>` +
+        fr.map(f => `<span style="color:#66ccff;font-size:20px;font-weight:bold;">${f}</span>`).join('') +
+        `</div>`;
+    }
+  }
+  div.innerHTML = html;
+  popup.update();
+
+  // 문자 ATIS 가 없을 때만 METAR 를 덧붙인다 — 있을 때는 그 원문이 곧 기상이다
+  if (!got.length) {
+    const wx = document.createElement('div');
+    wx.style.cssText = 'border-top:1px solid #1e3a2a;margin-top:9px;padding-top:7px;';
+    wx.innerHTML = `<div style="color:#888;font-size:15px;">METAR 조회 중...</div>`;
+    div.appendChild(wx);
+    popup.update();
+    try {
+      const raw = await raceValid(
+        [_ivaoMetar(icao, sig), _vatsimMetar(icao, sig), _metarTafScrape(icao, sig)],
+        v => typeof v === 'string' && v.length >= 8 && v.toUpperCase().includes(icao)
+      );
+      if (ctl.signal.aborted) return;
+      if (raw && raw.length >= 8) renderWxMetar(raw, wx, icao);
+      else wx.innerHTML = `<div style="color:#ff8800;font-size:15px;">METAR 없음</div>`;
+    } catch (e) {
+      if (ctl.signal.aborted) return;
+      wx.innerHTML = `<div style="color:#ff8800;font-size:15px;">METAR 조회 실패</div>`;
+    }
+    popup.update();
+  }
+}
+
 function initAirportLayer() {
   Object.entries(APT_LATLNG).forEach(([icao, latlng]) => {
     const name = APT_NAME[icao] || IFR_DB[icao]?.name || '';
@@ -147,7 +243,10 @@ function initAirportLayer() {
       .bindPopup(() => {   // 열 때 생성: AIRFIELD_INFO·잠금해제 상태를 그 시점에 확인
         const extra = [{ label: '☁ METAR/TAF',
                          onclick: `mapAptWx('${icao}',${latlng[0]},${latlng[1]})`,
-                         fg: '#0b6b8a', bg: '#e6f4f9' }];
+                         fg: '#0b6b8a', bg: '#e6f4f9' },
+                       { label: '📻 ATIS',
+                         onclick: `mapAptAtis('${icao}',${latlng[0]},${latlng[1]})`,
+                         fg: '#6a4a00', bg: '#fdf0d5' }];
         if (_aptInfoAvailable(icao))
           extra.push({ label: 'ℹ 공항 정보', onclick: `_mapOpenAirfield('${icao}')`,
                        fg: '#7a5b00', bg: '#fff6e0' });
