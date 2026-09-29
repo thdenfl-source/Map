@@ -529,6 +529,73 @@ async function _metarTafScrape(icao, sig) {
   }));
 }
 
+// ── D-ATIS (문자로 받는 ATIS) ────────────────────────────────────
+// ATIS 방송을 글자로 받는 공개 통로는 사실상 둘뿐이다.
+//   · FAA D-ATIS — 미국 공항에 한해 공개된다(datis.clowd.io 가 중계한다).
+//   · VATSIM ATIS — 그 공항에 접속한 관제사가 있을 때만 나오고, 시뮬레이션이다.
+// 국내(RK○○) 공항은 ATIS 를 음성과 ACARS 로만 내보내므로 둘 다 해당하지
+// 않는다 — 그때는 주파수와 METAR 로 갈음한다(08-ifrdb.js showAptAtis).
+// 받아 오는 길(_wxGet)은 METAR 와 같은 것을 쓴다(직접 + CORS 프록시 + 캐시).
+
+// FAA D-ATIS. 응답은 [{airport,type,code,datis}] 이고, 공항에 따라
+// 도착/출발이 따로(arr·dep) 또는 하나로(combined) 온다.
+async function _faaDatis(icao, sig) {
+  const body = await _wxGet(`https://datis.clowd.io/api/${encodeURIComponent(icao)}`, sig);
+  let j;
+  try { j = JSON.parse(body); } catch (e) { throw new Error('bad json'); }
+  // 모르는 공항에는 배열 대신 {error:...} 가 온다 — 그 경우 빈 목록이 된다
+  const arr = Array.isArray(j) ? j : (j && Array.isArray(j.datis) ? j.datis : []);
+  const out = arr.map(d => ({
+    src: 'FAA',
+    type: String((d && d.type) || '').toUpperCase(),
+    code: String((d && d.code) || ''),
+    text: String((d && d.datis) || '').replace(/\s+/g, ' ').trim(),
+  })).filter(d => d.text.length > 20);
+  if (!out.length) throw new Error('no datis');
+  return out;
+}
+
+// VATSIM 접속 관제사의 ATIS. 실제 운항 정보가 아니라 시뮬레이션이므로
+// 화면에서 반드시 그렇게 밝힌다(showAptAtis 가 경고를 붙인다).
+async function _vatsimAtis(icao, sig) {
+  const body = await _wxGet('https://data.vatsim.net/v3/atis.json', sig);
+  let j;
+  try { j = JSON.parse(body); } catch (e) { throw new Error('bad json'); }
+  const arr = Array.isArray(j) ? j : (j && Array.isArray(j.atis) ? j.atis : []);
+  const up = String(icao).toUpperCase();
+  const out = arr.filter(a => a && typeof a.callsign === 'string' &&
+                              a.callsign.toUpperCase().startsWith(up + '_'))
+    .map(a => {
+      const t = Array.isArray(a.text_atis) ? a.text_atis.join(' ') : String(a.text_atis || '');
+      const cs = a.callsign.toUpperCase();
+      return { src: 'VATSIM',
+               type: /_D_ATIS|_DEP/.test(cs) ? 'DEP' : (/_A_ATIS|_ARR/.test(cs) ? 'ARR' : ''),
+               code: String(a.atis_code || ''),
+               text: t.replace(/\s+/g, ' ').trim() };
+    }).filter(d => d.text.length > 20);
+  if (!out.length) throw new Error('no vatsim atis');
+  return out;
+}
+
+// AIP 자료의 'VOR/ATIS' 칸에는 VOR 주파수 뒤 괄호에 ATIS 주파수가
+// (VHF / UHF) 로 붙어 있다 — 김포 126.4 · 제주 126.8 · 인천 128.65 ·
+// 대구 127.65 로 공시값과 같다. 다만 같은 괄호 자리에 VOR 식별부호(KIP)나
+// TACAN 채널(CH 102X)도 들어오므로, 통신(VHF) 대역인 수만 ATIS 로 본다.
+function atisFreqOf(icao) {
+  try {
+    const i = (typeof _afldIndexOf === 'function') ? _afldIndexOf(icao) : -1;
+    if (i < 0 || typeof AIRFIELD_INFO === 'undefined') return [];
+    const src = String((AIRFIELD_INFO[i] || {}).vor || '');
+    const out = [];
+    (src.match(/\([^)]*\)/g) || []).forEach(g => {
+      (g.match(/\b1(?:1[89]|2\d|3[0-6])\.\d{1,3}\b/g) || []).forEach(f => {
+        if (!out.includes(f)) out.push(f);
+      });
+    });
+    return out;
+  } catch (e) { return []; }
+}
+
 async function fetchWx(type) {
   const icao = (document.getElementById('wx-icao').value || '').trim().toUpperCase();
   if (icao.length < 3) {

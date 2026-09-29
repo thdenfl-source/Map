@@ -368,6 +368,11 @@ function mapAptWx(icao, lat, lon) {
   try { leafMap.closePopup(); } catch(e) { _swallow(e); }
   try { showAptWx(icao, APT_NAME[icao] || '', [lat, lon]); } catch(e) { _swallow(e); }
 }
+// 지도 팝업 → ATIS 창
+function mapAptAtis(icao, lat, lon) {
+  try { leafMap.closePopup(); } catch(e) { _swallow(e); }
+  try { showAptAtis(icao, APT_NAME[icao] || '', [lat, lon]); } catch(e) { _swallow(e); }
+}
 // 지도 VOR 팝업 → NAV1/NAV2 튜닝
 function mapTuneNav(navId, freq, id) {
   try { setNavRadio(navId, freq, id); } catch(e) { _swallow(e); }

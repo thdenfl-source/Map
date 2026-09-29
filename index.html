@@ -835,6 +835,14 @@ body.solo-mode .solo-panel-visible {
 .apt-wx-popup .leaflet-popup-tip { background: #0a1a0a; }
 .apt-wx-popup .leaflet-popup-content { margin: 0; min-width: 240px; }
 .apt-wx-popup .leaflet-popup-close-button { color: #00ff88 !important; font-size: 18px !important; top: 4px !important; right: 6px !important; }
+/* 글을 읽는 창(ATIS)이 떠 있는 동안에는 왼쪽 버튼 줄을 잠시 감춘다.
+   폰에서는 창 폭(340)이 버튼 줄을 뺀 자리(≈325)보다 넓어 옆으로 비켜 놓을
+   수가 없고, 버튼 줄이 위에 얹히면 글자 왼쪽이 잘려(METAR 의 TIME·WIND·QNH
+   이름표가 그랬다) 읽으려고 연 창을 읽지 못한다. z-index 로는 올릴 수 없다 —
+   .leaflet-map-pane 이 transform 으로 쌓임 맥락을 만들어, 그 안의 팝업은
+   바깥 형제인 버튼 줄(z-index 1000) 위로 올라가지 못한다.
+   창을 닫으면 곧바로 되돌아온다(popup 'remove'). */
+body.map-read-open #map-lsk { visibility: hidden; }
 #wx-panel {
   display: none; position: absolute; top: 80px; right: 8px; z-index: 1100;
   width: 380px; background: rgba(5,14,5,0.97); border: 1.5px solid #226622;
