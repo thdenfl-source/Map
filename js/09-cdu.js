@@ -473,7 +473,9 @@ const raceValid = (promises, guard) => {
   return Promise.race([race, timeout]);
 };
 
-async function _wxGet(url, sig) {
+// opt.html — HTML 페이지를 그대로 받는다(기본은 '<' 로 시작하면 오류 페이지로 본다)
+// opt.ms   — 기다리는 한도(기본 3초). 남의 웹 페이지는 프록시를 거치면 더 걸린다.
+async function _wxGet(url, sig, opt = {}) {
   const c = _wxCache.get(url);
   if (c && Date.now() - c.ts < WX_CACHE_TTL) return c.data;
 
@@ -488,14 +490,14 @@ async function _wxGet(url, sig) {
     const r = await fetch(u, { signal: sig });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const body = (await r.text()).trim();
-    if (body.startsWith('<')) throw new Error('html');
+    if (!opt.html && body.startsWith('<')) throw new Error('html');
     if (!body) throw new Error('empty');
     return body;
   };
 
   const body = await Promise.race([
     Promise.any(proxies.map(u => tryFetch(u))),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), opt.ms || 3000)),
   ]);
 
   if (body) _wxCache.set(url, { data: body, ts: Date.now() });
@@ -530,11 +532,14 @@ async function _metarTafScrape(icao, sig) {
 }
 
 // ── D-ATIS (문자로 받는 ATIS) ────────────────────────────────────
-// ATIS 방송을 글자로 받는 공개 통로는 사실상 둘뿐이다.
-//   · FAA D-ATIS — 미국 공항에 한해 공개된다(datis.clowd.io 가 중계한다).
-//   · VATSIM ATIS — 그 공항에 접속한 관제사가 있을 때만 나오고, 시뮬레이션이다.
-// 국내(RK○○) 공항은 ATIS 를 음성과 ACARS 로만 내보내므로 둘 다 해당하지
-// 않는다 — 그때는 주파수와 METAR 로 갈음한다(08-ifrdb.js showAptAtis).
+// ATIS 방송을 글자로 받는 공개 통로는 두 가지를 쓴다.
+//   · FAA D-ATIS — 미국 공항(K○○○·P○○○)에 한해 공개된다(datis.clowd.io 가 중계).
+//   · atis.guru — 항공기가 ACARS 로 D-ATIS 를 요청할 때 오가는 원문을 모아
+//     공항별 페이지로 보여 준다. 국내(RKSI·RKSS·RKPC 등)는 사실상 이 길뿐이다.
+//     다만 누군가 요청해야 들어오므로 없을 때가 있고, 몇 시간 묵은 것일 수도
+//     있다 — 그래서 발표 시각과 경과 시간을 반드시 함께 보여 준다.
+// 국내 기관(항공기상청·공공데이터포털)은 METAR/TAF 만 열어 두고 ATIS 원문은
+// 내놓지 않는다. 아무 데도 없으면 주파수와 METAR 로 갈음한다(08-ifrdb.js showAptAtis).
 // 받아 오는 길(_wxGet)은 METAR 와 같은 것을 쓴다(직접 + CORS 프록시 + 캐시).
 
 // FAA D-ATIS. 응답은 [{airport,type,code,datis}] 이고, 공항에 따라
@@ -555,26 +560,105 @@ async function _faaDatis(icao, sig) {
   return out;
 }
 
-// VATSIM 접속 관제사의 ATIS. 실제 운항 정보가 아니라 시뮬레이션이므로
-// 화면에서 반드시 그렇게 밝힌다(showAptAtis 가 경고를 붙인다).
-async function _vatsimAtis(icao, sig) {
-  const body = await _wxGet('https://data.vatsim.net/v3/atis.json', sig);
-  let j;
-  try { j = JSON.parse(body); } catch (e) { throw new Error('bad json'); }
-  const arr = Array.isArray(j) ? j : (j && Array.isArray(j.atis) ? j.atis : []);
-  const up = String(icao).toUpperCase();
-  const out = arr.filter(a => a && typeof a.callsign === 'string' &&
-                              a.callsign.toUpperCase().startsWith(up + '_'))
-    .map(a => {
-      const t = Array.isArray(a.text_atis) ? a.text_atis.join(' ') : String(a.text_atis || '');
-      const cs = a.callsign.toUpperCase();
-      return { src: 'VATSIM',
-               type: /_D_ATIS|_DEP/.test(cs) ? 'DEP' : (/_A_ATIS|_ARR/.test(cs) ? 'ARR' : ''),
-               code: String(a.atis_code || ''),
-               text: t.replace(/\s+/g, ' ').trim() };
-    }).filter(d => d.text.length > 20);
-  if (!out.length) throw new Error('no vatsim atis');
+// ATIS 원문처럼 보이는 글인가 — 'ATIS/INFORMATION' 이라는 말과 함께
+// 활주로·QNH·바람 같은 본문이 있어야 한다. METAR 한 줄이나
+// "ATIS 없음" 같은 안내문, 페이지 머리말은 여기서 걸러진다.
+function _looksAtis(t) {
+  return t.length >= 40 && t.length <= 3000 &&
+    /\b(?:ATIS|INFO(?:RMATION)?)\b/i.test(t) &&
+    /\b(?:RWY|RUNWAY|QNH|WIND|\d{5}(?:G\d{2})?KT)\b/i.test(t);
+}
+
+// 원문 한 덩어리에서 정보 부호·도착/출발·발표 시각을 읽는다
+function _atisMeta(t) {
+  const up = t.toUpperCase();
+  const code = (up.match(/\b(?:ATIS|INFO(?:RMATION)?)\s+(?:INFO(?:RMATION)?\s+)?([A-Z])\b/) || [])[1] || '';
+  const arr = /\bARR(?:IVAL)?\b/.test(up), dep = /\bDEP(?:ARTURE)?\b/.test(up);
+  const type = arr && !dep ? 'ARR' : (dep && !arr ? 'DEP' : '');
+  const hm = up.match(/\b([01]\d|2[0-3])([0-5]\d)\s?Z\b/);
+  return { code, type, time: hm ? `${hm[1]}${hm[2]}Z` : '' };
+}
+
+// 페이지가 밝힌 수집 시각 — "12 minutes ago" 꼴 또는 ISO 시각. 못 찾으면 null
+function _agoMs(txt, attrs) {
+  const m = String(txt).match(/\b(\d+)\s*(sec(?:ond)?|min(?:ute)?|h(?:ou)?r|day)s?\s+ago\b/i);
+  if (m) {
+    const u = m[2].toLowerCase()[0];
+    return Number(m[1]) * (u === 's' ? 1e3 : u === 'm' ? 6e4 : u === 'h' ? 36e5 : 864e5);
+  }
+  for (const a of attrs) {
+    const t = Date.parse(a);
+    if (isFinite(t) && t < Date.now() + 6e4) return Math.max(0, Date.now() - t);
+  }
+  return null;
+}
+
+// atis.guru 페이지(HTML)에서 ATIS 원문을 골라낸다. 페이지 짜임새를 공개한
+// 적이 없으므로 특정 클래스에 기대지 않고, 'ATIS 처럼 보이는 가장 안쪽
+// 덩어리' 를 찾는다. 지나간 ATIS 가 아래에 줄줄이 붙어 있을 수 있으므로
+// 도착·출발·통합별로 맨 앞(최신) 하나씩만 쓴다.
+function _parseAtisGuru(body, icao) {
+  const out = [];
+  const push = (text, ageMs) => {
+    text = String(text).replace(/\s+/g, ' ').trim();
+    if (!_looksAtis(text)) return;
+    const meta = _atisMeta(text);
+    if (out.some(o => o.type === meta.type || o.text === text)) return;
+    if (out.length >= 2) return;
+    out.push({ src: 'ATIS.guru', ...meta, text, ageMs });
+  };
+  const s = String(body || '').trim();
+  // 혹시 JSON 으로 오면(공개 API 가 생기면) 글자 값을 모두 훑는다
+  if (/^[\[{]/.test(s)) {
+    try {
+      const walk = v => {
+        if (typeof v === 'string') push(v, null);
+        else if (Array.isArray(v)) v.forEach(walk);
+        else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+      };
+      walk(JSON.parse(s));
+      return out;
+    } catch (e) { /* JSON 이 아니면 HTML 로 읽는다 */ }
+  }
+  // 줄바꿈·칸 경계가 글자로 붙어 버리지 않게(…IN USE<br>QNH → USEQNH) 틈을 둔다
+  const doc = new DOMParser().parseFromString(
+    s.replace(/<br\s*\/?>/gi, '\n').replace(/<\//g, ' </'), 'text/html');
+  doc.querySelectorAll('script,style,noscript,template,title').forEach(e => e.remove());
+  const norm = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  const hits = [...doc.body.querySelectorAll('*')].filter(el => _looksAtis(norm(el)));
+  // 자식 중에 이미 ATIS 덩어리가 있으면 그 자식을 쓴다(가장 안쪽만 남긴다)
+  const leaf = hits.filter(el => !hits.some(o => o !== el && el.contains(o)));
+  leaf.forEach(el => {
+    // 수집 시각은 원문 바깥(카드 머리 등)에 붙는 일이 많다 — 세 겹 위까지 본다
+    let ctx = el, ageMs = null;
+    for (let i = 0; i < 4 && ctx && ageMs === null; i++, ctx = ctx.parentElement) {
+      const attrs = [...ctx.querySelectorAll('time[datetime],[data-time],[data-timestamp]')]
+        .map(t => t.getAttribute('datetime') || t.getAttribute('data-time') || t.getAttribute('data-timestamp'));
+      // 원문 자체를 뺀 나머지 글에서 찾는다(원문 안의 숫자를 잘못 읽지 않게)
+      const rest = norm(ctx).replace(norm(el), ' ');
+      ageMs = _agoMs(rest, attrs);
+    }
+    push(norm(el), ageMs);
+  });
   return out;
+}
+
+async function _atisGuru(icao, sig) {
+  const body = await _wxGet(`https://atis.guru/atis/${encodeURIComponent(icao)}`, sig,
+                            { html: true, ms: 6000 });
+  const out = _parseAtisGuru(body, icao);
+  if (!out.length) throw new Error('no atis.guru');
+  return out;
+}
+
+// 발표 시각(HHMMZ) → 몇 분 전인가. 날짜가 없으므로 24시간 안쪽으로만 셈한다
+function _atisAgeMin(d) {
+  if (d && typeof d.ageMs === 'number') return Math.round(d.ageMs / 6e4);
+  const m = d && String(d.time || '').match(/^(\d\d)(\d\d)Z$/);
+  if (!m) return null;
+  const now = new Date();
+  const nowMin = now.getUTCHours() * 60 + now.getUTCMinutes();
+  return (nowMin - (Number(m[1]) * 60 + Number(m[2])) + 1440) % 1440;
 }
 
 // AIP 자료의 'VOR/ATIS' 칸에는 VOR 주파수 뒤 괄호에 ATIS 주파수가
