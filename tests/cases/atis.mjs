@@ -113,6 +113,19 @@ export async function run(page, t) {
   t.ok(hits.guru > 0, '국내 공항은 atis.guru 에서 찾는다');
   t.eq(hits.vatsim, 0, 'VATSIM(시뮬레이션) ATIS 는 더 이상 찾지 않는다');
   t.ok(hits.relay > 0, '서버에서 모아 둔 ATIS(JSON)도 찾아본다');
+  t.ok(kr.txt.includes('첫 수집 전'), `왜 없는지 적는다 — 수집 자료가 아직 없을 때 (${(kr.txt.match(/수집 서버[^\n]*/) || ['없음'])[0].slice(0, 40)})`);
+
+  // 수집기는 돌았는데 그 공항 원문이 없었을 때 / 수집기가 막혔을 때
+  const why1 = await open('RKSS', '김포', {
+    relay: JSON.stringify({ generated: isoAgo(4), airports: {}, status: { RKSS: 'none' } }),
+    metar: 'RKSS 291200Z 32008KT 9999 FEW030 24/14 Q1015 NOSIG',
+  });
+  t.ok(why1.txt.includes('최근 원문 없음') && why1.txt.includes('4분 전'),
+    `수집기가 확인했지만 원문이 없었다고 적는다 (${(why1.txt.match(/수집 서버.*?전/) || ['없음'])[0]})`);
+  const why2 = await open('RKSS', '김포', {
+    relay: JSON.stringify({ generated: isoAgo(4), airports: {}, status: { RKSS: 'http 403' } }),
+  });
+  t.ok(why2.txt.includes('조회 실패 (http 403)'), '수집기가 막혔으면 그렇게 적는다');
 
   // ── ③-2 서버에서 모아 둔 ATIS — 프록시가 모두 막혀도 나온다 ──────────
   // 브라우저가 atis.guru 를 직접 못 받는 것이 인천·김포가 안 나온 까닭이었다.

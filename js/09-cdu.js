@@ -694,7 +694,8 @@ async function _atisRelay(icao, sig) {
     } finally { clearTimeout(to); if (sig) sig.removeEventListener('abort', stop); }
     _atisRelayCache = { ts: Date.now(), data };
   }
-  const list = (data && data.airports && data.airports[String(icao).toUpperCase()]) || [];
+  const up = String(icao).toUpperCase();
+  const list = (data && data.airports && data.airports[up]) || [];
   const out = (Array.isArray(list) ? list : []).map(d => {
     const text = String((d && d.text) || '').replace(/\s+/g, ' ').trim();
     const st = d && d.collected ? Date.parse(d.collected) : NaN;
@@ -703,8 +704,27 @@ async function _atisRelay(icao, sig) {
              time: String((d && d.time) || meta.time), text,
              ageMs: isFinite(st) ? Math.max(0, Date.now() - st) : null };
   }).filter(d => d.text.length >= 30);
-  if (!out.length) throw new Error('no relay atis');
+  if (!out.length) {
+    // 왜 없는지를 창에 적을 수 있게 수집기가 남긴 상태를 실어 보낸다
+    const e = new Error('no relay atis');
+    e.why = String((data && data.status && data.status[up]) || 'none');
+    e.gen = data && data.generated ? Date.parse(data.generated) : NaN;
+    throw e;
+  }
   return out;
+}
+
+// 원문이 없을 때 창 아래에 적는 까닭 — "왜 안 나오지" 를 사용자도 알 수 있게
+function _atisWhyTxt(err) {
+  if (!err) return '';
+  const ago = isFinite(err.gen) ? Math.max(0, Math.floor((Date.now() - err.gen) / 6e4)) : null;
+  const when = ago === null ? '' : ` · 확인 ${ago < 60 ? ago + '분' : Math.floor(ago / 60) + '시간'} 전`;
+  if (err.why) {
+    if (err.why === 'none') return `수집 서버: atis.guru 에 이 공항의 최근 원문 없음${when}`;
+    return `수집 서버: atis.guru 조회 실패 (${err.why})${when}`;
+  }
+  if (/HTTP 404/.test(err.message || '')) return '수집 서버: 아직 수집 자료가 없습니다(첫 수집 전)';
+  return `수집 서버에 닿지 못했습니다 (${err.message || err})`;
 }
 
 // ② 페이지를 CORS 프록시로 직접 받는다(①이 없거나 늦을 때의 예비)

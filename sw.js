@@ -1,6 +1,6 @@
 // GPS 보조 항법장치 — Service Worker
 // 버전을 올리면 캐시가 갱신됩니다
-const CACHE = 'vfr-flight-v454';
+const CACHE = 'vfr-flight-v455';
 const CORE  = [
   './index.html',
   './manifest.json',
@@ -119,8 +119,12 @@ self.addEventListener('fetch', e => {
   if (new URL(url).origin !== self.location.origin) return;
 
   // 앱 파일: 네트워크 우선 → 실패 시 캐시 (index.html 업데이트가 즉시 반영됨)
+  // cache:'no-cache' — 브라우저 HTTP 캐시를 그대로 믿지 않고 서버에 한 번 묻는다
+  // (바뀌지 않았으면 304 로 가볍게 끝난다). GitHub Pages 는 파일마다 10분 캐시를
+  // 걸어 두어, 이것이 없으면 배포 직후 새로고침해도 옛 화면이 나오고, 심하면
+  // 새 index.html 에 옛 스크립트가 섞여 들어온다.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         const clone = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));

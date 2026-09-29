@@ -169,6 +169,12 @@ export async function run(page, t) {
   t.eq(pre.anyCtrl, false, '그때 PFD 조작부가 비치지 않는다');
   t.eq(pre.sims, 0, '숨겨 둔 시뮬 조작부 마크업이 남아 있지 않다');
 
+  // 배포 직후 새로고침에도 새 화면이 나와야 한다 — 서비스워커가 브라우저 HTTP
+  // 캐시(GitHub Pages 10분)를 그대로 믿으면 옛 index.html·스크립트가 나온다
+  const swSrc = fs.readFileSync(new URL('../../sw.js', import.meta.url), 'utf8');
+  t.ok(/fetch\(e\.request,\s*\{\s*cache:\s*'no-cache'\s*\}\)/.test(swSrc),
+    '서비스워커는 앱 파일을 받을 때 HTTP 캐시를 다시 확인한다(no-cache)');
+
   // ── ③ 넓게 열어도 한 화면이다 ────────────────────────────────
   // 이 앱은 폰·패드를 세로로 들고 쓰는 물건이다. PC 에서 열어도 분할하지 않는다 —
   // 창을 나누면 계기가 그만큼 작아지고, 작아진 계기는 읽히지 않는다.
