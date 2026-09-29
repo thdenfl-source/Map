@@ -134,24 +134,40 @@ async function showAptWx(icao, name, latlng) {
 }
 
 // ── ATIS 창 ─────────────────────────────────────────────────────
-// 지도 공항 아이콘 → 'ATIS' 버튼으로 연다. 문자 ATIS(D-ATIS)가 공개된
-// 공항이면 그 원문을 그대로 띄우고, 아닌 공항(국내 전부)은 ATIS 주파수와
-// 같은 관측을 담은 METAR 로 갈음한다 — 없는 것을 있는 척하지 않는다.
+// 지도 공항 아이콘 → 'ATIS' 버튼으로 연다. 문자 ATIS(D-ATIS)를 받을 수
+// 있으면 그 원문을 그대로 띄운다 — 미국 공항은 FAA, 국내 공항은 항공기
+// ACARS 요청에서 모은 atis.guru. 받은 원문이 오래됐거나 없으면 ATIS
+// 주파수와 같은 관측을 담은 METAR 로 받친다 — 없는 것을 있는 척하지 않는다.
 let _aptAtisCtl = null;
 let _aptAtisPopup = null;   // 앞서 연 ATIS 창 — 새로 열 때 닫는다(창이 쌓이지 않게)
+const ATIS_FRESH_MIN = 90;  // 이보다 오래된 원문은 '지났을 수 있다' 고 알린다
+
+function _atisAgeTxt(min) {
+  if (min === null) return '';
+  if (min < 1) return '방금';
+  if (min < 60) return `${min}분 전`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return h >= 24 ? `${Math.floor(h / 24)}일 전` : `${h}시간${m ? ` ${m}분` : ''} 전`;
+}
 
 function _atisBlock(d) {
-  const sim = d.src === 'VATSIM';
-  const tag = [d.type, d.code ? `INFO ${d.code}` : ''].filter(Boolean).join(' · ');
+  const acars = d.src !== 'FAA';
+  const age = (typeof _atisAgeMin === 'function') ? _atisAgeMin(d) : null;
+  const stale = acars && (age === null || age > ATIS_FRESH_MIN);
+  const tag = [d.type, d.code ? `INFO ${d.code}` : '', d.time].filter(Boolean).map(_escHtml).join(' · ');
+  const ageTxt = _atisAgeTxt(age);
   return `<div style="margin-top:8px;">` +
     `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px;">` +
-      `<span style="color:${sim ? '#ffaa44' : '#00ff88'};font-size:16px;font-weight:bold;">` +
-        `${sim ? 'VATSIM (시뮬레이션)' : 'D-ATIS'}</span>` +
+      `<span style="color:#00ff88;font-size:16px;font-weight:bold;">D-ATIS</span>` +
       (tag ? `<span style="color:#77aa88;font-size:15px;">${tag}</span>` : '') +
+      (ageTxt ? `<span style="color:${stale ? '#ffaa44' : '#66ccff'};font-size:15px;">${ageTxt}</span>` : '') +
     `</div>` +
-    (sim ? `<div style="color:#ffaa44;font-size:14px;margin-bottom:3px;">실제 운항 정보가 아닙니다 — 참고용입니다.</div>` : '') +
+    (acars ? `<div style="color:#88aa99;font-size:13px;margin-bottom:3px;">` +
+               `atis.guru · 항공기 ACARS 요청으로 수집된 원문</div>` : '') +
+    (stale ? `<div style="color:#ffaa44;font-size:14px;margin-bottom:3px;">` +
+               `${age === null ? '발표 시각을 알 수 없습니다' : '지난 ATIS 일 수 있습니다'} — 주파수로 확인하십시오.</div>` : '') +
     `<div style="color:#cfe8dc;font-size:16px;line-height:1.6;word-break:break-word;` +
-      `border-left:2px solid ${sim ? '#5a4420' : '#1a3a1a'};padding-left:6px;max-height:40vh;overflow-y:auto;">` +
+      `border-left:2px solid ${stale ? '#5a4420' : '#1a3a1a'};padding-left:6px;max-height:40vh;overflow-y:auto;">` +
       `${_escHtml(d.text)}</div></div>`;
 }
 
@@ -178,36 +194,42 @@ async function showAptAtis(icao, name, latlng) {
     popup.on('remove', () => document.body.classList.remove('map-read-open'));
   } catch (e) { _swallow(e); }
 
-  // 두 통로를 함께 던져 오는 대로 쓴다 — 어느 하나가 막혀도 나머지는 산다
-  const got = [];
-  const tries = await Promise.allSettled([_faaDatis(icao, sig), _vatsimAtis(icao, sig)]);
+  // FAA 는 미국 공항에만 있으므로 그때만 부른다. 둘을 함께 던져 오는 대로
+  // 쓰되, 같은 공항에 둘 다 있으면 FAA(공식 원문)를 앞세운다.
+  const jobs = [/^[KP][A-Z0-9]{3}$/.test(icao) ? _faaDatis(icao, sig) : Promise.reject(new Error('not US')),
+                _atisGuru(icao, sig)];
+  const tries = await Promise.allSettled(jobs);
   if (ctl.signal.aborted) return;
-  tries.forEach(r => { if (r.status === 'fulfilled') got.push(...r.value); });
+  let got = [];
+  if (tries[0].status === 'fulfilled') got = tries[0].value;
+  else if (tries[1].status === 'fulfilled') got = tries[1].value;
 
+  // 받은 원문이 모두 지났거나(ACARS 수집분) 아예 없으면 주파수와 METAR 로 받친다
+  const fresh = got.some(d => d.src === 'FAA' ||
+    ((a => a !== null && a <= ATIS_FRESH_MIN)(_atisAgeMin(d))));
+  const fr = (typeof atisFreqOf === 'function') ? atisFreqOf(icao) : [];
   let html = head;
   if (got.length) {
     html += got.map(_atisBlock).join('');
   } else {
-    // 문자 ATIS 가 없는 공항 — 어디서 들어야 하는지와 같은 관측(METAR)을 준다
-    const fr = (typeof atisFreqOf === 'function') ? atisFreqOf(icao) : [];
     html += `<div style="color:#ffcc00;font-size:16px;line-height:1.6;margin-top:4px;">` +
-      `문자 ATIS(D-ATIS)가 공개되지 않는 공항입니다.` +
+      `지금 받아 볼 수 있는 문자 ATIS(D-ATIS)가 없습니다.` +
       `</div>` +
       `<div style="color:#88aa99;font-size:15px;line-height:1.6;margin-top:3px;">` +
-      `국내 공항은 ATIS 를 음성·ACARS 로만 내보냅니다 — 아래 주파수로 들으십시오.` +
+      `국내 공항의 문자 ATIS 는 항공기가 ACARS 로 요청할 때만 수집됩니다 — 아래 주파수로 들으십시오.` +
       `</div>`;
-    if (fr.length) {
-      html += `<div style="margin-top:7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">` +
-        `<span style="color:#446644;font-size:18px;">ATIS</span>` +
-        fr.map(f => `<span style="color:#66ccff;font-size:20px;font-weight:bold;">${f}</span>`).join('') +
-        `</div>`;
-    }
+  }
+  if (fr.length) {
+    html += `<div style="margin-top:7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">` +
+      `<span style="color:#446644;font-size:18px;">ATIS</span>` +
+      fr.map(f => `<span style="color:#66ccff;font-size:20px;font-weight:bold;">${f}</span>`).join('') +
+      `</div>`;
   }
   div.innerHTML = html;
   popup.update();
 
-  // 문자 ATIS 가 없을 때만 METAR 를 덧붙인다 — 있을 때는 그 원문이 곧 기상이다
-  if (!got.length) {
+  // 믿을 만한 최신 원문이 없을 때만 METAR 를 덧붙인다 — 있으면 그 원문이 곧 기상이다
+  if (!fresh) {
     const wx = document.createElement('div');
     wx.style.cssText = 'border-top:1px solid #1e3a2a;margin-top:9px;padding-top:7px;';
     wx.innerHTML = `<div style="color:#888;font-size:15px;">METAR 조회 중...</div>`;

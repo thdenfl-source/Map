@@ -1,9 +1,9 @@
 // ATIS — 지도 공항 아이콘에서 문자로 읽는다
 //
-// 방송을 글자로 받는 공개 통로는 둘뿐이다. FAA D-ATIS(미국 공항)와
-// VATSIM(관제사가 접속해 있을 때, 그리고 시뮬레이션). 국내 공항은 어느
-// 쪽에도 해당하지 않으므로 '없음' 이 정상이고, 그때는 주파수와 METAR 로
-// 갈음한다 — 없는 것을 있는 척하지 않는지가 이 검사의 요점이다.
+// 문자 ATIS 를 받는 길은 둘이다. FAA D-ATIS(미국 공항)와 atis.guru(항공기
+// ACARS 요청에서 모은 원문 — 국내 공항은 이것뿐). atis.guru 는 누가 요청해야
+// 들어오므로 없거나 묵은 것일 수 있다. 그럴 때 그렇다고 밝히고 주파수·METAR 로
+// 받치는지, 없는 것을 있는 척하지 않는지가 이 검사의 요점이다.
 //
 // 바깥 서버를 실제로 부르면 검사가 남의 사정에 흔들리므로 fetch 를 가로챈다.
 export const name = 'ATIS (문자)';
@@ -12,20 +12,32 @@ export const name = 'ATIS (문자)';
 const MOCK = (opt) => `(() => {
   const o = ${JSON.stringify(opt)};
   _wxCache.clear();
+  window.__hits = { faa: 0, guru: 0, vatsim: 0 };
   window.fetch = (u) => {
     u = String(u);
-    if (u.includes('datis.clowd.io'))
+    if (u.includes('vatsim.net%2Fv3') || u.includes('vatsim.net/v3')) window.__hits.vatsim++;
+    if (u.includes('datis.clowd.io')) {
+      window.__hits.faa++;
       return o.faa ? Promise.resolve({ ok: true, text: async () => o.faa })
                    : Promise.resolve({ ok: true, text: async () => '{"error":"not found"}' });
-    if (u.includes('vatsim.net/v3/atis'))
-      return o.vatsim ? Promise.resolve({ ok: true, text: async () => o.vatsim })
-                      : Promise.resolve({ ok: true, text: async () => '[]' });
+    }
+    if (u.includes('atis.guru')) {
+      window.__hits.guru++;
+      return o.guru ? Promise.resolve({ ok: true, text: async () => o.guru })
+                    : Promise.resolve({ ok: false, status: 404, text: async () => '' });
+    }
     if (u.includes('metar'))
       return o.metar ? Promise.resolve({ ok: true, text: async () => o.metar })
                      : Promise.reject(new Error('no metar'));
     return Promise.reject(new Error('blocked'));
   };
 })()`;
+
+// 지금(UTC)에서 min 분 전의 HHMM
+const hhmmAgo = (min) => {
+  const d = new Date(Date.now() - min * 6e4);
+  return String(d.getUTCHours()).padStart(2, '0') + String(d.getUTCMinutes()).padStart(2, '0');
+};
 
 export async function run(page, t) {
   await page.evaluate(() => setSolo('map'));
@@ -76,28 +88,70 @@ export async function run(page, t) {
   t.ok(!faa.txt.includes('공개되지 않는 공항'),
     '원문이 있으면 "없음" 안내를 띄우지 않는다');
 
-  // ── ③ 국내 공항 — 문자 ATIS 가 없다고 밝히고 주파수·METAR 로 갈음 ──
+  // ── ③ 국내 공항, 수집된 원문이 없을 때 — 없다고 밝히고 주파수·METAR 로 ──
   // 여기서 "조회 실패" 로 얼버무리면 사용자는 앱이 고장 난 줄 안다.
   const kr = await open('RKSS', '김포', {
+    guru: '<html><body><h1>RKSS (GMP)</h1><p>No D-ATIS has been received for this airport yet.</p></body></html>',
     metar: 'RKSS 291200Z 32008KT 9999 FEW030 SCT100 24/14 Q1015 NOSIG',
   });
-  t.ok(kr.txt.includes('공개되지 않는 공항'), '문자 ATIS 가 없다는 사실을 그대로 알린다');
+  t.ok(kr.txt.includes('문자 ATIS(D-ATIS)가 없습니다'), '받을 원문이 없다는 사실을 그대로 알린다');
   t.ok(kr.txt.includes('126.4'), `대신 들을 주파수를 준다 (${kr.txt.includes('126.4') ? '126.4' : '없음'})`);
   t.ok(kr.txt.includes('32008KT') && kr.txt.includes('Q1015'),
     '같은 관측을 담은 METAR 를 함께 보여 준다');
   t.eq(kr.n, 1, '공항을 옮겨 눌러도 창이 쌓이지 않는다(앞 창을 닫는다)');
+  const hits = await page.evaluate(() => window.__hits);
+  t.eq(hits.faa, 0, '국내 공항에는 미국 전용 FAA 를 부르지 않는다');
+  t.ok(hits.guru > 0, '국내 공항은 atis.guru 에서 찾는다');
+  t.eq(hits.vatsim, 0, 'VATSIM(시뮬레이션) ATIS 는 더 이상 찾지 않는다');
 
-  // ── ④ VATSIM 은 시뮬레이션임을 반드시 밝힌다 ──────────────────
-  // 실제 운항 정보로 오해하면 없는 활주로로 들어가는 일이 생긴다.
-  const vat = await open('RKSI', '인천', {
-    vatsim: JSON.stringify([
-      { callsign: 'RKSI_ATIS', atis_code: 'B',
-        text_atis: ['INCHEON INTL ATIS INFO B', 'RWY 33L IN USE', 'QNH 1013'] },
-    ]),
+  // ── ④ 국내 공항, 방금 수집된 원문 — 페이지에서 원문만 골라 보여 준다 ──
+  // 페이지에는 머리말·스크립트·METAR·지나간 ATIS 가 함께 있다. 최신 도착·출발
+  // 원문만 골라야 하고, 수집 시각("12 minutes ago")을 밝혀야 한다.
+  const t0 = hhmmAgo(12), tOld = hhmmAgo(75);
+  const guruFresh = `<!doctype html><html><head><title>RKSI ATIS</title>
+    <script>window.x = "SCRIPTFAKE ATIS INFO Z RWY 99 IN USE QNH 1013 WIND CALM";</script></head>
+    <body><nav>Home · Airports · Live digital ATIS</nav>
+    <div class="metar">RKSI 291200Z 33008KT 9999 FEW030 24/14 Q1015 NOSIG</div>
+    <div class="card"><div class="hd"><b>ARR</b> <span>12 minutes ago</span></div>
+      <pre>RKSI ARR ATIS K ${t0}Z<br>EXPECT ILS APPROACH RWY 33L IN USE<br>QNH 1015 HPA<br>ADVISE YOU HAVE INFORMATION K</pre></div>
+    <div class="card"><div class="hd"><b>DEP</b> <span>12 minutes ago</span></div>
+      <pre>RKSI DEP ATIS K ${t0}Z DEPARTURE RWY 34R IN USE QNH 1015 HPA ADVISE YOU HAVE INFORMATION K</pre></div>
+    <h3>Previous</h3>
+    <div class="card"><div class="hd"><b>ARR</b> <span>75 minutes ago</span></div>
+      <pre>RKSI ARR ATIS J ${tOld}Z EXPECT ILS APPROACH RWY 15R IN USE QNH 1014 HPA ADVISE YOU HAVE INFORMATION J</pre></div>
+    </body></html>`;
+  const gf = await open('RKSI', '인천', {
+    guru: guruFresh,
+    metar: 'RKSI 291200Z 33008KT 9999 FEW030 24/14 Q1015 NOSIG',
   });
-  t.ok(vat.txt.includes('RWY 33L IN USE'), 'VATSIM ATIS 원문도 읽어 온다');
-  t.ok(vat.txt.includes('시뮬레이션'), 'VATSIM 이라는 것과 시뮬레이션이라는 것을 밝힌다');
-  t.ok(vat.txt.includes('실제 운항 정보가 아닙니다'), '실제 운항 정보가 아니라고 못 박는다');
+  t.ok(gf.txt.includes('RWY 33L IN USE'), `atis.guru 원문을 읽어 온다 (${gf.txt.slice(0, 120)})`);
+  t.ok(gf.txt.includes('RWY 34R'), '도착·출발 원문을 둘 다 보여 준다');
+  t.ok(gf.txt.includes('INFO K') && gf.txt.includes(`${t0}Z`), '정보 부호와 발표 시각을 밝힌다');
+  t.ok(!gf.txt.includes('RWY 15R') && !gf.txt.includes('INFO J'), '지나간 ATIS(J)는 보여 주지 않는다');
+  t.ok(!gf.txt.includes('SCRIPTFAKE') && !gf.txt.includes('Airports'), '페이지 머리말·스크립트를 끌어오지 않는다');
+  t.ok(!gf.txt.includes('USEQNH'), '줄바꿈 자리의 글자가 붙지 않는다');
+  t.ok(gf.txt.includes('12분 전'), '수집된 지 얼마나 됐는지 밝힌다');
+  t.ok(gf.txt.includes('atis.guru') && gf.txt.includes('ACARS'), '어디서 온 원문인지 밝힌다');
+  t.ok(!gf.txt.includes('지난 ATIS'), '방금 것에는 "지났을 수 있다" 경고를 붙이지 않는다');
+  t.ok(!gf.txt.includes('METAR'), '최신 원문이 있으면 METAR 를 덧붙이지 않는다');
+  t.ok(gf.txt.includes('128.65'), '국내 공항이면 확인용 주파수도 함께 준다');
+
+  // ── ④-2 묵은 원문 — 시각은 원문 속 HHMMZ 뿐 — 지났을 수 있다고 알리고 METAR 로 받친다 ──
+  const old5 = hhmmAgo(300);
+  const gs = await open('RKPC', '제주', {
+    guru: `<html><body><div><p>RKPC ATIS INFORMATION D ${old5}Z RWY 07 IN USE WIND 090 DEG 12 KT QNH 1012 ADVISE YOU HAVE INFORMATION D</p></div></body></html>`,
+    metar: 'RKPC 291200Z 09012KT 9999 FEW020 26/20 Q1012 NOSIG',
+  });
+  t.ok(gs.txt.includes('RWY 07 IN USE'), '묵은 원문도 보여는 준다');
+  t.ok(gs.txt.includes('5시간 전'), `발표 시각에서 경과 시간을 셈한다 (${(gs.txt.match(/\d+시간[^전]*전/) || ['없음'])[0]})`);
+  t.ok(gs.txt.includes('지난 ATIS 일 수 있습니다'), '지났을 수 있다고 알린다');
+  t.ok(gs.txt.includes('09012KT'), '대신 지금 METAR 를 함께 보여 준다');
+
+  // JSON 으로 오는 경우(공개 API 가 생길 때)도 읽는다
+  const js = await page.evaluate(() => _parseAtisGuru(JSON.stringify(
+    { atis: [{ text: 'RKSS ARR ATIS A 0300Z RWY 32R IN USE QNH 1013 YOU HAVE INFORMATION A' }] }), 'RKSS'));
+  t.ok(js.length === 1 && js[0].code === 'A' && js[0].type === 'ARR' && js[0].time === '0300Z',
+    `JSON 응답도 읽는다 (${JSON.stringify(js[0] || null)})`);
 
   // ── ⑤ 남이 준 글을 그대로 그리지 않는다 ──────────────────────
   // ATIS 원문은 바깥 서버가 준 글이다. 태그가 섞여 와도 글자로만 보여야 한다.
