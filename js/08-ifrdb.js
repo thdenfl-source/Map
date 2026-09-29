@@ -223,6 +223,8 @@ async function showAptAtis(icao, name, latlng) {
       `<div style="color:#88aa99;font-size:15px;line-height:1.6;margin-top:3px;">` +
       `국내 공항의 문자 ATIS 는 항공기가 ACARS 로 요청할 때만 수집됩니다 — 아래 주파수로 들으십시오.` +
       `</div>`;
+    const why = tries[1].status === 'rejected' && typeof _atisWhyTxt === 'function' ? _atisWhyTxt(tries[1].reason) : '';
+    if (why) html += `<div style="color:#778;font-size:13px;margin-top:3px;">${_escHtml(why)}</div>`;
   }
   if (fr.length) {
     html += `<div style="margin-top:7px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;">` +
