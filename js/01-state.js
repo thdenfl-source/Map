@@ -249,18 +249,22 @@ function updateApInhibit() {
 }
 
 function updateHoverBtns() {
+  // 버튼들은 조작부와 함께 걷어 냈다 — 없으면 건너뛴다(OBS 표시는 살아 있다)
   const hb  = document.getElementById('hover-btn');
   const gb  = document.getElementById('gspd-btn');
   const ahb = document.getElementById('alt-hold-btn');
-  if (!hb || !gb) return;
   // ALT hold button
   if (ahb) ahb.classList.toggle('on', altHoldOn);
   // HOVER PAGE: pressable when below 80kt OR already on (so user can turn off)
-  hb.disabled = !(hoverEligible() || hoverPageOn);
-  hb.classList.toggle('on', hoverPageOn);
+  if (hb) {
+    hb.disabled = !(hoverEligible() || hoverPageOn);
+    hb.classList.toggle('on', hoverPageOn);
+  }
   // GSPD: always enabled (mode-independent of HOVER PAGE)
-  gb.disabled = false;
-  gb.classList.toggle('on', gspdOn);
+  if (gb) {
+    gb.disabled = false;
+    gb.classList.toggle('on', gspdOn);
+  }
   updateApInhibit();
   // Trim cells: always active — F/A adjusts speed in normal flight, L/R applies bank roll
   ['trim-l','trim-r','trim-fwd','trim-aft'].forEach(id => {
@@ -525,7 +529,7 @@ function toggleObs() {
 
 function toggleNavAp() {
   navApOn = !navApOn;
-  document.getElementById('nav-ap-btn').classList.toggle('on', navApOn);
+  document.getElementById('nav-ap-btn')?.classList.toggle('on', navApOn);
   if (!navApOn) {
     if (holdOn) holdExit();          // NAV 해제 시 홀딩도 해제
     bankTarget = 0;

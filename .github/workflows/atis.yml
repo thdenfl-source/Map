@@ -1,0 +1,50 @@
+# 국내 공항 D-ATIS 수집
+#
+# atis.guru 에서 국내 공항 ATIS 원문을 받아 atis.json 한 장으로 만들고,
+# 'atis-data' 가지에 올린다. 앱은 그것을 raw.githubusercontent.com 에서
+# 읽는다(CORS 허용) — 브라우저가 공개 CORS 프록시를 거쳐 남의 페이지를
+# 긁을 때처럼 막히거나 느려지지 않는다. 자세한 사정은 scripts/atis_scrape.py.
+#
+# · 10분마다 돈다(GitHub 사정에 따라 몇 분씩 늦을 수 있다). 손으로도 돌릴 수 있다.
+# · 'atis-data' 가지는 늘 커밋 하나만 둔다(매번 새로 만들어 덮어쓴다) —
+#   10분마다 쌓이면 저장소 이력이 금세 불어난다. main 과 Pages 배포는 건드리지 않는다.
+name: ATIS 수집
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atis-scrape
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts
+            js/04-map.js
+          sparse-checkout-cone-mode: false
+
+      - name: atis.guru 에서 받기
+        run: python3 scripts/atis_scrape.py > atis.json && python3 -c "import json;d=json.load(open('atis.json'));print(d['status'])"
+
+      - name: atis-data 가지에 올리기
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir out && cp atis.json out/ && cd out
+          git init -q -b atis-data
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add atis.json
+          git commit -q -m "ATIS $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" atis-data

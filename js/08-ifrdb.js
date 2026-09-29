@@ -194,15 +194,20 @@ async function showAptAtis(icao, name, latlng) {
     popup.on('remove', () => document.body.classList.remove('map-read-open'));
   } catch (e) { _swallow(e); }
 
-  // FAA 는 미국 공항에만 있으므로 그때만 부른다. 둘을 함께 던져 오는 대로
-  // 쓰되, 같은 공항에 둘 다 있으면 FAA(공식 원문)를 앞세운다.
+  // FAA 는 미국 공항에만 있으므로 그때만 부른다. 셋을 함께 던져 오는 대로
+  // 쓰되 FAA(공식 원문) → 모아 둔 atis.guru(_atisRelay) → 프록시로 직접 받은
+  // atis.guru 순으로 앞세운다. 두 atis.guru 가 모두 있으면 더 새것을 쓴다.
   const jobs = [/^[KP][A-Z0-9]{3}$/.test(icao) ? _faaDatis(icao, sig) : Promise.reject(new Error('not US')),
-                _atisGuru(icao, sig)];
+                _atisRelay(icao, sig), _atisGuru(icao, sig)];
   const tries = await Promise.allSettled(jobs);
   if (ctl.signal.aborted) return;
-  let got = [];
-  if (tries[0].status === 'fulfilled') got = tries[0].value;
-  else if (tries[1].status === 'fulfilled') got = tries[1].value;
+  const val = i => (tries[i].status === 'fulfilled' ? tries[i].value : []);
+  const newest = l => Math.min(...l.map(d => { const a = _atisAgeMin(d); return a === null ? 1e9 : a; }));
+  let got = val(0);
+  if (!got.length) {
+    const a = val(1), b = val(2);
+    got = !a.length ? b : !b.length ? a : (newest(b) < newest(a) ? b : a);
+  }
 
   // 받은 원문이 모두 지났거나(ACARS 수집분) 아예 없으면 주파수와 METAR 로 받친다
   const fresh = got.some(d => d.src === 'FAA' ||

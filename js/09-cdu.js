@@ -538,6 +538,10 @@ async function _metarTafScrape(icao, sig) {
 //     공항별 페이지로 보여 준다. 국내(RKSI·RKSS·RKPC 등)는 사실상 이 길뿐이다.
 //     다만 누군가 요청해야 들어오므로 없을 때가 있고, 몇 시간 묵은 것일 수도
 //     있다 — 그래서 발표 시각과 경과 시간을 반드시 함께 보여 준다.
+//     받는 길은 둘이다. ① GitHub Actions 가 10분마다 서버에서 받아 둔 JSON
+//     (_atisRelay — CORS 가 열린 raw.githubusercontent.com 이라 바로 읽힌다)
+//     ② 페이지를 CORS 프록시로 직접 받기(_atisGuru). 공짜 프록시는 막히기
+//     일쑤라(실제로 인천·김포가 하나도 안 나왔다) ①을 앞세운다.
 // 국내 기관(항공기상청·공공데이터포털)은 METAR/TAF 만 열어 두고 ATIS 원문은
 // 내놓지 않는다. 아무 데도 없으면 주파수와 METAR 로 갈음한다(08-ifrdb.js showAptAtis).
 // 받아 오는 길(_wxGet)은 METAR 와 같은 것을 쓴다(직접 + CORS 프록시 + 캐시).
@@ -579,8 +583,15 @@ function _atisMeta(t) {
   return { code, type, time: hm ? `${hm[1]}${hm[2]}Z` : '' };
 }
 
-// 페이지가 밝힌 수집 시각 — "12 minutes ago" 꼴 또는 ISO 시각. 못 찾으면 null
+// 페이지가 밝힌 수집 시각 — "2026-09-23 06:24 UTC"(atis.guru 의 표기),
+// "12 minutes ago" 꼴, 또는 ISO 시각. 못 찾으면 null
+function _stampMs(txt) {
+  const m = String(txt).match(/(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)(?::\d\d)?\s*(?:UTC|Z)/i);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+}
 function _agoMs(txt, attrs) {
+  const st = _stampMs(txt);
+  if (st !== null && st < Date.now() + 6e4) return Math.max(0, Date.now() - st);
   const m = String(txt).match(/\b(\d+)\s*(sec(?:ond)?|min(?:ute)?|h(?:ou)?r|day)s?\s+ago\b/i);
   if (m) {
     const u = m[2].toLowerCase()[0];
@@ -593,10 +604,11 @@ function _agoMs(txt, attrs) {
   return null;
 }
 
-// atis.guru 페이지(HTML)에서 ATIS 원문을 골라낸다. 페이지 짜임새를 공개한
-// 적이 없으므로 특정 클래스에 기대지 않고, 'ATIS 처럼 보이는 가장 안쪽
-// 덩어리' 를 찾는다. 지나간 ATIS 가 아래에 줄줄이 붙어 있을 수 있으므로
-// 도착·출발·통합별로 맨 앞(최신) 하나씩만 쓴다.
+// atis.guru 페이지(HTML)에서 ATIS 원문을 골라낸다. 지금 페이지는 원문을
+// <div class="atis"> 에, 수집 시각을 그 카드의 <h6 class="card-subtitle">
+// 에 둔다(같은 칸 모양에 METAR·TAF 도 들어 있다). 그 모양이면 그대로 읽고,
+// 짜임새가 바뀌면 'ATIS 처럼 보이는 가장 안쪽 덩어리' 를 찾는다. 지나간
+// ATIS 가 아래에 줄줄이 붙으므로 도착·출발·통합별로 맨 앞(최신) 하나씩만 쓴다.
 function _parseAtisGuru(body, icao) {
   const out = [];
   const push = (text, ageMs) => {
@@ -625,6 +637,26 @@ function _parseAtisGuru(body, icao) {
     s.replace(/<br\s*\/?>/gi, '\n').replace(/<\//g, ' </'), 'text/html');
   doc.querySelectorAll('script,style,noscript,template,title').forEach(e => e.remove());
   const norm = el => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+  // ① 알려진 모양 — div.atis + 그 앞의 card-subtitle(수집 시각)
+  const cards = [...doc.querySelectorAll('div.atis')];
+  if (cards.length) {
+    const subs = [...doc.querySelectorAll('.card-subtitle')];
+    cards.forEach(el => {
+      const t = norm(el);
+      // METAR·TAF 칸은 건너뛴다
+      if (/^(?:METAR|SPECI|TAF)\b/i.test(t) || /^[A-Z]{4}\s+\d{6}Z\b/.test(t)) return;
+      if (!/\b(?:ATIS|INFORMATION)\b/i.test(t) || t.length < 30) return;
+      // 이 원문보다 앞선 마지막 수집 시각
+      const sub = subs.filter(s => s.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      const st = sub ? _stampMs(norm(sub)) : null;
+      const meta = _atisMeta(t);
+      if (out.some(o => o.type === meta.type) || out.length >= 2) return;
+      out.push({ src: 'ATIS.guru', ...meta, text: t,
+                 ageMs: st !== null ? Math.max(0, Date.now() - st) : null });
+    });
+    if (out.length) return out;
+  }
+  // ② 모양이 바뀌었을 때 — ATIS 처럼 보이는 가장 안쪽 덩어리
   const hits = [...doc.body.querySelectorAll('*')].filter(el => _looksAtis(norm(el)));
   // 자식 중에 이미 ATIS 덩어리가 있으면 그 자식을 쓴다(가장 안쪽만 남긴다)
   const leaf = hits.filter(el => !hits.some(o => o !== el && el.contains(o)));
@@ -643,6 +675,39 @@ function _parseAtisGuru(body, icao) {
   return out;
 }
 
+// ① GitHub Actions 가 모아 둔 국내 공항 ATIS (scripts/atis_scrape.py → atis-data 가지).
+// 한 장에 모든 공항이 들어 있으므로 한 번 받아 여러 공항에 쓴다(2분 캐시 —
+// 수집이 10분 간격이라 그보다 자주 받을 까닭이 없다).
+const ATIS_RELAY_URL = 'https://raw.githubusercontent.com/thdenfl-source/Map/atis-data/atis.json';
+let _atisRelayCache = null;   // { ts, data }
+async function _atisRelay(icao, sig) {
+  let data = _atisRelayCache && Date.now() - _atisRelayCache.ts < 2 * 60 * 1000 ? _atisRelayCache.data : null;
+  if (!data) {
+    const ctl = new AbortController();
+    const stop = () => ctl.abort();
+    if (sig) sig.addEventListener('abort', stop, { once: true });
+    const to = setTimeout(stop, 5000);
+    try {
+      const r = await fetch(ATIS_RELAY_URL, { signal: ctl.signal, cache: 'no-cache' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      data = JSON.parse(await r.text());
+    } finally { clearTimeout(to); if (sig) sig.removeEventListener('abort', stop); }
+    _atisRelayCache = { ts: Date.now(), data };
+  }
+  const list = (data && data.airports && data.airports[String(icao).toUpperCase()]) || [];
+  const out = (Array.isArray(list) ? list : []).map(d => {
+    const text = String((d && d.text) || '').replace(/\s+/g, ' ').trim();
+    const st = d && d.collected ? Date.parse(d.collected) : NaN;
+    const meta = _atisMeta(text);
+    return { src: 'ATIS.guru', type: String((d && d.type) || meta.type), code: String((d && d.code) || meta.code),
+             time: String((d && d.time) || meta.time), text,
+             ageMs: isFinite(st) ? Math.max(0, Date.now() - st) : null };
+  }).filter(d => d.text.length >= 30);
+  if (!out.length) throw new Error('no relay atis');
+  return out;
+}
+
+// ② 페이지를 CORS 프록시로 직접 받는다(①이 없거나 늦을 때의 예비)
 async function _atisGuru(icao, sig) {
   const body = await _wxGet(`https://atis.guru/atis/${encodeURIComponent(icao)}`, sig,
                             { html: true, ms: 6000 });
@@ -653,7 +718,7 @@ async function _atisGuru(icao, sig) {
 
 // 발표 시각(HHMMZ) → 몇 분 전인가. 날짜가 없으므로 24시간 안쪽으로만 셈한다
 function _atisAgeMin(d) {
-  if (d && typeof d.ageMs === 'number') return Math.round(d.ageMs / 6e4);
+  if (d && typeof d.ageMs === 'number') return Math.floor(d.ageMs / 6e4);
   const m = d && String(d.time || '').match(/^(\d\d)(\d\d)Z$/);
   if (!m) return null;
   const now = new Date();

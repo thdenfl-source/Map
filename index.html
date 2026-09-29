@@ -1334,11 +1334,13 @@ body.night-mode::after {
    보조 항법장치(NAV AID) 모드 — 이 앱의 기본 성격
    기체를 조종하는 조작부(FCP·AFCS·트림·배속·FLY)는 화면에서 내린다.
    자리는 남기지 않는다: 뜬 공간이 있으면 "고장난 화면"으로 보인다.
-   ?sim=1 로 열면 body.navaid 가 붙지 않아 종전 조작부가 그대로 나온다.
+   조작부 마크업은 걷어 냈다(숨겨만 두면 스크립트 전 첫 화면에 번쩍 보인다).
    ══════════════════════════════════════════════════════════════════ */
 body.navaid .sim-only { display: none !important; }
-/* 조작부가 빠지면 구분선만 덩그러니 남는다 — 함께 내린다 */
-body.navaid .ctrl-sub-row .ctrl-div { display: none; }
+/* 켜는 동안(스크립트가 창을 고르기 전)은 가려 둔다. 그렇지 않으면 HTML 의
+   기본 배치 — PFD 와 그 조작부가 지도 위에 얹힌 모습 — 가 새로고침 때마다
+   잠깐 비친다. 14-navaid.js 가 창을 고른 직후 걷는다. */
+body.booting #app { visibility: hidden; }
 
 /* ══════════════════════════════════════════════════════════════════
    한 화면 + 상단 탭 — 폰·패드·PC 모두 같다(body.phone-mode 는 늘 붙는다)
@@ -1564,7 +1566,7 @@ body.phone-mode .ctrl-bar .sw-display {
 }
 </style>
 </head>
-<body>
+<body class="navaid booting">
 <!-- ── 시작 안내(사용법/키보드) 오버레이 ── -->
 <div id="help-overlay" style="display:none;">
   <div id="help-panel">
@@ -1949,24 +1951,11 @@ body.phone-mode .ctrl-bar .sw-display {
            나침반 네 모서리의 사각 테두리가 곧 그 버튼이다 —
            03-pfd.js 의 drawHsiCorners(). 그 한 줄만큼 나침반이 커졌다. -->
 
-      <!-- 1행: SPD / HDG / CRS / VS / ALT / 스톱워치 -->
+      <!-- 1행: CRS / 스톱워치 -->
+      <!-- 기체를 조종하던 조작부(IAS·HDG·VS·ALT·바람·NAV 커플링·ALT/G/S·HOVER·
+           배속·트림·페달·FLY)는 항법 보조 장치가 되면서 걷어 냈다. 숨겨만 두면
+           스크립트가 돌기 전 첫 화면에 잠깐 그려진다(새로고침 때 번쩍임). -->
       <div class="ctrl-sub-row">
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl ctrl-lbl-btn" id="ias-lbl-btn" data-act="fcpSync" data-arg='["ias"]'>IAS</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="spd-dn">▼</button>
-            <button class="cbtn" id="spd-up">▲</button>
-          </div>
-        </div>
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl ctrl-lbl-btn" id="hdg-lbl-btn" data-act="fcpSync" data-arg='["hdg"]'>HDG</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="hdg-dn">◄</button>
-            <button class="cbtn" id="hdg-up">►</button>
-          </div>
-        </div>
 
         <div class="ctrl-group">
           <div class="ctrl-lbl ctrl-lbl-btn" id="crs-lbl-btn" data-act="fcpSync" data-arg='["crs"]'>CRS</div>
@@ -1975,24 +1964,6 @@ body.phone-mode .ctrl-bar .sw-display {
             <button class="cbtn" id="crs-up">►</button>
           </div>
         </div>
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl">VS</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="vs-dn">▼</button>
-            <button class="cbtn" id="vs-up">▲</button>
-          </div>
-        </div>
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl">ALT</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="alt-dn">▼</button>
-            <button class="cbtn" id="alt-up">▲</button>
-          </div>
-        </div>
-
-        <div class="ctrl-div"></div>
 
         <div class="sw-group">
           <div class="sw-display clock-mode" id="sw-display">--:--:--</div>
@@ -2008,65 +1979,21 @@ body.phone-mode .ctrl-bar .sw-display {
 
       </div><!-- end ctrl-sub-row 1 -->
 
-      <!-- 2행: WDIR / WSPD / AP(OBS·NAV) / BRG -->
+      <!-- 2행: AP(OBS) / BRG -->
       <div class="ctrl-sub-row" style="border-top:1px solid #1e1e1e;">
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl">WDIR</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="wdir-dn">◄</button>
-            <button class="cbtn" id="wdir-up">►</button>
-          </div>
-        </div>
-
-        <div class="ctrl-group sim-only">
-          <div class="ctrl-lbl">WSPD</div>
-          <div class="ctrl-row">
-            <button class="cbtn" id="wspd-dn">▼</button>
-            <button class="cbtn" id="wspd-up">▲</button>
-          </div>
-        </div>
-
-        <div class="ctrl-div"></div>
 
         <div class="ctrl-group">
           <div class="ctrl-lbl">AP</div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button class="obs-btn" id="obs-btn" data-act="toggleObs">OBS</button>
-            <button class="obs-btn sim-only" id="nav-ap-btn" data-act="toggleNavAp">NAV</button>
-            <button class="obs-btn sim-only" id="icpt-btn" data-act="cycleIntercept"
-                    title="인터셉트 각도 (30/45/60°)">45°</button>
           </div>
         </div>
-
-        <div class="ctrl-div"></div>
 
         <div class="brg-tog-group">
           <div class="ctrl-lbl">BRG</div>
           <div class="brg-tog-btns">
             <button class="brg-tog-btn brg1-on" id="brg1-tog" data-act="toggleBrg1">BRG1</button>
             <button class="brg-tog-btn brg2-on" id="brg2-tog" data-act="toggleBrg2">BRG2</button>
-          </div>
-        </div>
-
-        <div class="ctrl-div"></div>
-
-        <div class="alt-hold-group sim-only">
-          <div class="ctrl-lbl">ALT</div>
-          <div class="alt-hold-btns">
-            <button class="alt-hold-btn" id="alt-hold-btn" data-act="toggleAltHold">ALT</button>
-            <button class="gs-btn"       id="gs-btn"       data-act="toggleGs"
-                    title="G/S — ILS 강하선 추종. 무장(ARM)해 두면 강하선에 닿는 순간 잡아(CAPT) 고도를 맡습니다.">G/S</button>
-          </div>
-        </div>
-
-        <div class="ctrl-div"></div>
-
-        <div class="hover-group sim-only">
-          <div class="ctrl-lbl">HOVER</div>
-          <div class="hover-btns">
-            <button class="hover-btn"     id="hover-btn"     data-act="toggleHoverPage" disabled>HOVER PAGE</button>
-            <button class="hover-pos-btn" id="hover-pos-btn" data-act="toggleHoverPosition" title="Hover Position">HOVER POS</button>
           </div>
         </div>
 
@@ -2094,21 +2021,7 @@ body.phone-mode .ctrl-bar .sw-display {
           </div>
         </div>
 
-        <div class="ctrl-div"></div>
-
-        <!-- 배속 — 홀딩 한 바퀴 4분, 절차 하나 20분을 실시간으로 기다리지 않게 -->
-        <!-- 2×2 로 접는다(옆의 SUSP 와 높이를 맞추기 위해서다) -->
-        <div class="simspd-group sim-only">
-          <div class="ctrl-lbl">SIM SPD</div>
-          <div class="simspd-grid">
-            <button class="simspd-btn active" id="simspd-1" data-act="setSimSpeed" data-arg='[1]' title="실시간">×1</button>
-            <button class="simspd-btn" id="simspd-2" data-act="setSimSpeed" data-arg='[2]' title="2배속">×2</button>
-            <button class="simspd-btn" id="simspd-4" data-act="setSimSpeed" data-arg='[4]' title="4배속">×4</button>
-            <button class="simspd-btn" id="simspd-8" data-act="setSimSpeed" data-arg='[8]' title="8배속">×8</button>
-          </div>
-        </div>
-
-        <!-- SUSP — 배속과는 상관없는 기능이라 이름표를 따로 세운다 -->
+        <!-- SUSP -->
         <div class="susp-group">
           <div class="ctrl-lbl">SUSP</div>
           <button class="susp-btn" id="susp-btn" data-act="toggleSusp"
@@ -2126,35 +2039,6 @@ body.phone-mode .ctrl-bar .sw-display {
                   title="REC — 항적 기록. 멈추면 GPX 로 저장할 수 있습니다. 지도 아래 REC 과 같은 버튼입니다."><span class="rec-dot">●</span><span class="rec-txt">REC</span></button>
         </div>
 
-        <div class="ctrl-div"></div>
-
-        <div class="trim-group sim-only" id="trim-group">
-          <div class="coll-group">
-            <div class="coll-lbl">COLLECTIVE<br>TRIM</div>
-            <div class="coll-btns">
-              <button class="coll-btn" id="coll-up" title="컬렉티브 업(상승)">▲</button>
-              <button class="coll-btn" id="coll-dn" title="컬렉티브 다운(강하)">▼</button>
-            </div>
-          </div>
-          <div class="trim-padgroup">
-            <div class="trim-lbl">4-WAY<br>TRIM</div>
-            <div class="trim-pad" id="trim-pad">
-              <button class="trim-cell tc-l"   id="trim-l"   data-trim-dir="L">◄</button>
-              <button class="trim-cell tc-fwd" id="trim-fwd" data-trim-dir="F">▲</button>
-              <button class="trim-cell tc-aft" id="trim-aft" data-trim-dir="A">▼</button>
-              <button class="trim-cell tc-r"   id="trim-r"   data-trim-dir="R">►</button>
-            </div>
-          </div>
-          <button class="force-trim-btn" id="force-trim-btn" data-act="forceTrim" title="Force Trim">FORCE<br>TRIM</button>
-          <button class="gspd-btn" id="gspd-btn" data-act="toggleGspd" title="Ground Speed Hold">GSPD</button>
-          <div class="pedal-group">
-            <div class="pedal-lbl">ANTI-TORQUE<br>PEDAL</div>
-            <div class="pedal-btns">
-              <button class="pedal-btn" id="ped-l" title="좌 페달(기수 좌선회)">◄</button>
-              <button class="pedal-btn" id="ped-r" title="우 페달(기수 우선회)">►</button>
-            </div>
-          </div>
-        </div>
 
       </div><!-- end ctrl-sub-row 3 -->
 
@@ -2195,7 +2079,6 @@ body.phone-mode .ctrl-bar .sw-display {
           <button id="map-ruler-btn" data-act="toggleRuler" title="거리·방위 측정">📏</button>
         </div>
         <div id="map-sim-bar">
-          <button class="sim-btn sim-only" id="map-fly-btn" data-act="toggleSim">▶ FLY</button>
           <button class="sim-btn" id="map-tcut-btn" data-act="toggleTcut">⛰ T-CUT</button>
           <button class="sim-btn" id="map-hold-btn" data-act="toggleHoldEntry">⟳ HOLD</button>
           <button class="sim-btn" id="inhib-btn" data-act="toggleInhibMenu">INHIB</button>

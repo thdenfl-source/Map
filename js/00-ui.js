@@ -20,6 +20,11 @@
 // 사용자의 응답이 필요 없는 자리에 쓴다.
 // ─────────────────────────────────────────────────────────────
 
+// 켜는 동안 가려 둔 화면(index.html body.booting)은 14-navaid.js 가 창을 고른
+// 뒤 연다. 중간 스크립트가 죽어 그 자리까지 못 가더라도 화면이 영영 가려진
+// 채 남지 않도록, 문서가 다 읽히면 어쨌든 연다.
+document.addEventListener('DOMContentLoaded', () => document.body.classList.remove('booting'));
+
 (function () {
   const CSS = `
   .ui-dlg-back{position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);

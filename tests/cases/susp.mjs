@@ -61,18 +61,19 @@ export async function run(page, t) {
     const grp = b.closest('.susp-group');
     const lbl = grp && grp.querySelector('.ctrl-lbl');
     const box = e => e.getBoundingClientRect();
-    // 켜진 SUSP 와 켜진 NAV 의 실제 색을 나란히 잰다.
+    // 켜진 SUSP 와 켜진 AP 버튼(.obs-btn.on)의 실제 색을 나란히 잰다.
+    // 진짜 OBS 버튼은 상태(obsOn)에 따라 앱이 수시로 다시 칠하므로, 같은
+    // 자리에 켜진 모양의 견본을 하나 세워 잰다.
     // 색은 0.15초에 걸쳐 바뀐다 — 바꾸자마자 읽으면 옛 색이 나온다.
-    // NAV 버튼은 조종 기능이라 화면에는 없다(sim-only). 색만 견주는 자리라
-    // 보이지 않아도 계산된 색은 그대로 읽을 수 있어 기준으로 쓴다.
-    const nav = document.getElementById('nav-ap-btn');
-    const navWasOn = nav.classList.contains('on');
-    nav.classList.add('on');
+    const obs = document.getElementById('obs-btn');
+    const nav = document.createElement('button');
+    nav.className = 'obs-btn on';
+    obs.parentElement.appendChild(nav);
     await new Promise(r => setTimeout(r, 300));
     const cs = e => ({ border: getComputedStyle(e).borderTopColor,
                        text: getComputedStyle(e).color });
     const onCol = cs(b), navCol = cs(nav);
-    if (!navWasOn) nav.classList.remove('on');
+    nav.remove();
     return { lbl: lbl ? lbl.textContent.trim() : null,
              txt: b.textContent.trim(), onCol, navCol,
              lblAbove: lbl ? box(lbl).bottom <= box(b).top + 1 : false,
@@ -82,12 +83,11 @@ export async function run(page, t) {
   t.eq(ui.shown, true, 'SUSP 은 항법용이라 보조 항법 모드에서도 화면에 남는다');
   t.ok(ui.lblAbove, '이름표가 자기 버튼 위에 있다');
   t.eq(ui.txt, 'SUSP', `버튼 글자는 늘 SUSP 다 (${ui.txt})`);
-  // 켜짐은 AP 의 NAV·OBS 버튼과 같은 녹색으로 보인다 — 실제로 칠해진 색을 잰다
+  // 켜짐은 AP 의 OBS 버튼과 같은 녹색으로 보인다 — 실제로 칠해진 색을 잰다
   t.ok(/^rgb\(0, 2[0-9][0-9], /.test(ui.onCol.border) && ui.onCol.border === ui.navCol.border,
-    `켜지면 NAV 버튼과 같은 녹색이다 (${ui.onCol.border} · NAV ${ui.navCol.border})`);
+    `켜지면 OBS 버튼과 같은 녹색이다 (${ui.onCol.border} · OBS ${ui.navCol.border})`);
   t.eq(ui.onCol.text, ui.navCol.text, `글자색도 같다 (${ui.onCol.text})`);
-  // 배속(SIM SPD)은 시뮬 조작부라 화면에서 내렸다 — 그 배치를 여기서 재던 검사는
-  // 더 볼 것이 없어졌다(배속 동작 자체는 cases/simspd.mjs 에서 그대로 본다).
+  // 배속(SIM SPD)은 시뮬 조작부라 걷어 냈다(배속 계산은 cases/simspd.mjs 에서 본다).
 
   // ── 풀면 그때 다음 지점으로 넘어간다 ──
   const rel = await page.evaluate(async () => {

@@ -12,7 +12,8 @@ export const name = 'ATIS (문자)';
 const MOCK = (opt) => `(() => {
   const o = ${JSON.stringify(opt)};
   _wxCache.clear();
-  window.__hits = { faa: 0, guru: 0, vatsim: 0 };
+  _atisRelayCache = null;
+  window.__hits = { faa: 0, guru: 0, vatsim: 0, relay: 0 };
   window.fetch = (u) => {
     u = String(u);
     if (u.includes('vatsim.net%2Fv3') || u.includes('vatsim.net/v3')) window.__hits.vatsim++;
@@ -20,6 +21,11 @@ const MOCK = (opt) => `(() => {
       window.__hits.faa++;
       return o.faa ? Promise.resolve({ ok: true, text: async () => o.faa })
                    : Promise.resolve({ ok: true, text: async () => '{"error":"not found"}' });
+    }
+    if (u.includes('raw.githubusercontent.com') && u.includes('atis-data')) {
+      window.__hits.relay++;
+      return o.relay ? Promise.resolve({ ok: true, text: async () => o.relay })
+                     : Promise.resolve({ ok: false, status: 404, text: async () => '404: Not Found' });
     }
     if (u.includes('atis.guru')) {
       window.__hits.guru++;
@@ -33,6 +39,9 @@ const MOCK = (opt) => `(() => {
   };
 })()`;
 
+// 지금(UTC)에서 min 분 전의 'YYYY-MM-DD HH:MM UTC'(atis.guru 표기)와 ISO
+const stampAgo = (min) => new Date(Date.now() - min * 6e4).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+const isoAgo = (min) => new Date(Date.now() - min * 6e4).toISOString();
 // 지금(UTC)에서 min 분 전의 HHMM
 const hhmmAgo = (min) => {
   const d = new Date(Date.now() - min * 6e4);
@@ -103,6 +112,49 @@ export async function run(page, t) {
   t.eq(hits.faa, 0, '국내 공항에는 미국 전용 FAA 를 부르지 않는다');
   t.ok(hits.guru > 0, '국내 공항은 atis.guru 에서 찾는다');
   t.eq(hits.vatsim, 0, 'VATSIM(시뮬레이션) ATIS 는 더 이상 찾지 않는다');
+  t.ok(hits.relay > 0, '서버에서 모아 둔 ATIS(JSON)도 찾아본다');
+
+  // ── ③-2 서버에서 모아 둔 ATIS — 프록시가 모두 막혀도 나온다 ──────────
+  // 브라우저가 atis.guru 를 직접 못 받는 것이 인천·김포가 안 나온 까닭이었다.
+  const rl = await open('RKSS', '김포', {
+    relay: JSON.stringify({ generated: isoAgo(3), airports: { RKSS: [
+      { type: 'ARR', code: 'P', time: hhmmAgo(20) + 'Z', collected: isoAgo(20),
+        text: `RKSS ARR ATIS P ${hhmmAgo(20)}Z EXPECT ILS APPROACH RWY 32L IN USE QNH 1013 YOU HAVE INFORMATION P` }] } }),
+    metar: 'RKSS 291200Z 32008KT 9999 FEW030 24/14 Q1015 NOSIG',
+  });
+  t.ok(rl.txt.includes('RWY 32L IN USE') && rl.txt.includes('INFO P'),
+    `프록시가 막혀도 모아 둔 원문을 보여 준다 (${rl.txt.slice(0, 90)})`);
+  t.ok(rl.txt.includes('20분 전'), '모은 시각에서 경과 시간을 셈한다');
+  t.ok(!rl.txt.includes('METAR'), '최신이면 METAR 를 덧붙이지 않는다');
+
+  // ── ③-3 실제 atis.guru 페이지 모양(div.atis + card-subtitle) ─────────
+  // 같은 칸 모양에 METAR·TAF 도 들어 있다. 시각은 카드 머리(UTC 표기)에 있다.
+  const card = (stamp, body) => `<div class="card"><div class="card-body">
+      <h6 class="card-subtitle mb-2 text-muted">${stamp}</h6><div class="atis">${body}</div></div></div>`;
+  const real = await open('RKSI', '인천', {
+    guru: `<html><body><h1>RKSI (ICN) - Live digital ATIS</h1>` +
+      card(stampAgo(8), `RKSI ARR ATIS L ${hhmmAgo(8)}Z\r\nEXPECT ILS APPROACH RWY 33R\r\nQNH 1016\r\nYOU HAVE INFORMATION L`) +
+      card(stampAgo(8), `RKSI DEP ATIS L ${hhmmAgo(8)}Z\r\nDEPARTURE RWY 34L\r\nQNH 1016`) +
+      card(stampAgo(30), `METAR RKSI 291130Z 33008KT 9999 FEW030 24/14 Q1016 NOSIG`) +
+      card(stampAgo(68), `RKSI ARR ATIS K ${hhmmAgo(68)}Z EXPECT ILS APPROACH RWY 15L QNH 1015 YOU HAVE INFORMATION K`) +
+      `</body></html>`,
+  });
+  t.ok(real.txt.includes('RWY 33R') && real.txt.includes('RWY 34L'), '실제 페이지 모양에서 도착·출발 원문을 읽는다');
+  t.ok(!real.txt.includes('RWY 15L'), '지나간 ATIS 는 건너뛴다');
+  t.ok(!real.txt.includes('33008KT'), 'METAR 칸을 ATIS 로 읽지 않는다');
+  // 카드 머리는 분까지만 적으므로 검사 도중 분이 넘어가면 9분이 된다
+  t.ok(/\b[89]분 전/.test(real.txt), `카드 머리의 수집 시각으로 경과 시간을 셈한다 (${(real.txt.match(/\d+분 전/) || ['없음'])[0]})`);
+
+  // ── ③-4 둘 다 있으면 더 새것 ─────────────────────────────────────
+  const both = await open('RKPC', '제주', {
+    relay: JSON.stringify({ airports: { RKPC: [
+      { type: '', code: 'B', collected: isoAgo(240),
+        text: 'RKPC ATIS INFORMATION B RWY 25 IN USE QNH 1010 YOU HAVE INFORMATION B' }] } }),
+    guru: card(stampAgo(15), `RKPC ATIS INFORMATION C ${hhmmAgo(15)}Z RWY 07 IN USE QNH 1011 YOU HAVE INFORMATION C`),
+    metar: 'RKPC 291200Z 09012KT 9999 FEW020 26/20 Q1011 NOSIG',
+  });
+  t.ok(both.txt.includes('INFO C') && !both.txt.includes('INFO B'),
+    `모아 둔 것이 묵었으면 새로 받은 쪽을 쓴다 (${(both.txt.match(/INFO [A-Z]/) || ['없음'])[0]})`);
 
   // ── ④ 국내 공항, 방금 수집된 원문 — 페이지에서 원문만 골라 보여 준다 ──
   // 페이지에는 머리말·스크립트·METAR·지나간 ATIS 가 함께 있다. 최신 도착·출발
