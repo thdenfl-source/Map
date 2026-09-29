@@ -576,9 +576,11 @@ function _looksAtis(t) {
 // 원문 한 덩어리에서 정보 부호·도착/출발·발표 시각을 읽는다
 function _atisMeta(t) {
   const up = t.toUpperCase();
+  // 도착/출발은 원문 머리("RKSI ARR ATIS O")로 가린다 — 본문에는 두 말이 흔히 섞인다
+  const head = up.match(/^[A-Z]{4}\s+(ARR|DEP)\b/);
   const code = (up.match(/\b(?:ATIS|INFO(?:RMATION)?)\s+(?:INFO(?:RMATION)?\s+)?([A-Z])\b/) || [])[1] || '';
   const arr = /\bARR(?:IVAL)?\b/.test(up), dep = /\bDEP(?:ARTURE)?\b/.test(up);
-  const type = arr && !dep ? 'ARR' : (dep && !arr ? 'DEP' : '');
+  const type = head ? head[1] : (arr && !dep ? 'ARR' : (dep && !arr ? 'DEP' : ''));
   const hm = up.match(/\b([01]\d|2[0-3])([0-5]\d)\s?Z\b/);
   return { code, type, time: hm ? `${hm[1]}${hm[2]}Z` : '' };
 }

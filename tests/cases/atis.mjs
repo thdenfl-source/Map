@@ -212,6 +212,25 @@ export async function run(page, t) {
   t.ok(gs.txt.includes('지난 ATIS 일 수 있습니다'), '지났을 수 있다고 알린다');
   t.ok(gs.txt.includes('09012KT'), '대신 지금 METAR 를 함께 보여 준다');
 
+  // ── ④-3 하루 넘게 묵은 원문은 숨기고 나이만 알린다 ─────────────────
+  // 실제 수집분에는 몇 달 묵은 것도 섞여 온다(울산 DEP 2025-11 등).
+  const ancient = await open('RKPU', '울산', {
+    relay: JSON.stringify({ generated: isoAgo(2), airports: { RKPU: [
+      { type: 'DEP', code: 'O', time: '1100Z', collected: isoAgo(60 * 24 * 40),
+        text: 'RKPU DEP ATIS O 1100Z RWY 36 IN USE QNH 1014 HPA ADZ YOU HAVE INFO O' }] },
+      status: { RKPU: 'ok 1' } }),
+    metar: 'RKPU 291200Z 18004KT 9999 FEW050 27/14 Q1007 NOSIG',
+  });
+  t.ok(!ancient.txt.includes('RWY 36 IN USE'), '하루 넘게 묵은 원문은 보여 주지 않는다');
+  t.ok(ancient.txt.includes('40일 전 것이라 표시하지 않습니다'),
+    `대신 마지막 원문이 언제 것인지 알린다 (${(ancient.txt.match(/atis\.guru 마지막[^\n]*?니다/) || ['없음'])[0]})`);
+  t.ok(ancient.txt.includes('18004KT'), '그때는 METAR 로 받친다');
+
+  // 도착/출발은 원문 머리로 가린다 — 본문에 DEP 가 섞여도 도착 ATIS 다(실제 광주 원문)
+  const kind = await page.evaluate(() =>
+    _atisMeta('RKJJ ARR ATIS K 0220Z RWY 4 IN USE EXP GWANG JU 5 DEP EXP ALL DEP TO JEJU QNH 1010').type);
+  t.eq(kind, 'ARR', '본문에 DEP 가 섞여도 머리가 ARR 이면 도착 ATIS 다');
+
   // JSON 으로 오는 경우(공개 API 가 생길 때)도 읽는다
   const js = await page.evaluate(() => _parseAtisGuru(JSON.stringify(
     { atis: [{ text: 'RKSS ARR ATIS A 0300Z RWY 32R IN USE QNH 1013 YOU HAVE INFORMATION A' }] }), 'RKSS'));

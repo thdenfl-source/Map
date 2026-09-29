@@ -23,9 +23,9 @@ import html
 import json
 import re
 import sys
-import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -48,8 +48,14 @@ def airports():
 def meta(text):
     up = text.upper()
     m = re.search(r'\b(?:ATIS|INFO(?:RMATION)?)\s+(?:INFO(?:RMATION)?\s+)?([A-Z])\b', up)
-    arr = re.search(r'\bARR(?:IVAL)?\b', up) is not None
-    dep = re.search(r'\bDEP(?:ARTURE)?\b', up) is not None
+    # 도착/출발은 원문 머리("RKSI ARR ATIS O")로 가린다. 본문에는 두 말이 흔히
+    # 섞인다("EXP GWANG JU 5 DEP") — 본문까지 보면 도착 ATIS 가 '구분 없음' 이 된다.
+    head = re.match(r'^[A-Z]{4}\s+(ARR|DEP)\b', up)
+    if head:
+        arr, dep = head.group(1) == "ARR", head.group(1) == "DEP"
+    else:
+        arr = re.search(r'\bARR(?:IVAL)?\b', up) is not None
+        dep = re.search(r'\bDEP(?:ARTURE)?\b', up) is not None
     hm = re.search(r'\b([01]\d|2[0-3])([0-5]\d)\s?Z\b', up)
     return {
         "type": "ARR" if arr and not dep else ("DEP" if dep and not arr else ""),
@@ -78,36 +84,44 @@ def parse(page):
         if st:
             y, mo, d, h, mi = map(int, st.groups())
             collected = dt.datetime(y, mo, d, h, mi, tzinfo=dt.timezone.utc).isoformat().replace("+00:00", "Z")
-        item = {**meta(text), "collected": collected, "text": text}
-        # 지난 ATIS 가 아래로 줄줄이 붙는다 — 도착·출발·통합별로 맨 앞(최신) 하나씩
-        if any(o["type"] == item["type"] for o in out):
-            continue
-        out.append(item)
-        if len(out) >= 2:
-            break
-    return out
+        out.append({**meta(text), "collected": collected, "text": text})
+    # 도착·출발·통합별로 가장 최근에 모은 것 하나씩(페이지 순서에 기대지 않는다)
+    best = {}
+    for it in out:
+        k = it["type"]
+        if k not in best or (it["collected"] or "") > (best[k]["collected"] or ""):
+            best[k] = it
+    return sorted(best.values(), key=lambda it: it["collected"] or "", reverse=True)[:2]
 
 
 def fetch(icao):
     req = urllib.request.Request(URL.format(icao), headers={"User-Agent": UA, "Accept": "text/html"})
-    with urllib.request.urlopen(req, timeout=20) as r:
+    with urllib.request.urlopen(req, timeout=12) as r:
         return r.read().decode("utf-8", "replace")
+
+
+def one(icao):
+    """한 공항 — (원문 목록, 상태). 한 공항이 실패해도 나머지는 받는다."""
+    try:
+        items = parse(fetch(icao))
+        return items, (f"ok {len(items)}" if items else "none")
+    except urllib.error.HTTPError as e:
+        return [], f"http {e.code}"
+    except Exception as e:  # noqa: BLE001
+        return [], f"err {type(e).__name__}"
 
 
 def main():
     result = {"generated": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
               "source": "atis.guru", "airports": {}, "status": {}}
-    for icao in airports():
-        try:
-            items = parse(fetch(icao))
+    icaos = airports()
+    # 차례로 받으면 느린 응답 하나가 12초씩 잡아먹어 전체가 몇 분이 된다.
+    # 넷씩 나란히 받는다(남의 서버라 그 이상 몰아 두드리지는 않는다).
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for icao, (items, st) in zip(icaos, ex.map(one, icaos)):
             if items:
                 result["airports"][icao] = items
-            result["status"][icao] = f"ok {len(items)}" if items else "none"
-        except urllib.error.HTTPError as e:
-            result["status"][icao] = f"http {e.code}"
-        except Exception as e:  # noqa: BLE001 — 한 공항이 실패해도 나머지는 받는다
-            result["status"][icao] = f"err {type(e).__name__}"
-        time.sleep(0.5)           # 남의 서버다 — 몰아서 두드리지 않는다
+            result["status"][icao] = st
     json.dump(result, sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")
 

@@ -141,6 +141,7 @@ async function showAptWx(icao, name, latlng) {
 let _aptAtisCtl = null;
 let _aptAtisPopup = null;   // 앞서 연 ATIS 창 — 새로 열 때 닫는다(창이 쌓이지 않게)
 const ATIS_FRESH_MIN = 90;  // 이보다 오래된 원문은 '지났을 수 있다' 고 알린다
+const ATIS_DROP_MIN = 24 * 60;   // 이보다 오래된 원문은 아예 보이지 않는다(몇 달 묵은 것도 섞여 온다)
 
 function _atisAgeTxt(min) {
   if (min === null) return '';
@@ -204,9 +205,14 @@ async function showAptAtis(icao, name, latlng) {
   const val = i => (tries[i].status === 'fulfilled' ? tries[i].value : []);
   const newest = l => Math.min(...l.map(d => { const a = _atisAgeMin(d); return a === null ? 1e9 : a; }));
   let got = val(0);
+  let dropped = null;   // 너무 묵어 숨긴 원문 중 가장 새것의 나이(분)
   if (!got.length) {
     const a = val(1), b = val(2);
     got = !a.length ? b : !b.length ? a : (newest(b) < newest(a) ? b : a);
+    // 하루 넘게 묵은 ACARS 원문은 경고를 붙여도 오해를 부른다 — 숨기고 나이만 알린다
+    const keep = got.filter(d => { const m = _atisAgeMin(d); return m === null || m <= ATIS_DROP_MIN; });
+    if (keep.length < got.length) dropped = newest(got.filter(d => !keep.includes(d)));
+    got = keep;
   }
 
   // 받은 원문이 모두 지났거나(ACARS 수집분) 아예 없으면 주파수와 METAR 로 받친다
@@ -223,7 +229,9 @@ async function showAptAtis(icao, name, latlng) {
       `<div style="color:#88aa99;font-size:15px;line-height:1.6;margin-top:3px;">` +
       `국내 공항의 문자 ATIS 는 항공기가 ACARS 로 요청할 때만 수집됩니다 — 아래 주파수로 들으십시오.` +
       `</div>`;
-    const why = tries[1].status === 'rejected' && typeof _atisWhyTxt === 'function' ? _atisWhyTxt(tries[1].reason) : '';
+    const why = dropped !== null
+      ? `atis.guru 마지막 원문이 ${_atisAgeTxt(dropped)} 것이라 표시하지 않습니다`
+      : tries[1].status === 'rejected' && typeof _atisWhyTxt === 'function' ? _atisWhyTxt(tries[1].reason) : '';
     if (why) html += `<div style="color:#778;font-size:13px;margin-top:3px;">${_escHtml(why)}</div>`;
   }
   if (fr.length) {
