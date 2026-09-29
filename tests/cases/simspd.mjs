@@ -61,13 +61,12 @@ export async function run(page, t) {
   t.ok(turn.dPos < 0.05,
     `40초 선회 뒤 위치가 실시간과 같다 (차이 ${(turn.dPos * 1852).toFixed(0)}m)`);
 
-  // ── 버튼 ──
+  // ── 값 ── (배속 버튼은 조작부와 함께 걷어 냈다 — 값만 본다)
   const ui = await page.evaluate(() => {
     setSimSpeed(4);
-    const on = v => document.getElementById('simspd-' + v).classList.contains('active');
-    const r = { speed: simSpeed, act4: on(4), act1: on(1) };
+    const r = { speed: simSpeed, btns: document.querySelectorAll('[id^="simspd-"]').length };
     setSimSpeed(1);                   // 실시간으로 되돌린다
-    r.afterOne = simSpeed; r.oneAct1 = on(1);
+    r.afterOne = simSpeed;
     setSimSpeed(99);                  // 없는 배속은 실시간으로 떨어진다
     r.bogus = simSpeed;
     // RNP 는 NAV SRC 아래로 옮겼다 — 옮기다 끊어지면 조용히 죽는다
@@ -78,8 +77,9 @@ export async function run(page, t) {
     setRnp(1);
     return r;
   });
-  t.ok(ui.speed === 4 && ui.act4 && !ui.act1, '×4 를 누르면 그 버튼만 켜진다');
-  t.ok(ui.afterOne === 1 && ui.oneAct1, '×1 로 되돌리면 그 버튼만 켜진다');
+  t.eq(ui.speed, 4, '×4 로 바꿀 수 있다');
+  t.eq(ui.btns, 0, '배속 버튼은 화면에 없다(조작부를 걷어 냈다)');
+  t.eq(ui.afterOne, 1, '×1 로 되돌릴 수 있다');
   t.eq(ui.bogus, 1, '없는 배속 값은 실시간으로 떨어진다');
   t.eq(ui.rnpUnderNavSrc, true, 'RNP 버튼이 NAV SRC 아래에 있다');
   t.ok(ui.rnp === 0.3 && ui.rnpActive, `RNP 는 자리를 옮겨도 그대로 동작한다 (${ui.rnp})`);

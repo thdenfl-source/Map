@@ -8,8 +8,8 @@
 //
 //   · 켜면 GPS 가 먼저 붙는다. 화면의 위치·속도·고도는 실제 측정값이다.
 //   · 신호가 끊기면 마지막 대지속도·침로로 위치를 이어 그린다(추측항법 · DR).
-//   · 기체를 조종하는 조작부(FCP·AFCS·트림·배속)는 화면에서 내린다.
-//     코드는 남겨 두되 ?sim=1 로만 다시 꺼낼 수 있다(개발·회귀시험용).
+//   · 기체를 조종하는 조작부(FCP·AFCS·트림·배속·FLY)는 화면에서 걷어 냈다.
+//     비행 계산 코드는 남아 있으나(회귀시험이 함수로 직접 부른다) 버튼은 없다.
 //   · 기본 화면은 스마트폰이다. 한 창(MAP)만 띄우고 하단 탭으로 옮겨 다닌다.
 //     태블릿·데스크톱은 종전대로 2·3분할을 쓴다.
 //
@@ -20,15 +20,11 @@
 // ══════════════════════════════════════════════════════
 // 앱 성격 — 항법 보조(기본) · 시뮬 조작부(숨김)
 // ══════════════════════════════════════════════════════
-// 조작부를 다시 꺼내는 길은 둘뿐이다. 일반 사용자는 마주칠 일이 없다.
-//   · 주소에 ?sim=1
-//   · localStorage.setItem('simPanel','1')
-let simPanelOn = false;
-try {
-  simPanelOn = /[?&]sim=1/.test(location.search) || localStorage.getItem('simPanel') === '1';
-} catch (e) { _swallow(e); }
-if (simPanelOn) { try { localStorage.setItem('simPanel', '1'); } catch (e) { _swallow(e); } }
-document.body.classList.toggle('navaid', !simPanelOn);
+// 조작부는 걷어 냈다 — 다시 꺼내는 길(?sim=1)도 없앴다. 이 값은 시뮬 초기값을
+// 밀어 넣던 옛 분기(05-gps.js·07-sim.js)를 막아 두는 표지로만 남는다.
+const simPanelOn = false;
+try { localStorage.removeItem('simPanel'); } catch (e) { _swallow(e); }   // 예전에 켜 둔 기록
+document.body.classList.add('navaid');
 
 // ══════════════════════════════════════════════════════
 // 화면 배치 — 늘 한 창
@@ -288,6 +284,8 @@ function _armCompassOnGesture() {
 (function initNavAid() {
   try { setSolo(phoneStartScreen()); } catch (e) { _swallow(e); }
   try { applyDeviceLayout(); } catch (e) { _swallow(e); }
+  // 창이 정해졌다 — 가려 두었던 화면을 연다(index.html body.booting)
+  document.body.classList.remove('booting');
   // 처음 켤 때가 가장 잘 어긋난다 — 글꼴이 늦게 오거나 주소창이 뒤늦게 접힌다.
   // 한 번으로는 모자라 몇 박자에 걸쳐 다시 잰다.
   [0, 120, 400, 1000].forEach(ms =>

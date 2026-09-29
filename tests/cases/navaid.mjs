@@ -6,6 +6,9 @@
 //   ③ GPS 가 끊기면 추측항법(DR)으로 위치를 이어 그리고, 오래 끊기면 멈춘다.
 export const name = '보조 항법 모드';
 
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 const PHONE = { width: 390, height: 844 };     // iPhone 14 세로
 const TABLET = { width: 1400, height: 900 };
 
@@ -99,15 +102,11 @@ export async function run(page, t) {
   t.eq(help.opened, true, '설정에서 부르면 그때는 열린다');
   t.eq(help.closed, true, '닫기로 닫힌다');
 
-  // ── ② 조종 조작부가 화면에 없다 ────────────────────────────────
-  // getBoundingClientRect 로 본다 — display:none 이면 0×0 이다.
+  // ── ② 조종 조작부가 아예 없다 ──────────────────────────────────
+  // 숨겨만 두면 스크립트가 돌기 전 첫 화면에 잠깐 그려진다(새로고침 때 번쩍).
+  // 그래서 문서에 남아 있지 않은지로 본다.
   const hidden = await phone.evaluate(() => {
-    const gone = id => {
-      const e = document.getElementById(id);
-      if (!e) return true;
-      const r = e.getBoundingClientRect();
-      return r.width === 0 && r.height === 0;
-    };
+    const gone = id => !document.getElementById(id);
     return {
       navaid: document.body.classList.contains('navaid'),
       // 조종·시뮬 전용
@@ -128,20 +127,47 @@ export async function run(page, t) {
                             ['hdg', 'HDG bug'], ['wdir', '시뮬 바람'], ['fly', 'FLY'],
                             ['simspd', '배속'], ['trim', '트림·페달'], ['navap', 'NAV 커플링'],
                             ['gs', 'G/S'], ['hover', 'HOVER']]) {
-    t.eq(hidden[k], true, `${label} 조작부가 화면에 없다`);
+    t.eq(hidden[k], true, `${label} 조작부가 문서에 없다`);
   }
   t.eq(hidden.crsAlive && hidden.obsAlive && hidden.brgAlive && hidden.rnpAlive && hidden.suspAlive,
     true, '항법용(CRS·OBS·BRG·RNP·SUSP)은 그대로 남는다');
 
-  // ?sim=1 로 열면 조작부가 다시 나온다(개발·회귀시험용 통로)
-  const [sctx, sim] = await open(browser, url + '?sim=1', TABLET);
+  // ?sim=1 로 조작부를 다시 꺼내던 통로도 없앴다 — 예전에 켜 둔 기록이 있어도 그렇다
+  const [sctx, sim] = await open(browser, url + '?sim=1', TABLET,
+    () => { try { localStorage.setItem('simPanel', '1'); } catch (e) {} });
   const simOn = await sim.evaluate(() => ({
     navaid: document.body.classList.contains('navaid'),
-    flyShown: document.getElementById('map-fly-btn').getBoundingClientRect().height > 0,
+    fly: !!document.getElementById('map-fly-btn'),
+    stored: localStorage.getItem('simPanel'),
+    booting: document.body.classList.contains('booting'),
   }));
-  t.eq(simOn.navaid, false, '?sim=1 이면 항법 모드 표시가 붙지 않는다');
-  t.eq(simOn.flyShown, true, '그때는 FLY 등 조작부가 다시 나온다');
+  t.eq(simOn.navaid, true, '?sim=1 이어도 항법 보조 모드다');
+  t.eq(simOn.fly, false, '조작부가 되살아나지 않는다');
+  t.eq(simOn.stored, null, '예전에 켜 둔 조작부 기록은 지운다');
+  t.eq(simOn.booting, false, '켜고 나면 가려 두었던 화면이 열린다');
   await sctx.close();
+
+  // 스크립트가 돌기 전 첫 화면 — 새로고침 때 잠깐 비치는 바로 그 모습이다.
+  // 스크립트를 뺀 사본을 띄워, 그때 PFD·조작부가 그려지지 않는지 본다.
+  const html = fs.readFileSync(fileURLToPath(url), 'utf8')
+    .replace(/<script src="js\/[^"]*"><\/script>/g, '');
+  const bare = fileURLToPath(url).replace(/index\.html$/, '_bare.html');
+  fs.writeFileSync(bare, html);
+  const bctx = await browser.newContext({ viewport: PHONE });
+  const b = await bctx.newPage();
+  await b.goto('file://' + bare);
+  await b.waitForTimeout(300);
+  const pre = await b.evaluate(() => ({
+    app: getComputedStyle(document.getElementById('app')).visibility,
+    anyCtrl: [...document.querySelectorAll('.ctrl-bar button')]
+      .some(e => e.getBoundingClientRect().height > 0 && getComputedStyle(e).visibility === 'visible'),
+    sims: document.querySelectorAll('.sim-only').length,
+  }));
+  await bctx.close();
+  fs.unlinkSync(bare);
+  t.eq(pre.app, 'hidden', '스크립트가 창을 고르기 전에는 화면을 가려 둔다');
+  t.eq(pre.anyCtrl, false, '그때 PFD 조작부가 비치지 않는다');
+  t.eq(pre.sims, 0, '숨겨 둔 시뮬 조작부 마크업이 남아 있지 않다');
 
   // ── ③ 넓게 열어도 한 화면이다 ────────────────────────────────
   // 이 앱은 폰·패드를 세로로 들고 쓰는 물건이다. PC 에서 열어도 분할하지 않는다 —

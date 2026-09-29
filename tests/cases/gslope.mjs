@@ -118,17 +118,15 @@ export async function run(page, t) {
     };
     place(8, 600);
     gsArmed = false; gsOn = false; updateGsBtn();
-    document.getElementById('gs-btn').click();      // 무장
-    const armed = { gsArmed, gsOn, cls: document.getElementById('gs-btn').className };
+    toggleGs();                                     // 무장 (버튼은 조작부와 함께 걷어 냈다)
+    const armed = { gsArmed, gsOn };
     gsCaptureCheck();
     const stillArmed = gsOn;                        // 아직 멀리 있으니 잡히면 안 된다
     place(8, 0);                                    // 강하선에 닿았다
     gsCaptureCheck();
-    return { armed, stillArmed, capt: gsOn, armedAfter: gsArmed,
-             cls: document.getElementById('gs-btn').className };
+    return { armed, stillArmed, capt: gsOn, armedAfter: gsArmed };
   }, [GP, CRS, ELEV, ANG, FT_NM]);
   t.ok(cap.armed.gsArmed && !cap.armed.gsOn, '누르면 먼저 무장(ARM)된다');
-  t.ok(/armed/.test(cap.armed.cls), `버튼이 무장 모양이다 (${cap.armed.cls})`);
   t.eq(cap.stillArmed, false, '강하선에서 멀면 잡지 않는다');
   t.ok(cap.capt && !cap.armedAfter, '강하선에 닿으면 붙잡는다(CAPT)');
 
@@ -166,22 +164,15 @@ export async function run(page, t) {
   t.ok(Math.abs(fly.vs - wantVs) < 150,
     `강하율이 이론값에 가깝다 (${Math.round(fly.vs)}fpm · 이론 ${Math.round(wantVs)}fpm)`);
 
-  // ── 무장·붙잡음이 화면에 뜨는가 ──────────────────────────────
-  // 종전에는 자세계 맨 윗줄(FMA)에 'G/S' 라고 적었다. 그 줄은 오토파일럿
-  // 모드 표시줄이었는데, 지금 그 자리는 지금 값(GS·HDG·ALT·VS)을 읽는 자리가
-  // 됐다. G/S 는 조작부가 시뮬 전용(sim-only)이라 항법 보조 모드에서는
-  // 켤 수도 없으니, 남은 두 자리로 상태를 본다.
-  //   · G/S 버튼 자체 — ARM / CAPT 를 글자와 색으로 보인다
-  //   · 승강계 옆 마름모 — 강하선 대비 어디에 있는지(이쪽은 항법 표시라 그대로다)
+  // ── 강하선 지시(마름모)는 늘 떠 있는가 ─────────────────────────
+  // G/S 버튼은 조종 조작부라 걷어 냈다. 남는 것은 승강계 옆 마름모 —
+  // 강하선 대비 어디에 있는지를 보이는 항법 표시다. ILS 를 맞춰 두면
+  // 자동조종을 안 쓰더라도 떠 있어야 한다.
   const gsUi = await page.evaluate(([GP, CRS, ELEV, ANG, FT_NM]) => {
     const p = destPoint(GP[0], GP[1], toTrue(normA(CRS + 180)), 6);
     S.lat = p[0]; S.lon = p[1];
     S.alt = ELEV + 6 * FT_NM * Math.tan(ANG * Math.PI / 180);
     S.spd = 120; gspdOn = false; altHoldOn = true;
-    const btn = () => {
-      const b = document.getElementById('gs-btn');
-      return { txt: b.textContent.replace(/\s+/g, ''), cls: b.className };
-    };
     // 승강계 마름모 — 자홍색으로 칠해지는 도형이 있는지 본다
     const diamond = () => {
       const proto = CanvasRenderingContext2D.prototype, orig = proto.fill;
@@ -195,22 +186,13 @@ export async function run(page, t) {
       return seen;
     };
     gsArmed = false; gsOn = false; updateGsBtn();
-    const off = { ...btn(), dia: diamond() };
-    gsArmed = true;  gsOn = false; updateGsBtn();
-    const arm = { ...btn(), dia: diamond() };
+    const off = { dia: diamond() };
     gsArmed = false; gsOn = true;  updateGsBtn();
-    const cap = { ...btn(), dia: diamond() };
+    const cap = { dia: diamond() };
     gsArmed = false; gsOn = false; updateGsBtn();
-    return { off, arm, cap };
+    return { off, cap, btn: !!document.getElementById('gs-btn') };
   }, [GP, CRS, ELEV, ANG, FT_NM]);
-  t.eq(gsUi.off.txt, 'G/S', `평소에는 버튼에 G/S 만 적힌다 (${gsUi.off.txt})`);
-  t.ok(!/\barmed\b|\bon\b/.test(gsUi.off.cls), `그때는 불도 꺼져 있다 (${gsUi.off.cls})`);
-  t.ok(/ARM$/.test(gsUi.arm.txt), `무장하면 ARM 이 붙는다 (${gsUi.arm.txt})`);
-  t.ok(/\barmed\b/.test(gsUi.arm.cls), `무장 색으로 바뀐다 (${gsUi.arm.cls})`);
-  t.ok(/CAPT$/.test(gsUi.cap.txt), `붙잡으면 CAPT 로 바뀐다 (${gsUi.cap.txt})`);
-  t.ok(/\bon\b/.test(gsUi.cap.cls), `붙잡음 색으로 바뀐다 (${gsUi.cap.cls})`);
-  // 강하선 지시(마름모)는 계기 쪽 일이라 무장·붙잡음과 상관없이 떠 있어야 한다 —
-  // ILS 를 맞춰 두면 자동조종을 안 쓰더라도 강하선 대비 위치는 보여야 한다.
+  t.eq(gsUi.btn, false, 'G/S 버튼은 화면에 없다(조작부를 걷어 냈다)');
   t.eq(gsUi.off.dia, true, 'ILS 를 맞춰 두면 강하선 마름모는 늘 떠 있다');
   t.eq(gsUi.cap.dia, true, '붙잡은 뒤에도 그대로다');
 

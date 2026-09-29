@@ -187,6 +187,7 @@ document.addEventListener('pointercancel', stopAllHolds);
 
 Object.entries(btnMap).forEach(([id,[f,d]])=>{
   const el=document.getElementById(id);
+  if(!el) return;   // 조종 조작부는 걷어 냈다 — 남은 것(CRS)만 붙인다
   let timer=null, interval=null, guard=null;
   function start(e){
     e.preventDefault();
@@ -435,7 +436,7 @@ function simStep(ts){
           } else if (navApOn && navSrc === 'FMS' && !obsOn) {
             // Last WP passed in NAV AP mode — revert to HDG hold
             navApOn = false;
-            document.getElementById('nav-ap-btn').classList.remove('on');
+            document.getElementById('nav-ap-btn')?.classList.remove('on');
             bankTarget = 0;
             selHdg = ((Math.round(S.hdg) + 359) % 360) + 1; hdgSelOn = true;
           }
@@ -461,7 +462,7 @@ function simStep(ts){
         if (navSrc === 'FMS' && !obsOn && S.awp < 0) {
           // No active WP — disengage NAV AP
           navApOn = false;
-          document.getElementById('nav-ap-btn').classList.remove('on');
+          document.getElementById('nav-ap-btn')?.classList.remove('on');
           bankTarget = 0;
           selHdg = ((Math.round(S.hdg) + 359) % 360) + 1; hdgSelOn = true;
         } else {
