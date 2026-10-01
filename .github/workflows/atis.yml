@@ -5,21 +5,26 @@
 # 읽는다(CORS 허용) — 브라우저가 공개 CORS 프록시를 거쳐 남의 페이지를
 # 긁을 때처럼 막히거나 느려지지 않는다. 자세한 사정은 scripts/atis_scrape.py.
 #
-# · 10분마다 돈다(GitHub 사정에 따라 몇 분씩 늦을 수 있다). 손으로도 돌릴 수 있다.
+# · 한 번 깨면 그 작업 안에서 10분 간격으로 약 5시간 35분 동안 계속 받는다
+#   (scripts/atis_loop.sh). GitHub 예약은 '10분마다' 로 걸어도 실제로는 몇 시간에
+#   한 번만 깨웠다. 예약은 깨우는 몫만 맡고, 수집 간격은 작업 안에서 지킨다.
+# · 돌고 있는 동안 들어온 다음 예약은 대기열에서 기다렸다가 이어받는다(concurrency).
 # · 'atis-data' 가지는 늘 커밋 하나만 둔다(매번 새로 만들어 덮어쓴다) —
 #   10분마다 쌓이면 저장소 이력이 금세 불어난다. main 과 Pages 배포는 건드리지 않는다.
 name: ATIS 수집
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    # 깨우기만 한다 — 매시 17분(정각 무렵 몰리는 자리를 비킨다). 몇 번 건너뛰어도
+    # 앞 작업이 5시간 넘게 돌고 있으므로 끊기지 않는다.
+    - cron: '17 * * * *'
   workflow_dispatch:
-  # 수집기를 고쳐 올리면 곧바로 한 번 돈다 — 새 예약은 첫 실행까지 한참
-  # (길게는 한 시간 넘게) 걸리는 일이 있어, 그동안 앱에는 '첫 수집 전' 만 뜬다.
+  # 수집기를 고쳐 올리면 곧바로 돈다(예약을 기다리지 않는다)
   push:
     branches: [main]
     paths:
       - scripts/atis_scrape.py
+      - scripts/atis_loop.sh
       - .github/workflows/atis.yml
 
 permissions:
@@ -32,7 +37,8 @@ concurrency:
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    # 작업 한도는 6시간이다. 반복은 335분에 스스로 끝내고, 여유를 둔다.
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,17 +47,7 @@ jobs:
             js/04-map.js
           sparse-checkout-cone-mode: false
 
-      - name: atis.guru 에서 받기
-        run: python3 scripts/atis_scrape.py > atis.json && python3 -c "import json;d=json.load(open('atis.json'));print(d['status'])"
-
-      - name: atis-data 가지에 올리기
+      - name: 10분 간격으로 받아 atis-data 가지에 올리기
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir out && cp atis.json out/ && cd out
-          git init -q -b atis-data
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add atis.json
-          git commit -q -m "ATIS $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -q -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" atis-data
+        run: bash scripts/atis_loop.sh
