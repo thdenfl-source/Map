@@ -21,7 +21,7 @@ on:
   workflow_dispatch:
   # 수집기를 고쳐 올리면 곧바로 돈다(예약을 기다리지 않는다)
   push:
-    branches: [main, claude/gps-navigation-aid-jbg2sl]
+    branches: [main]
     paths:
       - scripts/atis_scrape.py
       - scripts/atis_loop.sh
