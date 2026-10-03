@@ -10,16 +10,67 @@ let _trkRec = false;
 let _trkPts = [];        // {lat, lon, altM, t(ms)}
 let _trkTimer = null;
 const TRK_BAK_KEY = 'trkRecBackup';   // 새로고침/크래시 대비 진행분 백업
+// ── 앱이 다시 열려도 녹화가 끊기지 않게 ──────────────────────────
+// 휴대폰 브라우저는 다른 화면(홈·다른 앱)으로 나간 웹앱을 멈추고, 메모리가
+// 모자라면 아예 내렸다가 돌아올 때 새로 연다. 웹앱은 백그라운드에서 돌 수가
+// 없으므로, 대신 '새로 열려도 아무 일 없던 것처럼' 이어 간다.
+//   · 녹화 중에는 찍을 때마다(2초) 백업한다 — 내려가는 순간을 놓쳐도 잃는 것은 한 점
+//   · 다시 열리면 묻지 않고 그대로 이어서 녹화한다(TRK_RESUME_MS 안쪽이면)
+//   · 녹화분은 지도에 따로 그린다 — 다시 열린 뒤에도 그때까지의 항적이 보인다
+//   · 나가 있던 동안은 위치를 받을 수 없어 빈 구간이 생긴다. 그 구간을 직선으로
+//     잇지 않도록 TRK_GAP_MS 넘게 끊긴 곳에서 선(GPX 의 trkseg)을 나눈다.
+const TRK_RESUME_MS = 3 * 3600 * 1000;   // 마지막 점이 이보다 최근이면 묻지 않고 이어 간다
+const TRK_GAP_MS = 3 * 60 * 1000;        // 이보다 오래 끊기면 다른 구간으로 본다(정지 중 기록은 60초 간격)
+let _trkLine = null;                     // 지도 위 녹화 항적(구간별 여러 줄)
 
-// 진행 중 항적을 localStorage에 백업(간이 배열 포맷으로 용량 절약)
+// 진행 중 항적을 localStorage에 백업(간이 배열 포맷으로 용량 절약).
+// on: 녹화 중이었는지 — 다시 열렸을 때 묻지 않고 이어 갈지 가른다.
 function _trkSaveBackup() {
   try {
-    localStorage.setItem(TRK_BAK_KEY, JSON.stringify(
-      _trkPts.map(p => [ +p.lat.toFixed(6), +p.lon.toFixed(6), Math.round(p.altM), p.t ])
-    ));
+    localStorage.setItem(TRK_BAK_KEY, JSON.stringify({
+      v: 2, on: !!_trkRec,
+      pts: _trkPts.map(p => [ +p.lat.toFixed(6), +p.lon.toFixed(6), Math.round(p.altM), p.t ]),
+    }));
   } catch(e) { _swallow(e); }
 }
 function _trkClearBackup() { try { localStorage.removeItem(TRK_BAK_KEY); } catch(e) { _swallow(e); } }
+function _trkLoadBackup() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(TRK_BAK_KEY) || 'null'); } catch(e) { _swallow(e); }
+  // 옛 형식(점 배열만)은 녹화 중이었는지 모른다 — 물어보는 쪽으로 둔다
+  const arr = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.pts) ? raw.pts : null);
+  if (!arr) return null;
+  const pts = arr.filter(a => Array.isArray(a) && a.length >= 4 && isFinite(a[0]) && isFinite(a[1]) && isFinite(a[3]))
+                 .map(a => ({ lat: a[0], lon: a[1], altM: a[2] || 0, t: a[3] }));
+  return { on: !!(raw && raw.on), pts };
+}
+
+// 시간 간격이 TRK_GAP_MS 를 넘는 곳에서 나눈 구간들
+function _trkSegments(pts = _trkPts) {
+  const segs = [];
+  let cur = [];
+  pts.forEach((p, i) => {
+    if (i > 0 && p.t - pts[i - 1].t > TRK_GAP_MS && cur.length) { segs.push(cur); cur = []; }
+    cur.push(p);
+  });
+  if (cur.length) segs.push(cur);
+  return segs;
+}
+function _trkRedraw() {
+  try {
+    if (typeof leafMap === 'undefined' || typeof L === 'undefined') return;
+    if (!_trkRec || !_trkPts.length) {
+      if (_trkLine) { leafMap.removeLayer(_trkLine); _trkLine = null; }
+      return;
+    }
+    const latlngs = _trkSegments().map(seg => seg.map(p => [p.lat, p.lon]));
+    if (!_trkLine) {
+      _trkLine = L.polyline(latlngs, { color: '#ff9d2e', weight: 2.5, opacity: 0.8, interactive: false })
+        .addTo(leafMap);
+    } else _trkLine.setLatLngs(latlngs);
+  } catch(e) { _swallow(e); }
+}
+
 // REC 버튼은 지도 아래 줄과 PFD 조작부(SUSP 옆)에 하나씩 있다 — 같은 기록을
 // 켜고 끄는 같은 버튼이다. 한쪽만 고치면 기록 중인데도 다른 쪽은 꺼진 얼굴로
 // 남아, 어느 쪽을 믿어야 할지 알 수 없게 된다. 늘 둘을 함께 바꾼다.
@@ -34,6 +85,8 @@ function _trkStartTimer() {
   if (_trkTimer) { clearInterval(_trkTimer); _trkTimer = null; }   // 이중 기동 방지
   _trkSyncBtns(true);
   _trkCapture();
+  _trkSaveBackup();     // 켜자마자 '녹화 중' 을 남긴다 — 첫 점 전에 내려가도 이어 간다
+  _trkRedraw();
   _trkTimer = setInterval(_trkCapture, 2000);   // 2초 간격 기록
 }
 
@@ -43,24 +96,39 @@ function toggleTrackRec() {
   _trkPts = [];
   _trkStartTimer();
 }
+// 지금 위치가 실제로 잰 것(또는 추측항법으로 이어 그리는 중)인가.
+// 다시 열린 직후의 S 는 세션에서 되살린 '마지막 위치' 일 뿐이다 — 그것을 지금
+// 시각으로 찍으면 비행기가 그 자리에 머물렀던 것처럼 가짜 점이 생긴다.
+// (시뮬로 날고 있을 때는 S 가 곧 위치다)
+const TRK_FIX_FRESH_MS = 30 * 1000;
+function _trkPosLive() {
+  if (S.running && !gpsMode) return true;
+  if (typeof drActive !== 'undefined' && drActive) return true;
+  return !!(gpsMode && _gpsPrev && Date.now() - _gpsPrev.ms < TRK_FIX_FRESH_MS);
+}
 function _trkCapture() {
   if (typeof S === 'undefined' || S.lat == null) return;
+  if (!_trkPosLive()) return;
   const last = _trkPts[_trkPts.length - 1];
   // 정지 상태 중복 기록 방지(약 5m 미만 이동 시 60초에 1점만)
   if (last && distance(last.lat, last.lon, S.lat, S.lon) < 0.0027 && Date.now() - last.t < 60000) return;
   _trkPts.push({ lat: S.lat, lon: S.lon, altM: (S.alt || 0) * 0.3048, t: Date.now() });
-  // 10초(5점)마다 백업 → 새로고침·크래시에도 진행분 보존
-  if (_trkPts.length % 5 === 0) _trkSaveBackup();
+  // 찍을 때마다 백업 — 화면을 떠나는 순간 브라우저가 언제 멈출지 알 수 없다
+  _trkSaveBackup();
+  _trkRedraw();
 }
 // 화면 이탈/새로고침 직전 마지막 상태 백업
 window.addEventListener('pagehide', () => { if (_trkRec) _trkSaveBackup(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && _trkRec) _trkSaveBackup();
+  // 돌아오면 곧바로 한 점 — 나가 있던 동안 멈춰 있던 타이머를 기다리지 않는다
+  if (document.visibilityState === 'visible' && _trkRec) { try { _trkCapture(); } catch(e) { _swallow(e); } }
 });
 async function _trkStop() {
   _trkRec = false;
   if (_trkTimer) { clearInterval(_trkTimer); _trkTimer = null; }
   _trkSyncBtns(false);
+  _trkRedraw();        // 녹화를 끝내면 지도 위 녹화선도 걷는다
   _trkClearBackup();   // 정상 종료 → 백업 불필요
   if (_trkPts.length < 2) { uiAlert('기록된 항적이 없습니다 (2점 미만).'); return; }
   // 종전에는 로그북(IndexedDB)에 담아 두고 FDR 패널에서 다시 꺼낼 수
@@ -78,10 +146,11 @@ async function _trkStop() {
   }
 }
 function _trkToGpx(trkPts = _trkPts) {
-  const pts = trkPts.map(p =>
+  // 끊긴 곳(앱이 화면 밖에 있던 동안)은 구간을 나눈다 — 다른 앱에서 직선으로 잇지 않게
+  const segs = _trkSegments(trkPts).map(seg => '<trkseg>\n' + seg.map(p =>
     `<trkpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}"><ele>${p.altM.toFixed(1)}</ele><time>${new Date(p.t).toISOString()}</time></trkpt>`
-  ).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="FlightSimulator" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>Flight Track</name><trkseg>\n${pts}\n</trkseg></trk>\n</gpx>`;
+  ).join('\n') + '\n</trkseg>').join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="FlightSimulator" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>Flight Track</name>\n${segs}\n</trk>\n</gpx>`;
 }
 function _trkToKml(trkPts = _trkPts) {
   // gx:Track(시간 포함) — 다른 앱에서 그대로 리플레이 가능
@@ -89,27 +158,46 @@ function _trkToKml(trkPts = _trkPts) {
   const coords = trkPts.map(p => `<gx:coord>${p.lon.toFixed(6)} ${p.lat.toFixed(6)} ${p.altM.toFixed(1)}</gx:coord>`).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2">\n<Document><Placemark><name>Flight Track</name>\n<gx:Track>\n${whens}\n${coords}\n</gx:Track>\n</Placemark></Document>\n</kml>`;
 }
-// 시작 시 미종료 백업이 있으면 복구 제안(새로고침·크래시로 끊긴 녹화)
-setTimeout(async () => {
-  let bak = null;
-  try { bak = JSON.parse(localStorage.getItem(TRK_BAK_KEY) || 'null'); } catch(e) { _swallow(e); }
-  if (!Array.isArray(bak) || bak.length < 2) return;
-  const pts = bak.map(a => ({ lat: a[0], lon: a[1], altM: a[2], t: a[3] }));
-  const from = new Date(pts[0].t), p2 = n => String(n).padStart(2, '0');
-  const resume = await uiConfirm(
-    `이전 세션에서 녹화 중이던 항적 ${pts.length}점이 복구되었습니다.\n` +
-    `(시작: ${p2(from.getHours())}:${p2(from.getMinutes())})`,
-    { okText: '이어서 녹화', cancelText: '저장하고 종료' }
-  );
-  _trkPts = pts;
-  if (resume) {
+
+// 시작 시 녹화 백업이 있으면 —
+//   · 녹화 중에 내려간 것이고 최근이면: 묻지 않고 그대로 이어서 녹화한다
+//     (다른 화면에 갔다 왔을 뿐인데 녹화가 꺼져 있으면 그것이 곧 '항적이 사라진' 것이다)
+//   · 오래됐거나 녹화 중이었는지 모르면: 종전처럼 이어 갈지 저장할지 묻는다
+function _trkRestoreOnStart() {
+  const bak = _trkLoadBackup();
+  if (!bak || !bak.pts.length) return;
+  const pts = bak.pts;
+  const lastT = pts[pts.length - 1].t;
+  if (bak.on && Date.now() - lastT < TRK_RESUME_MS) {
+    _trkPts = pts;
     _trkRec = true;
     _trkStartTimer();
-  } else {
-    _trkRec = false;
-    _trkStop();   // 저장 다이얼로그(GPX/KML) → 백업 정리
+    const gapMin = Math.round((Date.now() - lastT) / 60000);
+    try {
+      uiToast(`항적 기록을 이어갑니다 — ${pts.length}점` +
+              (gapMin >= 1 ? ` (화면 밖 ${gapMin}분은 비어 있습니다)` : ''), null, 4000);
+    } catch(e) { _swallow(e); }
+    return;
   }
-}, 1500);
+  if (pts.length < 2) { _trkClearBackup(); return; }
+  setTimeout(async () => {
+    const from = new Date(pts[0].t), p2 = n => String(n).padStart(2, '0');
+    const resume = await uiConfirm(
+      `이전 세션에서 녹화 중이던 항적 ${pts.length}점이 복구되었습니다.\n` +
+      `(시작: ${p2(from.getHours())}:${p2(from.getMinutes())})`,
+      { okText: '이어서 녹화', cancelText: '저장하고 종료' }
+    );
+    _trkPts = pts;
+    if (resume) {
+      _trkRec = true;
+      _trkStartTimer();
+    } else {
+      _trkRec = false;
+      _trkStop();   // 저장 다이얼로그(GPX/KML) → 백업 정리
+    }
+  }, 1500);
+}
+_trkRestoreOnStart();
 
 function _trkDownload(name, text, mime) {
   const blob = new Blob([text], { type: mime });

@@ -23,6 +23,8 @@ function saveSession() {
              gspdActLat, gspdActFwd, gspdRefLat, gspdRefFwd, gspdCoasting },
       nav: { obsOn, navSrc, navRadios, vorObsCrs },
       view: { mapHdgUp, followMode, screen: _soloCurrent },
+      // 지도 위 지나온 자리(초록 선) — 다른 화면에 갔다 와서 앱이 새로 열려도 남게
+      trail: (S.trail || []).slice(-600).map(t => [+(+t[0]).toFixed(5), +(+t[1]).toFixed(5)]),
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(snap));
   } catch(e) { _swallow(e); }
@@ -39,6 +41,10 @@ function restoreSession() {
       crs:s.crs, vs:s.vs, running:!!s.running, lastT:null,
       wps:Array.isArray(s.wps)?s.wps:[], awp:s.awp??-1, fwp:s.fwp??-1,
     });
+    if (Array.isArray(snap.trail)) {
+      S.trail = snap.trail.filter(t => Array.isArray(t) && isFinite(t[0]) && isFinite(t[1]));
+      try { updateTrail(); } catch(e) { _swallow(e); }
+    }
     const f = snap.fcp || {};
     if (f.selSpd!=null) selSpd=f.selSpd; if (f.selAlt!=null) selAlt=f.selAlt;
     if (f.selVS!=null) selVS=f.selVS; if (f.selHdg!=null) selHdg=f.selHdg; if (f.hdgSelOn!=null) hdgSelOn=f.hdgSelOn;

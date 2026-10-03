@@ -39,8 +39,9 @@ import * as hdghybrid from './cases/hdghybrid.mjs';
 import * as topbox from './cases/topbox.mjs';
 import * as cdiscale from './cases/cdiscale.mjs';
 import * as atis from './cases/atis.mjs';
+import * as trkrec from './cases/trkrec.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale, atis];
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale, atis, trkrec];
 const filter = process.argv.slice(2);
 
 function makeT() {
