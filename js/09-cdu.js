@@ -259,8 +259,79 @@ async function prefetchTiles() {
 // ⟳ 새로고침: 세션을 지우고 초기 상태로 리로드(백그라운드 복원 종료)
 function hardReload() {
   try { localStorage.removeItem(SESSION_KEY); } catch(e) { _swallow(e); }
+  _exitConfirmed = true;   // ⟳ 는 일부러 누른 것이다 — 아래 종료 확인을 다시 띄우지 않는다
   location.reload();
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  종료 확인 — 비행 중 손이 스쳐 앱이 바로 닫히지 않게
+// ═══════════════════════════════════════════════════════════════
+// 닫는 길마다 막을 수 있는 정도가 다르다.
+//   · 탭 닫기·새로고침·주소 이동 — beforeunload. 문구는 브라우저가 정한다
+//     (앱이 바꿀 수 없다). 페이지를 한 번이라도 누른 뒤에만 뜬다(브라우저 규칙).
+//   · 안드로이드 뒤로 버튼 — 기록(history)에 '지킴이' 한 칸을 얹어 두고, 뒤로가
+//     그 칸을 걷어 내면(popstate) 앱의 확인 창을 띄운다. 크롬은 사용자가 누르지
+//     않은 채 얹은 칸을 뒤로 버튼이 건너뛰게 하므로, 지킴이는 화면을 누를 때 얹는다.
+//   · 최근 앱 목록에서 밀어 닫기, iOS 의 스와이프 — 웹앱이 알 길이 없어 막을 수
+//     없다. 그때도 비행 상태·녹화 항적은 저장돼 있어 다시 열면 이어진다.
+let _exitConfirmed = false;   // 확인을 거친 종료(또는 ⟳)는 다시 묻지 않는다
+let _exitGuardArmed = false;  // 기록 맨 위에 지킴이 칸이 있는가
+let _exitAsking = false;      // 종료 확인 창이 떠 있는가
+let _exitLeaveAt = 0;         // '종료' 를 고른 시각 — 잠시 지킴이를 다시 얹지 않는다
+const EXIT_LEAVE_MS = 4000;
+// 기록 속 이 앱의 칸 깊이(맨 처음 연 칸 = 0). 앱이 새로 열려도(휴대폰이 내렸다가
+// 되살리거나 새로고침) 앞 생애의 지킴이 칸은 기록에 그대로 남는다. 종료할 때는
+// 그 칸들까지 한꺼번에 건너뛰어야 앱을 떠난다 — 한 칸만 물러나면 같은 앱이 다시 열린다.
+const _appDepth = () => (history.state && history.state.appDepth) || 0;
+
+window.addEventListener('beforeunload', e => {
+  if (_exitConfirmed) return;
+  // 떠나기 전 마지막 상태를 남긴다(확인 창에서 '나가기' 를 고를 수도 있다)
+  try { saveSession(); } catch(err) { _swallow(err); }
+  try { if (typeof _trkRec !== 'undefined' && _trkRec) _trkSaveBackup(); } catch(err) { _swallow(err); }
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+function _exitArm() {
+  if (_exitGuardArmed || _exitAsking || _exitConfirmed) return;
+  if (Date.now() - _exitLeaveAt < EXIT_LEAVE_MS) return;
+  try {
+    history.pushState({ appExitGuard: 1, appDepth: _appDepth() + 1 }, '');
+    _exitGuardArmed = true;
+  } catch(e) { _swallow(e); }
+}
+// 누를 때 얹는다 — 사용자 동작 없이 얹은 칸은 크롬이 뒤로 버튼에서 건너뛴다
+window.addEventListener('pointerdown', _exitArm, true);
+window.addEventListener('keydown', _exitArm, true);
+
+window.addEventListener('popstate', async () => {
+  if (!_exitGuardArmed || _exitConfirmed) return;   // 지킴이가 없을 때의 이동은 건드리지 않는다
+  _exitGuardArmed = false;                           // 뒤로가 지킴이 칸을 걷어 냈다
+  if (_exitAsking) return;
+  _exitAsking = true;
+  let leave = false;
+  try {
+    leave = await uiConfirm(
+      '앱을 종료할까요?\n\n비행 상태와 녹화 중인 항적은 저장돼 있어 다시 열면 이어집니다.',
+      { okText: '종료', cancelText: '계속 사용' });
+  } catch(e) { _swallow(e); }
+  _exitAsking = false;
+  if (!leave) { _exitArm(); return; }               // 계속 쓴다 — 지킴이를 다시 얹는다
+  _exitConfirmed = true;
+  _exitLeaveAt = Date.now();
+  try { saveSession(); } catch(e) { _swallow(e); }
+  try { if (typeof _trkRec !== 'undefined' && _trkRec) _trkSaveBackup(); } catch(e) { _swallow(e); }
+  // 이 앱의 칸을 모두 건너 앞 페이지로 나간다. 홈 화면에서 연 앱(앞 페이지 없음)은
+  // 스크립트로 닫을 수 없다 — 그때는 뒤로를 한 번 더 누르면 닫힌다.
+  try { history.go(-(_appDepth() + 1)); } catch(e) { _swallow(e); }
+  setTimeout(() => {
+    if (document.visibilityState !== 'visible') return;
+    try { uiToast('뒤로 버튼을 한 번 더 누르면 종료됩니다', null, EXIT_LEAVE_MS); } catch(e) { _swallow(e); }
+    // 그사이 마음을 바꿔 계속 쓰면 다시 지킨다
+    setTimeout(() => { _exitConfirmed = false; }, EXIT_LEAVE_MS);
+  }, 400);
+});
 
 // 주기적 + 이탈 시점 저장
 setInterval(saveSession, 4000);
