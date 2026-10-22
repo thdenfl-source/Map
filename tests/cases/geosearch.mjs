@@ -8,6 +8,10 @@ export const name = '주소 검색';
 const R = (name, display, lat, lon) => ({ name, display_name: display, lat: String(lat), lon: String(lon) });
 
 export async function run(page, t) {
+  // 여기서는 OpenStreetMap 쪽을 본다 — VWorld 정밀 검색(기본 키로 켜져 있다)은 끈다.
+  // VWorld 쪽은 cases/geoaddr.mjs 에서 본다.
+  await page.evaluate(() => { localStorage.setItem('vworldKey', 'off'); _geoCache.clear(); });
+
   // ── ＋ 메뉴에 들어 있고, 누르면 패널이 열린다 ──
   const open = await page.evaluate(() => {
     const menu = document.getElementById('pp-menu');
