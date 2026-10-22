@@ -1313,14 +1313,30 @@ function _parseKml(text) {
 }
 
 // ══════════════════════════════════════════════════════════════
-//  주소 · 지명 검색 (지도 ＋ 메뉴)
-//  찾은 자리를 그대로 웨이포인트로 넣는다.
-//  자료는 OpenStreetMap Nominatim — 사용자가 검색을 누를 때만 한 번 부른다
+//  주소 · 지명 검색 (지도 ＋ 메뉴 · PLAN 의 주소 검색)
+//  찾은 자리를 그대로 웨이포인트로 넣는다. 사용자가 검색을 누를 때만 부른다
 //  (자동 완성처럼 글자마다 부르지 않는다). 같은 말은 다시 묻지 않게 담아 둔다.
+//
+//  찾는 곳은 둘이다.
+//   · VWorld(국토교통부 공간정보 오픈플랫폼) — 지번(산 번지 포함)·도로명 주소를
+//     필지·건물 좌표로 바꿔 준다. 국내 주소는 이것이 정확하다. 인증키가 있어야
+//     하는데, 앱에 키를 박아 두지 않는다 — 사용자가 한 번 넣으면 이 기기에만 둔다.
+//   · OpenStreetMap(Nominatim) — 키 없이 쓴다. 지명·건물명은 잘 찾지만 지번(특히
+//     '산 ○○-○○')은 거의 없다. 번지를 못 찾으면 그 리·동 중심을 '대략' 이라고
+//     밝혀 준다(없는 정확도를 있는 척하지 않는다).
+//  우편번호(5자리)는 VWorld 로 그 우편번호의 주소들을 모아 가운데를 잡고, 키가
+//  없거나 못 찾으면 Nominatim 의 우편번호 검색으로 찾는다.
 //  ※ 항법용 자료가 아니다. 안내 문구를 패널에 함께 적어 둔다.
 // ══════════════════════════════════════════════════════════════
 const GEO_URL = 'https://nominatim.openstreetmap.org/search';
+const VW_BASE = 'https://api.vworld.kr/req/';
+const VW_KEY_LS = 'vworldKey';
+const GEO_TIMEOUT_MS = 7000;
 const _geoCache = new Map();
+
+function vworldKey() {
+  try { return String(localStorage.getItem(VW_KEY_LS) || '').trim(); } catch (e) { return ''; }
+}
 
 // "37.5665, 126.978" 처럼 좌표를 그대로 넣은 경우 — 검색 없이 그 자리로 간다
 function geoParseLatLon(q) {
@@ -1332,25 +1348,245 @@ function geoParseLatLon(q) {
   return { name: `${lat.toFixed(4)}, ${lon.toFixed(4)}`, detail: '좌표 입력', lat, lon };
 }
 
-// 검색 한 번. 결과는 [{name, detail, lat, lon}] 로 다듬어 돌려준다.
-async function geoSearch(q) {
-  const key = String(q || '').trim();
-  if (!key) return [];
-  const direct = geoParseLatLon(key);
-  if (direct) return [direct];
-  if (_geoCache.has(key)) return _geoCache.get(key);
-  const url = `${GEO_URL}?format=jsonv2&limit=8&accept-language=ko&q=${encodeURIComponent(key)}`;
-  const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+// 무엇을 찾는 말인가 — 우편번호 / 지번(산 포함) / 도로명 / 그 밖의 지명
+//   '양평군 용문면 덕촌리 산 12-3' · '덕촌리산12-3번지' · '역삼동 123-4' ·
+//   '테헤란로 152' · '06236' · '우편번호 06236'
+function geoParseQuery(q) {
+  const s = String(q || '').trim().replace(/\s+/g, ' ');
+  let m = s.match(/^(?:우편번호\s*:?\s*)?(\d{5})$/);
+  if (m) return { kind: 'zip', zip: m[1], text: s };
+  const lot = (main, sub) => main + (sub ? '-' + sub : '');
+  // 산 번지 — 앞말이 리·동 등으로 끝나거나, 띄어 쓴 '산' 이어야 한다(부산·남산 같은 지명과 가르려고)
+  m = s.match(/^(.*?[동리가읍면])\s*산\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?\s*(?:번지)?$/) ||
+      s.match(/^(.*\S)\s+산\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?\s*(?:번지)?$/);
+  if (m) return { kind: 'parcel', mountain: true, base: m[1].trim(),
+                  lot: '산' + lot(m[2], m[3]), text: `${m[1].trim()} 산${lot(m[2], m[3])}` };
+  m = s.match(/^(.*?[동리가읍면])\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?\s*(?:번지)?$/);
+  if (m) return { kind: 'parcel', mountain: false, base: m[1].trim(),
+                  lot: lot(m[2], m[3]), text: `${m[1].trim()} ${lot(m[2], m[3])}` };
+  m = s.match(/^(.*?(?:로|길))\s*(\d{1,5})(?:\s*-\s*(\d{1,5}))?$/);
+  if (m) return { kind: 'road', base: m[1].trim(), lot: lot(m[2], m[3]),
+                  text: `${m[1].trim()} ${lot(m[2], m[3])}` };
+  return { kind: 'text', text: s };
+}
+
+// ── VWorld 부르기 ────────────────────────────────────────────────
+// 브라우저에서 바로 부를 수 있으면(fetch) 그렇게, 막히면(CORS) JSONP 로 받는다.
+// 한 번 통한 길을 기억해 두고 다음부터는 그 길로 간다.
+let _vwMode = 'fetch';
+let _vwSeq = 0;
+function _vwJsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = '__vwcb' + (++_vwSeq) + '_' + Date.now();
+    const el = document.createElement('script');
+    const done = () => { clearTimeout(to); try { delete window[cb]; } catch (e) { window[cb] = undefined; } el.remove(); };
+    const to = setTimeout(() => { done(); reject(new Error('timeout')); }, GEO_TIMEOUT_MS);
+    window[cb] = data => { done(); resolve(data); };
+    el.onerror = () => { done(); reject(new Error('VWorld 에 닿지 못했습니다')); };
+    el.src = url + '&callback=' + cb;
+    document.head.appendChild(el);
+  });
+}
+async function _vwFetch(url) {
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), GEO_TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return await r.json();
+  } finally { clearTimeout(to); }
+}
+async function _vwCall(service, params) {
+  const key = vworldKey();
+  if (!key) throw new Error('no key');
+  const qs = new URLSearchParams(Object.assign({
+    service, version: '2.0', format: 'json', errorformat: 'json', crs: 'EPSG:4326', key,
+  }, params));
+  const url = VW_BASE + (service === 'search' ? 'search' : 'address') + '?' + qs.toString();
+  let data;
+  if (_vwMode === 'fetch') {
+    try { data = await _vwFetch(url); }
+    catch (e) {
+      // CORS 로 막힌 것(TypeError)이면 JSONP 로 다시 — 그 길이 통하면 그쪽을 기억한다
+      if (!(e instanceof TypeError)) throw e;
+      data = await _vwJsonp(url);
+      _vwMode = 'jsonp';
+    }
+  } else data = await _vwJsonp(url);
+  const res = data && data.response;
+  const st = res && res.status;
+  if (st === 'OK') return res;
+  if (st === 'NOT_FOUND') return null;
+  const code = (res && res.error && (res.error.code || res.error.text)) || st || '응답 없음';
+  const err = new Error('VWorld ' + code);
+  err.vworld = String(code);
+  throw err;
+}
+const _vwNum = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : NaN; };
+
+// 주소 한 줄 → 좌표 하나(필지·건물 자리). type: 'PARCEL' | 'ROAD'
+async function _vwGeocode(addr, type) {
+  const res = await _vwCall('address', { request: 'getcoord', type, address: addr, refine: 'true', simple: 'false' });
+  const pt = res && res.result && res.result.point;
+  if (!pt) return null;
+  const lat = _vwNum(pt.y), lon = _vwNum(pt.x);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const refined = (res.refined && res.refined.text) || addr;
+  return { name: refined, detail: (type === 'PARCEL' ? '지번' : '도로명') + ' 주소 · VWorld', lat, lon, src: 'vworld' };
+}
+// 검색 — 후보 여럿. type: 'ADDRESS'(category: PARCEL|ROAD) | 'PLACE'
+async function _vwSearch(query, type, category) {
+  const p = { request: 'search', query, type, size: '10', page: '1' };
+  if (category) p.category = category;
+  const res = await _vwCall('search', p);
+  const items = (res && res.result && Array.isArray(res.result.items)) ? res.result.items : [];
+  return items.map(it => {
+    const ad = it.address || {};
+    const lat = _vwNum(it.point && it.point.y), lon = _vwNum(it.point && it.point.x);
+    const main = type === 'PLACE' ? (it.title || ad.road || ad.parcel)
+               : (category === 'PARCEL' ? (ad.parcel || ad.road) : (ad.road || ad.parcel));
+    const other = type === 'PLACE' ? (ad.road || ad.parcel || '')
+                : (category === 'PARCEL' ? (ad.road || '') : (ad.parcel || ''));
+    return { name: String(main || '').trim(), lat, lon, src: 'vworld', zip: String(ad.zipcode || ''),
+             detail: [other, ad.zipcode ? '우편 ' + ad.zipcode : '', 'VWorld'].filter(Boolean).join(' · ') };
+  }).filter(x => x.name && Number.isFinite(x.lat) && Number.isFinite(x.lon));
+}
+
+// ── Nominatim(OpenStreetMap) ─────────────────────────────────────
+async function _nomFetch(params) {
+  const qs = new URLSearchParams(Object.assign({ format: 'jsonv2', limit: '8', 'accept-language': 'ko' }, params));
+  const res = await fetch(`${GEO_URL}?${qs.toString()}`, { headers: { 'Accept': 'application/json' } });
   if (!res.ok) throw new Error('HTTP ' + res.status);
   const raw = await res.json();
-  const list = (Array.isArray(raw) ? raw : []).map(r => {
+  return (Array.isArray(raw) ? raw : []).map(r => {
     const full = String(r.display_name || '');
     return { name: (r.name && r.name.trim()) || full.split(',')[0] || full,
-             detail: full, lat: parseFloat(r.lat), lon: parseFloat(r.lon) };
+             detail: full, lat: parseFloat(r.lat), lon: parseFloat(r.lon), src: 'osm' };
   }).filter(x => Number.isFinite(x.lat) && Number.isFinite(x.lon));
-  _geoCache.set(key, list);
-  return list;
 }
+const _hasHangul = s => /[가-힣]/.test(s);
+function _nomText(q) {
+  const p = { q };
+  if (_hasHangul(q)) p.countrycodes = 'kr';   // 한글 주소는 국내에서만 찾는다(엉뚱한 나라로 새지 않게)
+  return _nomFetch(p);
+}
+
+// 같은 자리(약 30m 안)가 두 번 나오면 하나만 남긴다 — 앞의 것(더 정확한 곳)을 남긴다
+function _geoDedupe(list) {
+  const out = [];
+  list.forEach(r => {
+    if (!out.some(o => Math.abs(o.lat - r.lat) < 0.0003 && Math.abs(o.lon - r.lon) < 0.0003 && o.name === r.name)) out.push(r);
+  });
+  return out.slice(0, 10);
+}
+
+// 검색 한 번. 결과는 [{name, detail, lat, lon, src, approx?}] 로 다듬어 돌려준다.
+// 배열에 notice(안내 한 줄)를 붙여 줄 때가 있다 — 키 오류, 대략 위치 등.
+async function geoSearch(q) {
+  const raw = String(q || '').trim();
+  if (!raw) return [];
+  const direct = geoParseLatLon(raw);
+  if (direct) return [direct];
+  const key = vworldKey();
+  const ck = (key ? 'vw:' : 'osm:') + raw;
+  if (_geoCache.has(ck)) return _geoCache.get(ck);
+
+  const pq = geoParseQuery(raw);
+  let out = [];
+  let notice = '';
+  let vwErr = null;
+
+  // ① VWorld — 국내 주소를 필지·건물 자리로
+  if (key) {
+    try {
+      if (pq.kind === 'zip') {
+        // 그 우편번호를 쓰는 주소들의 가운데. 우편번호가 맞는 것만 모은다
+        const items = (await _vwSearch(pq.zip, 'ADDRESS', 'ROAD')).filter(x => x.zip === pq.zip);
+        if (items.length) {
+          const lat = items.reduce((a, x) => a + x.lat, 0) / items.length;
+          const lon = items.reduce((a, x) => a + x.lon, 0) / items.length;
+          out.push({ name: `우편번호 ${pq.zip}`, lat, lon, src: 'vworld',
+                     detail: `이 우편번호 주소 ${items.length}곳의 가운데 · 예: ${items[0].name} · VWorld` });
+          out.push(...items.slice(0, 5));
+        }
+      } else if (pq.kind === 'parcel' || pq.kind === 'road') {
+        const type = pq.kind === 'parcel' ? 'PARCEL' : 'ROAD';
+        const one = await _vwGeocode(pq.text, type);
+        if (one) out.push(one);
+        out.push(...await _vwSearch(pq.text, 'ADDRESS', type));
+      } else {
+        out.push(...await _vwSearch(pq.text, 'PLACE'));
+        if (out.length < 3) {
+          out.push(...await _vwSearch(pq.text, 'ADDRESS', 'ROAD').catch(() => []));
+        }
+      }
+    } catch (e) {
+      vwErr = e;
+      if (e && e.vworld) notice = `VWorld 정밀 검색 오류(${e.vworld}) — 인증키·등록한 서비스 주소를 확인하십시오. OpenStreetMap 으로 찾았습니다.`;
+      else notice = 'VWorld 에 닿지 못해 OpenStreetMap 으로 찾았습니다.';
+    }
+  }
+
+  // ② OpenStreetMap — 키가 없거나 VWorld 가 못 찾았을 때, 그리고 지명 검색은 함께
+  if (!out.length || pq.kind === 'text') {
+    let osm = [];
+    let osmErr = null;
+    try {
+      if (pq.kind === 'zip') osm = await _nomFetch({ postalcode: pq.zip, countrycodes: 'kr' });
+      else osm = await _nomText(pq.kind === 'text' ? raw : pq.text);
+    } catch (e) { osmErr = e; }
+    // 번지까지는 못 찾았으면 그 리·동(도로) 중심 — 대략임을 밝힌다
+    if (!osm.length && !osmErr && (pq.kind === 'parcel' || pq.kind === 'road')) {
+      try {
+        osm = (await _nomText(pq.base)).map(r => Object.assign(r, {
+          approx: true,
+          detail: `대략 — ${pq.lot} 번지는 찾지 못해 ${pq.base} 중심입니다 · ${r.detail}` }));
+      } catch (e) { osmErr = e; }
+      if (osm.length && !notice) {
+        notice = key ? `${pq.lot} 번지 좌표를 찾지 못해 ${pq.base} 중심으로 찾았습니다.`
+                     : `번지(${pq.lot})까지 정확히 찍으려면 VWorld 정밀 검색 키를 넣으십시오. 지금은 ${pq.base} 중심입니다.`;
+      }
+    }
+    if (osmErr && !out.length) throw osmErr;
+    out.push(...osm);
+  }
+
+  out = _geoDedupe(out);
+  if (!key && !notice && (pq.kind === 'parcel' || pq.kind === 'zip') && out.length)
+    notice = '지번·우편번호는 VWorld 정밀 검색 키를 넣으면 더 정확합니다.';
+  if (notice) out.notice = notice;
+  if (!vwErr) _geoCache.set(ck, out);   // 오류 난 결과는 담아 두지 않는다(다시 해 볼 수 있게)
+  return out;
+}
+
+// 정밀 검색(VWorld) 인증키 — 이 기기에만 둔다
+async function setVworldKey() {
+  const cur = vworldKey();
+  const v = await uiPrompt(
+    'VWorld 정밀 주소 검색 인증키\n\n' +
+    '지번(산 ○○-○○)·도로명·우편번호를 정확한 자리에 찍으려면 국토교통부 ' +
+    '공간정보 오픈플랫폼(vworld.kr)의 무료 인증키가 필요합니다.\n' +
+    '· vworld.kr 회원가입 → 오픈API → 인증키 발급\n' +
+    '· 서비스 URL 에 이 앱 주소(' + location.origin + ')를 등록\n\n' +
+    '키는 이 기기에만 저장됩니다. 비우면 끕니다.', cur);
+  if (v === null) return;
+  try {
+    if (String(v).trim()) localStorage.setItem(VW_KEY_LS, String(v).trim());
+    else localStorage.removeItem(VW_KEY_LS);
+  } catch (e) { _swallow(e); }
+  _geoCache.clear();
+  _vwMode = 'fetch';
+  _geoKeyStatus();
+  try { uiToast(String(v).trim() ? 'VWorld 정밀 검색을 켰습니다' : 'VWorld 정밀 검색을 껐습니다'); } catch (e) { _swallow(e); }
+}
+function _geoKeyStatus() {
+  const on = !!vworldKey();
+  document.querySelectorAll('.geo-key-btn').forEach(b => {
+    b.classList.toggle('on', on);
+    b.textContent = on ? '정밀 검색(VWorld) 켜짐 · 키 바꾸기' : '정밀 검색(VWorld) 키 넣기';
+  });
+}
+setTimeout(_geoKeyStatus, 0);
 
 let _geoResults = [];
 function openGeoSearch() {
@@ -1370,14 +1606,24 @@ function _geoMsg(txt, col) {
   const el = document.getElementById('geo-list');
   if (el) el.innerHTML = `<div id="geo-msg" style="color:${col || '#8a97a5'};">${txt}</div>`;
 }
+// 결과 한 줄 — 지도 ＋ 검색과 PLAN 의 주소 검색이 함께 쓴다
+function geoItemHtml(r, act, i) {
+  return `<div class="geo-item${r.approx ? ' approx' : ''}" data-act="${act}" data-arg='[${i}]'>` +
+    `<b>${_geoEsc(r.name)}${r.approx ? ' <em>대략</em>' : ''}</b><span>${_geoEsc(r.detail)}</span>` +
+    `<span style="color:#4a7a8a;">${r.lat.toFixed(5)}, ${r.lon.toFixed(5)}</span></div>`;
+}
+function geoNoticeHtml(list) {
+  return list && list.notice ? `<div class="geo-notice">${_geoEsc(list.notice)}</div>` : '';
+}
 function _geoRender() {
   const el = document.getElementById('geo-list');
   if (!el) return;
-  if (!_geoResults.length) { _geoMsg('찾은 곳이 없습니다. 다른 말로 찾아보십시오.'); return; }
-  el.innerHTML = _geoResults.map((r, i) =>
-    `<div class="geo-item" data-act="geoPick" data-arg='[${i}]'>` +
-    `<b>${_geoEsc(r.name)}</b><span>${_geoEsc(r.detail)}</span>` +
-    `<span style="color:#4a7a8a;">${r.lat.toFixed(4)}, ${r.lon.toFixed(4)}</span></div>`).join('');
+  if (!_geoResults.length) {
+    _geoMsg('찾은 곳이 없습니다. 다른 말로 찾아보십시오.' +
+      (vworldKey() ? '' : ' 지번·우편번호는 아래 정밀 검색 키를 넣으면 더 잘 찾습니다.'));
+    return;
+  }
+  el.innerHTML = geoNoticeHtml(_geoResults) + _geoResults.map((r, i) => geoItemHtml(r, 'geoPick', i)).join('');
 }
 function _geoEsc(s) {
   return String(s == null ? '' : s)
