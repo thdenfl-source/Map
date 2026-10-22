@@ -23,6 +23,16 @@ export async function run(filePage, t) {
 }
 
 async function runOn(page, t) {
+  // 알림(토스트)은 몇 초 뒤 사라진다 — 새로고침 뒤 기다리는 동안 지나갈 수 있으므로
+  // 뜨는 순간 글을 적어 둔다(페이지가 새로 열릴 때마다 다시 건다)
+  await page.addInitScript(() => {
+    window.__toasts = [];
+    new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => {
+      if (n.nodeType !== 1) return;
+      const list = n.classList && n.classList.contains('ui-toast') ? [n] : [...(n.querySelectorAll ? n.querySelectorAll('.ui-toast') : [])];
+      list.forEach(e => window.__toasts.push(e.textContent));
+    }))).observe(document, { childList: true, subtree: true });
+  });
   await page.evaluate(() => { setSolo('map'); localStorage.removeItem('trkRecBackup'); });
 
   // ── ① 녹화 중에는 찍을 때마다 백업하고, 지도에도 그린다 ──────────────
@@ -51,7 +61,7 @@ async function runOn(page, t) {
     rec: _trkRec, n: _trkPts.length,
     btns: [...document.querySelectorAll('.rec-btn')].map(b => b.classList.contains('active')),
     dlg: !!document.querySelector('.ui-dlg-back'),
-    toast: [...document.querySelectorAll('.ui-toast')].map(e => e.textContent).join(' '),
+    toast: (window.__toasts || []).join(' '),
     line: _trkLine ? _trkLine.getLatLngs().flat().length : 0,
     trail: S.trail.length,
   }));
