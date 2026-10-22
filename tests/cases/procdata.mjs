@@ -200,4 +200,15 @@ export async function run(page, t) {
   });
   t.eq(added.join('→'), 'KAMIT→JB751→JB752→JB753→JB754→AYEON',
     `STAR 을 고르면 비행계획에 순서대로 들어간다 (${added.join('→')})`);
+
+  // ── 사천 VOR(SAC 115.1) — 공표 좌표 35°05.867'N 128°04.580'E ──
+  // 종전에는 공항 기준점 근사값(ARP)이라 약 1.1km 어긋나 있었다.
+  const sac = await page.evaluate(() => {
+    const v = ENR_VORS.find(x => x.id === 'SAC');
+    const lat = 35 + 5.867 / 60, lon = 128 + 4.580 / 60;
+    return { freq: v.freq, src: v.src, err: distance(lat, lon, v.lat, v.lon) * 1852 };
+  });
+  t.ok(sac.freq === '115.1' && sac.err < 5,
+    `사천 VOR(SAC 115.1)이 공표 좌표에 있다 (오차 ${sac.err.toFixed(1)}m)`);
+  t.eq(sac.src, 'AIP', '근사값(ARP)이 아니라 공표 좌표로 표시한다');
 }

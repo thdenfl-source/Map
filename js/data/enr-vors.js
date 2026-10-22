@@ -33,7 +33,7 @@ const ENR_VORS = [
   { apt:1, pub:1, src:'AIP', id: 'USN', name: '울산 VOR/DME', freq: '111.4', lat: 35.59861, lon: 129.35333 },
   { apt:1, pub:1, src:'AIP', id: 'NPH', name: '포항 VORTAC', freq: '109.6', lat: 35.98636, lon: 129.40883 },
   { apt:1, pub:1, src:'AIP', id: 'KMH', name: '김해 VOR/DME', freq: '113.8', lat: 35.19917, lon: 128.93556 },
-  { apt:1, pub:1, src:'ARP', id: 'SAC', name: '사천 VOR',   freq: '115.1', lat: 35.0886,  lon: 128.0703 },
+  { apt:1, pub:1, src:'AIP', id: 'SAC', name: '사천 VOR',   freq: '115.1', lat: 35.09778, lon: 128.07633 },   // 35°05.867'N 128°04.580'E
   // 아래는 CDU INFO 목록에서 ALL 코드로 가려지는 비행장 — 항행표지 자체는 지도에 표시
   { apt:1, src:'ARP', id: 'MKP', name: '목포 VOR',   freq: '117.8', lat: 34.7585,  lon: 126.3806 },
   { apt:1, src:'ARP', id: 'NSN', name: '논산 VOR',   freq: '117.5', lat: 36.1636,  lon: 127.1147 },
