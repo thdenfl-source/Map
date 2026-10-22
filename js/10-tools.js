@@ -1319,8 +1319,11 @@ function _parseKml(text) {
 //
 //  찾는 곳은 둘이다.
 //   · VWorld(국토교통부 공간정보 오픈플랫폼) — 지번(산 번지 포함)·도로명 주소를
-//     필지·건물 좌표로 바꿔 준다. 국내 주소는 이것이 정확하다. 인증키가 있어야
-//     하는데, 앱에 키를 박아 두지 않는다 — 사용자가 한 번 넣으면 이 기기에만 둔다.
+//     필지·건물 좌표로 바꿔 준다. 국내 주소는 이것이 정확하다. 인증키는 이 앱
+//     주소(서비스 URL)로 등록한 기본 키(VW_DEFAULT_KEY)를 쓴다 — 브라우저에서 부르는
+//     키라 배포된 페이지에도 어차피 드러나며, VWorld 는 등록한 주소에서 온 요청만
+//     받는다. 기본 키가 비어 있거나 사용자가 다른 키를 쓰고 싶으면 검색창에서 넣는다
+//     (이 기기에만 둔다. 'off' 를 넣으면 끈다).
 //   · OpenStreetMap(Nominatim) — 키 없이 쓴다. 지명·건물명은 잘 찾지만 지번(특히
 //     '산 ○○-○○')은 거의 없다. 번지를 못 찾으면 그 리·동 중심을 '대략' 이라고
 //     밝혀 준다(없는 정확도를 있는 척하지 않는다).
@@ -1331,11 +1334,20 @@ function _parseKml(text) {
 const GEO_URL = 'https://nominatim.openstreetmap.org/search';
 const VW_BASE = 'https://api.vworld.kr/req/';
 const VW_KEY_LS = 'vworldKey';
+// ↓ 기본 인증키 — VWorld 에서 발급받은 키를 따옴표 안에 넣는다(서비스 URL: thdenfl-source.github.io).
+//   비워 두면 기기마다 검색창의 '정밀 검색(VWorld)' 버튼으로 키를 넣어 쓴다.
+let VW_DEFAULT_KEY = '87A3DC1E-7F8C-4BCE-A2F6-1A76DE643D75';
 const GEO_TIMEOUT_MS = 7000;
 const _geoCache = new Map();
 
-function vworldKey() {
+// 이 기기에 넣은 키 → 없으면 기본 키. 'off' 를 넣었으면 정밀 검색을 쓰지 않는다.
+function _vwUserKey() {
   try { return String(localStorage.getItem(VW_KEY_LS) || '').trim(); } catch (e) { return ''; }
+}
+function vworldKey() {
+  const u = _vwUserKey();
+  if (u.toLowerCase() === 'off') return '';
+  return u || VW_DEFAULT_KEY;
 }
 
 // "37.5665, 126.978" 처럼 좌표를 그대로 넣은 경우 — 검색 없이 그 자리로 간다
@@ -1544,7 +1556,7 @@ async function geoSearch(q) {
       } catch (e) { osmErr = e; }
       if (osm.length && !notice) {
         notice = key ? `${pq.lot} 번지 좌표를 찾지 못해 ${pq.base} 중심으로 찾았습니다.`
-                     : `번지(${pq.lot})까지 정확히 찍으려면 VWorld 정밀 검색 키를 넣으십시오. 지금은 ${pq.base} 중심입니다.`;
+                     : `번지(${pq.lot})까지 정확히 찍으려면 VWorld 정밀 검색을 켜십시오. 지금은 ${pq.base} 중심입니다.`;
       }
     }
     if (osmErr && !out.length) throw osmErr;
@@ -1553,7 +1565,7 @@ async function geoSearch(q) {
 
   out = _geoDedupe(out);
   if (!key && !notice && (pq.kind === 'parcel' || pq.kind === 'zip') && out.length)
-    notice = '지번·우편번호는 VWorld 정밀 검색 키를 넣으면 더 정확합니다.';
+    notice = '지번·우편번호는 VWorld 정밀 검색을 켜면 더 정확합니다.';
   if (notice) out.notice = notice;
   if (!vwErr) _geoCache.set(ck, out);   // 오류 난 결과는 담아 두지 않는다(다시 해 볼 수 있게)
   return out;
@@ -1561,14 +1573,15 @@ async function geoSearch(q) {
 
 // 정밀 검색(VWorld) 인증키 — 이 기기에만 둔다
 async function setVworldKey() {
-  const cur = vworldKey();
+  const cur = _vwUserKey();
   const v = await uiPrompt(
     'VWorld 정밀 주소 검색 인증키\n\n' +
-    '지번(산 ○○-○○)·도로명·우편번호를 정확한 자리에 찍으려면 국토교통부 ' +
-    '공간정보 오픈플랫폼(vworld.kr)의 무료 인증키가 필요합니다.\n' +
-    '· vworld.kr 회원가입 → 오픈API → 인증키 발급\n' +
-    '· 서비스 URL 에 이 앱 주소(' + location.origin + ')를 등록\n\n' +
-    '키는 이 기기에만 저장됩니다. 비우면 끕니다.', cur);
+    '지번(산 ○○-○○)·도로명·우편번호를 정확한 자리에 찍는 국토교통부 ' +
+    '공간정보 오픈플랫폼(vworld.kr) 인증키입니다. 기본 키가 들어 있어 따로 넣지 ' +
+    '않아도 됩니다.\n' +
+    '· 다른 키를 쓰려면: vworld.kr → 오픈API → 인증키 발급, 서비스 URL 에 ' +
+    location.origin + ' 등록\n\n' +
+    '넣은 키는 이 기기에만 저장됩니다. 비우면 기본 키, off 를 넣으면 정밀 검색을 끕니다.', cur);
   if (v === null) return;
   try {
     if (String(v).trim()) localStorage.setItem(VW_KEY_LS, String(v).trim());
@@ -1577,13 +1590,19 @@ async function setVworldKey() {
   _geoCache.clear();
   _vwMode = 'fetch';
   _geoKeyStatus();
-  try { uiToast(String(v).trim() ? 'VWorld 정밀 검색을 켰습니다' : 'VWorld 정밀 검색을 껐습니다'); } catch (e) { _swallow(e); }
+  const msg = !vworldKey() ? 'VWorld 정밀 검색을 껐습니다'
+            : _vwUserKey() ? 'VWorld 정밀 검색 — 넣은 키를 씁니다' : 'VWorld 정밀 검색 — 기본 키를 씁니다';
+  try { uiToast(msg); } catch (e) { _swallow(e); }
+}
+function geoKeyLabel() {
+  if (!vworldKey()) return '정밀 검색(VWorld) 꺼짐 · 켜기';
+  return _vwUserKey() ? '정밀 검색(VWorld) 켜짐 · 넣은 키' : '정밀 검색(VWorld) 켜짐 · 기본 키';
 }
 function _geoKeyStatus() {
   const on = !!vworldKey();
   document.querySelectorAll('.geo-key-btn').forEach(b => {
     b.classList.toggle('on', on);
-    b.textContent = on ? '정밀 검색(VWorld) 켜짐 · 키 바꾸기' : '정밀 검색(VWorld) 키 넣기';
+    b.textContent = geoKeyLabel();
   });
 }
 setTimeout(_geoKeyStatus, 0);
@@ -1620,7 +1639,7 @@ function _geoRender() {
   if (!el) return;
   if (!_geoResults.length) {
     _geoMsg('찾은 곳이 없습니다. 다른 말로 찾아보십시오.' +
-      (vworldKey() ? '' : ' 지번·우편번호는 아래 정밀 검색 키를 넣으면 더 잘 찾습니다.'));
+      (vworldKey() ? '' : ' 지번·우편번호는 아래 정밀 검색을 켜면 더 잘 찾습니다.'));
     return;
   }
   el.innerHTML = geoNoticeHtml(_geoResults) + _geoResults.map((r, i) => geoItemHtml(r, 'geoPick', i)).join('');

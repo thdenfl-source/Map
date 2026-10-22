@@ -123,8 +123,26 @@ export async function run(page, t) {
   t.eq(vj.mode, 'jsonp', '통한 길(JSONP)을 기억한다');
   t.eq(vj.left, 0, '받은 뒤 스크립트 태그를 치운다');
 
-  // ── ⑥ 키가 없으면 — 번지를 못 찾으면 리·동 중심을 '대략' 으로 ─────────
-  await page.evaluate(() => localStorage.removeItem('vworldKey'));
+  // ── ⑤-2 따로 넣은 키가 없으면 기본 키로 정밀 검색한다 ──────────────
+  // (저장소의 기본 키 값과 상관없이 보도록 검사용 기본 키를 잠시 넣는다)
+  const realDefault = await page.evaluate(() => VW_DEFAULT_KEY);
+  await page.evaluate(() => { VW_DEFAULT_KEY = 'TESTDEFAULT'; localStorage.removeItem('vworldKey'); });
+  await page.evaluate(m => eval(m), MOCK({
+    vwAddr: { response: { status: 'OK', refined: { text: '서울특별시 강남구 역삼동 737' },
+              result: { point: { x: '127.0363', y: '37.5004' } } } },
+  }));
+  const dk = await page.evaluate(async () => {
+    await geoSearch('역삼동 737');
+    const u = window.__seen.find(x => x.includes('/req/address'));
+    _geoKeyStatus();
+    return { key: u ? new URL(u).searchParams.get('key') : null, def: VW_DEFAULT_KEY,
+             label: document.querySelector('#geo-panel .geo-key-btn').textContent };
+  });
+  t.ok(dk.key === 'TESTDEFAULT' && dk.key === dk.def, '따로 넣은 키가 없으면 기본 키로 VWorld 에 묻는다');
+  t.ok(/기본 키/.test(dk.label), `버튼에 기본 키로 켜져 있다고 보인다 (${dk.label})`);
+
+  // ── ⑥ 정밀 검색을 끄면 — 번지를 못 찾으면 리·동 중심을 '대략' 으로 ─────
+  await page.evaluate(() => localStorage.setItem('vworldKey', 'off'));
   await page.evaluate(m => eval(m), MOCK({
     nom: { '경기도 양평군 용문면 덕촌리': [{ name: '덕촌리', display_name: '덕촌리, 용문면, 양평군, 경기도, 대한민국',
                                           lat: '37.5100', lon: '127.5600' }] },
@@ -138,11 +156,11 @@ export async function run(page, t) {
              vw: window.__seen.some(u => u.includes('vworld')),
              html: document.getElementById('geo-list').innerText };
   });
-  t.eq(na.vw, false, '키가 없으면 VWorld 를 부르지 않는다');
+  t.eq(na.vw, false, "정밀 검색을 끄면('off') VWorld 를 부르지 않는다");
   t.ok(na.qs[0].includes('산12-3') && na.qs[1] === '경기도 양평군 용문면 덕촌리',
     `번지로 먼저 찾고, 없으면 리까지만으로 찾는다 (${na.qs.join(' → ')})`);
   t.eq(na.approx, true, '그 결과는 대략이라고 표시한다');
-  t.ok(/대략/.test(na.html) && /VWorld/.test(na.html), '목록에 "대략" 과 정밀 검색 키 안내가 보인다');
+  t.ok(/대략/.test(na.html) && /VWorld/.test(na.html), '목록에 "대략" 과 정밀 검색을 켜라는 안내가 보인다');
 
   // 우편번호 — 키가 없으면 OpenStreetMap 의 우편번호 검색으로
   await page.evaluate(m => eval(m), MOCK({ nom: { '*': [] } }));
@@ -163,7 +181,22 @@ export async function run(page, t) {
   const key = await page.evaluate(() => ({ k: localStorage.getItem('vworldKey'),
     btn: document.querySelector('#geo-panel .geo-key-btn').textContent }));
   t.eq(key.k, 'MYKEY123', '넣은 키를 이 기기에 저장한다');
-  t.ok(/켜짐/.test(key.btn), `버튼이 켜진 얼굴로 바뀐다 (${key.btn})`);
+  t.ok(/켜짐/.test(key.btn) && /넣은 키/.test(key.btn), `버튼에 넣은 키로 켜져 있다고 보인다 (${key.btn})`);
+
+  // 비우면 기본 키로 돌아간다
+  await page.click('#geo-panel .geo-key-btn');
+  await page.waitForSelector('.ui-dlg-back input');
+  await page.fill('.ui-dlg-back input', '');
+  await page.click('.ui-dlg-back .ui-dlg-ok');
+  await page.waitForTimeout(150);
+  const back = await page.evaluate(() => ({ k: localStorage.getItem('vworldKey'), eff: vworldKey() === VW_DEFAULT_KEY }));
+  t.ok(back.k === null && back.eff, '비우면 기본 키로 돌아간다');
+
+  // 기본 키가 비어 있으면(저장소에 키를 넣지 않은 배포) 따로 넣기 전까지 정밀 검색은 꺼져 있다
+  const empty = await page.evaluate(() => { VW_DEFAULT_KEY = ''; _geoKeyStatus();
+    return { eff: vworldKey(), label: document.querySelector('#geo-panel .geo-key-btn').textContent }; });
+  t.ok(empty.eff === '' && /꺼짐/.test(empty.label), `기본 키가 비어 있으면 꺼짐으로 보인다 (${empty.label})`);
+  await page.evaluate(v => { VW_DEFAULT_KEY = v; }, realDefault);
 
   // 뒷정리
   await page.evaluate(() => { localStorage.removeItem('vworldKey'); delete window.fetch; _geoCache.clear(); closeGeoSearch(); });

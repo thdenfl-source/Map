@@ -1212,6 +1212,7 @@ function fpRenderGeo(area, title, footer) {
     ? geoNoticeHtml(fpGeoResults) + fpGeoResults.map((r, i) => geoItemHtml(r, 'fpGeoPick', i)).join('')
     : `<div style="color:#8a97a5;font-size:9px;line-height:1.5;">${_geoEsc(fpGeoMsg)}</div>`;
   const vwOn = typeof vworldKey === 'function' && !!vworldKey();
+  const vwLabel = typeof geoKeyLabel === 'function' ? geoKeyLabel() : '정밀 검색(VWorld)';
   area.innerHTML = `
     <div style="display:flex;gap:4px;margin-bottom:6px;">
       <input id="fp-geo-q" type="search" value="${_geoEsc(fpGeoQ)}"
@@ -1223,13 +1224,12 @@ function fpRenderGeo(area, title, footer) {
     </div>
     <div id="fp-geo-list" style="display:flex;flex-direction:column;gap:4px;
          max-height:330px;overflow-y:auto;-webkit-overflow-scrolling:touch;">${list}</div>
-    <button class="geo-key-btn${vwOn ? ' on' : ''}" data-act="setVworldKey" style="margin-top:6px;">${
-      vwOn ? '정밀 검색(VWorld) 켜짐 · 키 바꾸기' : '정밀 검색(VWorld) 키 넣기'}</button>
+    <button class="geo-key-btn${vwOn ? ' on' : ''}" data-act="setVworldKey" style="margin-top:6px;">${_geoEsc(vwLabel)}</button>
     <div style="color:#5a7484;font-size:8px;line-height:1.45;margin-top:6px;">
       고르면 그 자리에 웨이포인트가 들어가고 상세 카드가 열립니다.
       주소·지번(산 ○○-○○)·우편번호(5자리)·좌표(37.5665, 126.9780)를 넣을 수 있습니다.<br>
-      지번·우편번호는 VWorld(국토교통부) 정밀 검색 키가 있으면 필지 자리까지 찍고,
-      없으면 OpenStreetMap 으로 찾습니다. <b>항법용 자료가 아닙니다</b>.
+      지번·우편번호는 VWorld(국토교통부) 정밀 검색으로 필지 자리까지 찍고,
+      못 찾으면 OpenStreetMap 으로 찾습니다. <b>항법용 자료가 아닙니다</b>.
     </div>`;
   footer.innerHTML = `
     <div class="fp-nav-btn" data-act="fpGo" data-arg='["ADD"]'><span>↩</span>Cancel</div>
