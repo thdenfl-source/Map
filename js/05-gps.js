@@ -517,7 +517,12 @@ leafMap.getContainer().addEventListener('click', e => {
 }, true);
 
 let trailLine = L.polyline([],{color:'#00ff88',weight:1.5,opacity:0.65}).addTo(leafMap);
-let routeLine = L.polyline([],{color:'#4488ff',weight:2,dashArray:'6 5',opacity:0.8}).addTo(leafMap);
+// 비행계획 경로 — 노랑. 종전의 파랑은 위성지도(바다·숲의 짙은 청록)에 묻혀 잘
+// 보이지 않았다. 밝은 땅(논·모래·눈) 위에서도 묻히지 않게 아래에 옅은 검은 테를
+// 깐다. 홀딩(#ffcc44)·절차 미리보기(#ffd54f)의 호박색과 갈리도록 더 맑은 노랑을 쓴다.
+const ROUTE_COLOR = '#ffee00';
+let routeCasing = L.polyline([],{color:'#000',weight:4.5,opacity:0.35,interactive:false}).addTo(leafMap);
+let routeLine = L.polyline([],{color:ROUTE_COLOR,weight:2.5,dashArray:'8 5',opacity:0.95,interactive:false}).addTo(leafMap);
 let holdLine  = L.polyline([],{color:'#ffcc44',weight:2,opacity:0.9}).addTo(leafMap);
 
 // ── 속도 벡터 (헤딩 방향 붉은 화살표, 1분 예상위치 길이·최대 130kt) ──
@@ -1180,10 +1185,11 @@ function updateWpMarkers(){
   const coords=[];
   S.wps.forEach((wp,i)=>{
     const isA=i===S.awp;
-    const bg=isA?'#ffaa00':'#3377dd';
+    // 웨이포인트 점도 경로와 같은 노랑. 활성 지점은 주홍으로 갈라 둔다(노랑과 헷갈리지 않게)
+    const bg=isA?'#ff5a1f':ROUTE_COLOR;
     const icon=L.divIcon({
       html:`<div style="position:relative;">
-        <div style="width:10px;height:10px;border-radius:50%;background:${bg};border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,0.6);"></div>
+        <div style="width:10px;height:10px;border-radius:50%;background:${bg};border:2px solid #000;box-shadow:0 0 0 1px rgba(255,255,255,0.7),0 0 4px rgba(0,0,0,0.6);"></div>
         <div style="position:absolute;left:12px;top:-2px;color:#fff;font-size:8px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;white-space:nowrap;text-shadow:1px 1px 2px #000;">${wp.ident}</div>
       </div>`,
       iconSize:[10,10],iconAnchor:[5,5],className:'',
@@ -1212,6 +1218,7 @@ function updateWpMarkers(){
     }
   });
   routeLine.setLatLngs(coords);
+  routeCasing.setLatLngs(coords);
 }
 
 
