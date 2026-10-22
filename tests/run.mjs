@@ -41,8 +41,9 @@ import * as cdiscale from './cases/cdiscale.mjs';
 import * as atis from './cases/atis.mjs';
 import * as trkrec from './cases/trkrec.mjs';
 import * as exitguard from './cases/exitguard.mjs';
+import * as geoaddr from './cases/geoaddr.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale, atis, trkrec, exitguard];
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale, atis, trkrec, exitguard, geoaddr];
 const filter = process.argv.slice(2);
 
 function makeT() {

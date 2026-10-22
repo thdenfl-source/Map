@@ -13,7 +13,16 @@ const ready = (page) => page.waitForFunction(
 const FIX = `(lat, lon) => { gpsMode = true; S.lat = lat; S.lon = lon; S.alt = 1500;
   _gpsPrev = { lat, lon, ms: Date.now(), alt: S.alt }; }`;
 
-export async function run(page, t) {
+import { openAppHttp } from '../lib/env.mjs';
+
+// 새로고침을 거쳐 저장소가 남는지 보는 검사라 진짜 출처(http)로 띄운다 —
+// file:// 페이지는 크롬이 새로고침 때 localStorage 를 가끔 잃어 검사가 흔들렸다.
+export async function run(filePage, t) {
+  const app = await openAppHttp(filePage.context().browser());
+  try { await runOn(app.page, t); } finally { await app.close(); }
+}
+
+async function runOn(page, t) {
   await page.evaluate(() => { setSolo('map'); localStorage.removeItem('trkRecBackup'); });
 
   // ── ① 녹화 중에는 찍을 때마다 백업하고, 지도에도 그린다 ──────────────

@@ -2185,6 +2185,7 @@ appRegister({
   closeGeoSearch,
   runGeoSearch,
   geoPick,
+  setVworldKey,
   toggleRuler,
   toggleSim,
   setSimSpeed,

@@ -48,3 +48,38 @@ export async function openApp(browser, { cdu = false } = {}) {
   if (cdu) { await page.evaluate(() => selectPanel('right', 'cdu')); await page.waitForTimeout(300); }
   return page;
 }
+
+// 진짜 출처(http://127.0.0.1)로 띄운다 — 새로고침을 거쳐 localStorage 가 남는지
+// 보는 검사용. file:// 로 연 페이지는 크롬이 새로고침 때 앞 문서의 localStorage
+// 쓰기를 가끔(10번에 1번꼴) 잃는다 — 실제 사용(https)에서는 일어나지 않는 일이라
+// 그런 검사가 앱과 상관없이 흔들린다. 반환: { page, close }
+export async function openAppHttp(browser, { viewport = { width: 1400, height: 900 } } = {}) {
+  const http = await import('node:http');
+  const { dir } = buildEnv();
+  const types = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript',
+                  '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
+  const srv = http.createServer((q, r) => {
+    const rel = decodeURIComponent(new URL(q.url, 'http://x').pathname).replace(/^\/+/, '');
+    const p = path.resolve(dir, rel);
+    if (!p.startsWith(dir)) { r.statusCode = 403; r.end(); return; }
+    fs.readFile(p, (e, d) => {
+      if (e) { r.statusCode = 404; r.end(); return; }
+      r.setHeader('Content-Type', types[path.extname(p)] || 'application/octet-stream');
+      r.end(d);
+    });
+  }).listen(0, '127.0.0.1');
+  await new Promise(res => srv.on('listening', res));
+  const ctx = await browser.newContext({ viewport });
+  const page = await ctx.newPage();
+  await page.route(/\/sw\.js$/, r => r.abort());   // 서비스워커는 검사 밖이다(캐시가 끼어들지 않게)
+  await page.addInitScript(() => { try { localStorage.setItem('gpsDenied', '1'); } catch (e) {} });
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  page.errors = errors;
+  await page.goto(`http://127.0.0.1:${srv.address().port}/index.html`);
+  await page.waitForFunction(
+    () => typeof S === 'object' && S !== null && typeof distance === 'function' && typeof leafMap === 'object',
+    null, { timeout: 20000 });
+  await page.waitForTimeout(200);
+  return { page, close: async () => { await ctx.close(); srv.close(); } };
+}

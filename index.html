@@ -656,6 +656,16 @@ body.solo-mode .solo-panel-visible {
 .geo-item span { color: #6a7784; font-size: 9px; line-height: 1.35; display: block; margin-top: 1px; }
 #geo-msg { color: #8a97a5; font-size: 10px; padding: 4px 2px; }
 #geo-note { color: #4a5563; font-size: 9px; line-height: 1.45; }
+/* 번지까지 못 찾아 리·동 중심으로 찍은 결과 — 정확하지 않다는 것을 눈에 띄게 */
+.geo-item.approx { border-color: #5a4420; }
+.geo-item b em { font-style: normal; color: #ffaa44; font-size: 9px; border: 1px solid #8a6a2a;
+  border-radius: 3px; padding: 0 3px; margin-left: 4px; }
+.geo-notice { color: #e0b060; font-size: 9px; line-height: 1.45; padding: 2px 2px 4px; }
+.geo-key-btn {
+  align-self: flex-start; background: #0a1116; border: 1px solid #2a3a4a; border-radius: 4px;
+  color: #8a97a5; font-size: 9px; padding: 4px 8px; cursor: pointer;
+}
+.geo-key-btn.on { border-color: #1f6a3a; color: #00ff88; }
 #pp-menu button {
   background: rgba(20,20,20,0.9); border: 1px solid #444; border-radius: 4px;
   color: #cfe; font-size: 11px; font-weight: bold; padding: 7px 12px;
@@ -2094,13 +2104,15 @@ body.phone-mode .ctrl-bar .sw-display {
           <span id="geo-close" data-act="closeGeoSearch" title="닫기">✕</span></div>
         <div id="geo-panel-body">
           <div id="geo-row">
-            <input id="geo-q" type="search" placeholder="예: 서울시청 · 강원 양양군 손양면" autocomplete="off">
+            <input id="geo-q" type="search" placeholder="예: 서울시청 · 덕촌리 산 12-3 · 06236" autocomplete="off">
             <button id="geo-go" data-act="runGeoSearch">검색</button>
           </div>
           <div id="geo-list"></div>
+          <button class="geo-key-btn" data-act="setVworldKey">정밀 검색(VWorld) 키 넣기</button>
           <div id="geo-note">검색 결과를 누르면 그 자리에 웨이포인트가 들어가고 지도가 그리로 움직입니다.
-            좌표(37.5665, 126.9780)를 그대로 넣어도 됩니다.<br>
-            지명 검색은 OpenStreetMap(Nominatim) 자료이며 <b>항법용이 아닙니다</b>.</div>
+            주소·지번(산 ○○-○○)·우편번호(5자리)·좌표(37.5665, 126.9780)를 넣을 수 있습니다.<br>
+            지번·우편번호는 VWorld(국토교통부) 정밀 검색 키가 있으면 필지 자리까지 찍고,
+            없으면 OpenStreetMap 으로 찾습니다. <b>항법용 자료가 아닙니다</b>.</div>
         </div>
       </div>
       <!-- ＋ 메뉴 — 다른 하위 창과 같은 자리에 둔다(#map-wrap 직속).
