@@ -496,6 +496,205 @@ function fixAddToPlan(name, lat, lon) {
   try { leafMap.closePopup(); } catch(e) { _swallow(e); }
 }
 
+// ═══════════════════════════════════════════════════════════════
+//  지도 길게 누르기(1초) → 그 자리의 좌표 · 표고 · 현재 위치에서의 방위·거리,
+//  그리고 PLAN 에 넣을지 묻는 창
+// ═══════════════════════════════════════════════════════════════
+// 손가락이 거의 움직이지 않은 채 1초를 넘기면 연다. 끌거나(지도 이동) 두 손가락
+// (확대·축소)이면 열지 않는다. PC·DeX 에서는 오른쪽 클릭으로 곧바로 연다.
+// 표고는 3D 지도·지형 단면과 같은 Terrarium DEM 자료를 쓰되, 한 점을 보는 일이라
+// 더 촘촘한 타일(z14, 픽셀당 약 8m)을 읽고 네 픽셀 사이를 보간한다.
+// ※ 지형(땅) 높이다 — 건물·송전탑 같은 장애물 높이는 들어 있지 않다.
+const MAP_LP_MS = 1000;        // 이만큼 누르고 있으면 연다
+const MAP_LP_MOVE_PX = 10;     // 이보다 많이 움직이면 끄는 것으로 본다
+const PT_ELEV_Z = 14;
+const _ptElevTiles = new Map();   // 'z/x/y' → ImageData | null(못 받음) | Promise(받는 중)
+
+async function _ptElevTile(x, y) {
+  const key = PT_ELEV_Z + '/' + x + '/' + y;
+  const have = _ptElevTiles.get(key);
+  if (have !== undefined) return have;   // 받은 것이거나, 받는 중인 Promise
+  const job = (async () => {
+    try {
+      const ctl = new AbortController();
+      const to = setTimeout(() => ctl.abort(), 7000);
+      const r = await fetch(`https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${key}.png`, { signal: ctl.signal });
+      clearTimeout(to);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const bmp = await createImageBitmap(await r.blob());
+      const c = document.createElement('canvas'); c.width = 256; c.height = 256;
+      const cx = c.getContext('2d'); cx.drawImage(bmp, 0, 0);
+      const img = cx.getImageData(0, 0, 256, 256);
+      _ptElevTiles.set(key, img);
+      return img;
+    } catch (e) {
+      _ptElevTiles.delete(key);   // 다음에 다시 해 볼 수 있게(오프라인이었을 수 있다)
+      return null;
+    }
+  })();
+  _ptElevTiles.set(key, job);
+  return job;
+}
+// 한 점의 지형 표고(m). 못 받으면 null
+async function pointElevM(lat, lon) {
+  if (!(Math.abs(lat) < 85)) return null;
+  const n = 1 << PT_ELEV_Z;
+  const xf = (lon + 180) / 360 * n * 256;
+  const latR = lat * Math.PI / 180;
+  const yf = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n * 256;
+  // 픽셀 중심 기준으로 둘레 네 픽셀을 보간한다(타일 경계를 넘을 수 있다)
+  const px = xf - 0.5, py = yf - 0.5;
+  const x0 = Math.floor(px), y0 = Math.floor(py), fx = px - x0, fy = py - y0;
+  const at = async (gx, gy) => {
+    const tx = Math.floor(gx / 256), ty = Math.floor(gy / 256);
+    const img = await _ptElevTile(((tx % n) + n) % n, ty);
+    if (!img) return null;
+    const i = ((gy - ty * 256) * 256 + (gx - tx * 256)) * 4, d = img.data;
+    return d[i] * 256 + d[i + 1] + d[i + 2] / 256 - 32768;
+  };
+  const [a, b, c, d] = await Promise.all([at(x0, y0), at(x0 + 1, y0), at(x0, y0 + 1), at(x0 + 1, y0 + 1)]);
+  if ([a, b, c, d].some(v => v === null || !Number.isFinite(v))) return null;
+  return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+}
+
+let _mapLpPopup = null, _mapLpMark = null;
+function _mapLpClose() {
+  try { if (_mapLpMark) { leafMap.removeLayer(_mapLpMark); _mapLpMark = null; } } catch (e) { _swallow(e); }
+}
+function mapLongPressAt(lat, lon) {
+  try { leafMap.closePopup(); } catch (e) { _swallow(e); }
+  _mapLpClose();
+  const btn = 'cursor:pointer;border-radius:4px;padding:6px 8px;font-size:12px;font-weight:bold;text-align:center;flex:1;';
+  // 현재 위치(항공기)에서 이 점까지 — 자북 방위·거리
+  let fromAc = '';
+  try {
+    if (Number.isFinite(S.lat) && Number.isFinite(S.lon)) {
+      const d = distance(S.lat, S.lon, lat, lon);
+      const b = Math.round(toMag(bearing(S.lat, S.lon, lat, lon))) % 360 || 360;
+      fromAc = `현재 위치에서 ${String(b).padStart(3, '0')}°M · ${d < 10 ? d.toFixed(1) : Math.round(d)}NM`;
+    }
+  } catch (e) { _swallow(e); }
+  const div = document.createElement('div');
+  div.className = 'map-lp-pop';
+  div.style.cssText = 'font-family:-apple-system,Segoe UI,Arial,sans-serif;font-size:12px;color:#333;line-height:1.5;min-width:220px;';
+  div.innerHTML =
+    `<div style="color:#b8860b;font-weight:bold;font-size:14px;margin-bottom:2px;">📍 지도 지점</div>` +
+    `<div style="color:#222;font-size:13px;">${decToDMS(lat, true)} ${decToDMS(lon, false)}</div>` +
+    `<div style="color:#777;font-size:11px;">${lat.toFixed(5)}, ${lon.toFixed(5)}</div>` +
+    `<div class="map-lp-elev" style="margin-top:3px;font-size:13px;color:#555;">표고 조회 중…</div>` +
+    (fromAc ? `<div style="color:#555;font-size:11px;">${fromAc}</div>` : '') +
+    `<div style="display:flex;gap:5px;margin-top:7px;">` +
+      `<span class="map-lp-copy" style="${btn}background:#eef3f7;color:#3b5a70;border:1px solid #3b5a7055;">📋 좌표 복사</span>` +
+      `<span class="map-lp-add" style="${btn}background:#e3f2ee;color:#00796b;border:1px solid #00796b55;">✈ PLAN 추가</span>` +
+    `</div>`;
+  div.querySelector('.map-lp-copy').onclick = ev => fixCopyCoord(ev.currentTarget, '지도 지점', lat, lon);
+  div.querySelector('.map-lp-add').onclick = () => mapLpAddToPlan(lat, lon);
+
+  // 누른 자리 표시(창을 닫으면 걷는다)
+  _mapLpMark = L.circleMarker([lat, lon], { radius: 7, color: '#000', weight: 2, fillColor: '#ffee00',
+                                            fillOpacity: 0.9, interactive: false }).addTo(leafMap);
+  _mapLpPopup = L.popup({ maxWidth: 280, offset: [0, -6], className: 'map-lp-popup' })
+    .setLatLng([lat, lon]).setContent(div).openOn(leafMap);
+  _mapLpPopup.on('remove', _mapLpClose);
+
+  const elEl = div.querySelector('.map-lp-elev');
+  pointElevM(lat, lon).then(m => {
+    if (!elEl.isConnected) return;
+    if (m === null) { elEl.textContent = '표고를 받지 못했습니다(연결 확인)'; elEl.style.color = '#b26a00'; return; }
+    const ft = Math.round(m * 3.28084);
+    elEl.innerHTML = `표고 <b style="color:#111;">${ft.toLocaleString()} ft</b> ` +
+      `<span style="color:#777;">(${Math.round(m).toLocaleString()} m)</span>` +
+      `<div style="color:#999;font-size:10px;">지형 자료(DEM) — 건물·장애물 높이는 들어 있지 않습니다</div>`;
+    div.dataset.elevFt = String(ft);
+  });
+  return _mapLpPopup;
+}
+// PLAN 에 넣는다 — 이름은 십자위치(＋)와 같은 WP 번호를 이어 쓴다
+function mapLpAddToPlan(lat, lon) {
+  const cnt = S.wps.filter(w => /^WP\d*$/.test(w.ident)).length;
+  const ident = 'WP' + (cnt + 1);
+  pushWP({ ident, lat, lon });
+  try { leafMap.closePopup(); } catch (e) { _swallow(e); }
+  try { uiToast(`${ident} 을(를) 비행계획에 넣었습니다`); } catch (e) { _swallow(e); }
+  return ident;
+}
+
+// 화면 좌표 → 지도 위도·경도. HDG↑ 에서는 #map 이 자기 중심을 축으로 -HDG 만큼
+// 돌아가 있으므로, 누른 점을 그만큼 되돌려 놓고 셈한다(Leaflet 은 회전을 모른다).
+function mapClientToLatLng(clientX, clientY) {
+  const el = leafMap.getContainer();
+  const r = el.getBoundingClientRect();           // 돌아간 요소의 바깥 상자 — 중심은 같다
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  let vx = clientX - cx, vy = clientY - cy;
+  if (mapHdgUp) {
+    const a = (Number(S.hdg) || 0) * Math.PI / 180;   // rotate(-HDG) 를 되돌리는 rotate(+HDG)
+    const ux = vx * Math.cos(a) - vy * Math.sin(a);
+    const uy = vx * Math.sin(a) + vy * Math.cos(a);
+    vx = ux; vy = uy;
+  }
+  return leafMap.containerPointToLatLng([el.offsetWidth / 2 + vx, el.offsetHeight / 2 + vy]);
+}
+
+// ── 누르기 감지 ──────────────────────────────────────────────
+// 손가락은 touch 이벤트로 본다. 안드로이드 크롬은 길게 누르면 contextmenu 를 띄우며
+// pointer 이벤트를 취소(pointercancel)하기도 해서, 손을 뗐는지 알 수 없게 된다.
+(function initMapLongPress() {
+  const el = leafMap.getContainer();
+  let timer = null, sx = 0, sy = 0, firedAt = 0;
+  const skip = t => !!(t && t.closest && t.closest(
+    '.leaflet-marker-icon, .leaflet-popup, .leaflet-control, button, input, select, textarea'));
+  const cancel = () => { if (timer) { clearTimeout(timer); timer = null; } };
+  const start = (x, y, target) => {
+    cancel();
+    if (skip(target)) return;
+    sx = x; sy = y;
+    timer = setTimeout(() => {
+      timer = null;
+      try {
+        const ll = mapClientToLatLng(sx, sy);
+        firedAt = Date.now();
+        if (navigator.vibrate) { try { navigator.vibrate(15); } catch (e) { _swallow(e); } }
+        mapLongPressAt(ll.lat, ll.lng);
+      } catch (e) { _swallow(e); }
+    }, MAP_LP_MS);
+  };
+  const moved = (x, y) => { if (timer && Math.hypot(x - sx, y - sy) > MAP_LP_MOVE_PX) cancel(); };
+
+  el.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) { cancel(); return; }      // 두 손가락 = 확대·축소
+    const t = e.touches[0];
+    start(t.clientX, t.clientY, e.target);
+  }, { passive: true });
+  el.addEventListener('touchmove', e => { const t = e.touches[0]; if (t) moved(t.clientX, t.clientY); }, { passive: true });
+  el.addEventListener('touchend', cancel, { passive: true });
+  el.addEventListener('touchcancel', cancel, { passive: true });
+
+  // 마우스(PC·DeX): 왼쪽 단추를 누른 채 1초, 또는 오른쪽 클릭
+  el.addEventListener('mousedown', e => {
+    if (e.button !== 0 || (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents)) return;
+    start(e.clientX, e.clientY, e.target);
+  });
+  el.addEventListener('mousemove', e => moved(e.clientX, e.clientY));
+  el.addEventListener('mouseup', cancel);
+  el.addEventListener('mouseleave', cancel);
+  el.addEventListener('contextmenu', e => {
+    e.preventDefault();                      // 브라우저 메뉴(이미지 저장 등)를 띄우지 않는다
+    if (timer || Date.now() - firedAt < 1500) return;   // 손가락 길게 누르기 중이면 1초 타이머에 맡긴다
+    if (skip(e.target)) return;
+    const ll = mapClientToLatLng(e.clientX, e.clientY);
+    firedAt = Date.now();
+    mapLongPressAt(ll.lat, ll.lng);
+  });
+  // 지도가 움직이기 시작하면(끌기·확대) 길게 누르기가 아니다
+  leafMap.on('movestart zoomstart', cancel);
+  // 길게 누른 뒤 손을 떼면 click 이 따라온다 — 지도 click(자 재기 등)으로 새지 않게 삼킨다
+  el.addEventListener('click', e => {
+    if (Date.now() - firedAt < 700 && !(e.target.closest && e.target.closest('.leaflet-popup'))) {
+      e.stopPropagation(); e.preventDefault();
+    }
+  }, true);
+})();
+
 function _drawFixLayer() {
   _clearFixLayer();
   _enrFixList().forEach(f => {

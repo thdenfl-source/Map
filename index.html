@@ -342,6 +342,8 @@ html, body {
 }
 /* 지도는 상단 80%, 하단 20%는 TERRAIN CUT 패널이 차지(겹침 없음) */
 #map { width: 100%; height: 80%; transform-origin: center center; }
+/* 길게 누르기(1초 → 좌표·표고 창)를 쓰므로 iOS 의 '이미지 저장' 메뉴·글자 선택을 막는다 */
+#map { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 /* HDG↑ — 회전해도 모서리가 비지 않도록 '보이는 영역의 대각선' 을 한 변으로 하는
    정사각형으로 키운다(크기·위치는 JS 가 재서 넣는다). 확대(scale)가 아니라서
    축척이 그대로다. 넘치는 부분은 #map-wrap 이 잘라 낸다. */
