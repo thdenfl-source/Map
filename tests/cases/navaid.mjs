@@ -537,13 +537,13 @@ export async function run(page, t) {
   t.eq(lsk.xs.length, 1, `버튼이 한 줄로 선다 (x ${lsk.xs.join(',')})`);
   t.ok(lsk.xs[0] <= 12, `그 줄이 왼쪽 끝에 붙는다 (${lsk.xs[0]}px)`);
   t.ok(lsk.n >= 14, `버튼을 줄이지 않았다 (${lsk.n}개)`);
-  // 종전 54×34px·글씨 10px 에서 1.5 배로 키웠다 — 흔들리는 기내에서 장갑 낀
-  // 손으로도 누를 크기다. (두 배도 해 봤는데 지도를 너무 가렸다)
-  // 그만큼 지도를 가리므로 접기·펼치기를 함께 두었다.
-  t.ok(lsk.minW >= 81 && lsk.minH >= 51,
-    `버튼이 종전의 1.5 배다 (${lsk.minW}×${lsk.minH}px)`);
-  t.ok(lsk.minFs >= 15, `글씨도 1.5 배다 (${lsk.minFs}px)`);
-  t.eq(lsk.overflow, false, '키운 글씨가 버튼을 넘치지 않는다');
+  // 1.5 배(81×51px·글씨 15px)로 키웠다가 지도를 너무 가려 그 3/4 로 줄였다
+  // (61×38px·글씨 11px). 더 작아지면 흔들리는 기내에서 누르기 어렵다.
+  // 그래도 지도를 가리므로 접기·펼치기를 함께 둔다.
+  t.ok(lsk.minW >= 60 && lsk.minW <= 62 && lsk.minH >= 37 && lsk.minH <= 39,
+    `버튼이 종전(81×51px)의 3/4 이다 (${lsk.minW}×${lsk.minH}px)`);
+  t.ok(lsk.minFs >= 11, `글씨도 그만큼 줄었다 (${lsk.minFs}px)`);
+  t.eq(lsk.overflow, false, '글씨가 버튼을 넘치지 않는다');
   t.ok(lsk.railW <= lsk.wrapW * 0.25,
     `줄이 지도의 한 귀퉁이만 쓴다 (${lsk.railW}px / ${lsk.wrapW}px)`);
   t.eq(lsk.midIsMap, true, '줄 오른쪽은 지도가 그대로 보인다');
@@ -572,7 +572,7 @@ export async function run(page, t) {
   t.eq(roll.over, true, '세로가 모자라면 줄이 화면을 넘는다');
   t.eq(roll.moved, true, '그때 줄이 굴러간다');
   t.eq(roll.lastSeen, true, '굴리면 맨 아래 버튼(REC)까지 보인다');
-  t.eq(roll.btnH, 51, `버튼 높이는 어느 화면에서나 같다 (${roll.btnH}px)`);
+  t.eq(roll.btnH, 38, `버튼 높이는 어느 화면에서나 같다 (${roll.btnH}px)`);
   t.ok(roll.n >= 14, `굴리는 대신 버튼을 감추지 않는다 (${roll.n}개)`);
   // 접기 버튼은 줄을 굴려 내려도 맨 위에 붙어 있는다(sticky) —
   // 굴린 채로는 접을 수 없다면 있으나 마나다.
