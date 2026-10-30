@@ -575,7 +575,56 @@ function addAppWps() {
     if (typeof r.lat !== 'number' || isNaN(r.lat)) return;
     pushWP({ident:r.ident, lat:r.lat, lon:r.lon, arc:r.arc}, 'APP');
   });
+  try { appAutoTune(icao, app); } catch (e) { _swallow(e); }   // NAV1 = 그 공항 VOR · NAV2 = 그 활주로 LOC
   fpGo('LIST');
+}
+
+// ── 접근절차를 불러오면 무선을 맞춘다 ──
+// NAV1 = 그 접근 공항의 VOR, NAV2 = 그 접근 활주로의 LOC(로컬라이저) 주파수.
+// VOR 은 튜닝해 쓸 수 있는(좌표가 있는 · ENR_VORS) 국 가운데에서 고른다 —
+//   ① 접근절차 경로에 든 VOR(예: 김해 VOR RWY 36R 의 KMH)
+//   ② 비행장 자료(AIRFIELD_INFO)의 VOR 주파수 — 공항에서 APP_VOR_NEAR_NM 안의 국만
+//      (제주 109.0 처럼 주파수가 같은 먼 국(청주 CHO)을 잡지 않게)
+//   ③ 공항에서 가장 가까운 VOR(APP_VOR_MAX_NM 안)
+// LOC 는 절차 이름의 활주로(… RWY 36R)와 같은 활주로의 것, 없으면 같은 방향(36), 그도 없으면
+// 그 공항의 다른 LOC. 맞출 국이 없으면 그 무선은 그대로 둔다.
+const APP_VOR_NEAR_NM = 25, APP_VOR_MAX_NM = 30;
+function appTuneTargets(icao, app) {
+  const apt = AIRPORTS.find(a => a.ident === icao) || null;
+  const vors = (typeof ENR_VORS !== 'undefined' ? ENR_VORS : []).filter(v => v.freq && Number.isFinite(v.lat));
+  let vor = null;
+  for (const w of (app.wps || [])) {                                  // ①
+    const v = vors.find(x => x.id === w.ident);
+    if (v) { vor = v; break; }
+  }
+  if (!vor && apt) {
+    const info = (typeof AIRFIELD_INFO !== 'undefined' ? AIRFIELD_INFO : []).find(f => 'RK' + f.code === icao);
+    const freqs = (info && info.vor && info.vor.match(/\b1[01]\d\.\d{1,3}\b/g)) || [];
+    for (const f of freqs) {                                         // ②
+      const v = vors.find(x => Math.abs(parseFloat(x.freq) - parseFloat(f)) < 0.001 &&
+                               distance(apt.lat, apt.lon, x.lat, x.lon) <= APP_VOR_NEAR_NM);
+      if (v) { vor = v; break; }
+    }
+    if (!vor) {                                                      // ③
+      let best = APP_VOR_MAX_NM;
+      vors.forEach(x => { const d = distance(apt.lat, apt.lon, x.lat, x.lon); if (d <= best) { best = d; vor = x; } });
+    }
+  }
+  const m = /RWY\s*(\d{2}[LRC]?)/i.exec(app.name || '');
+  const rwy = m ? m[1].toUpperCase() : null;
+  const locs = (typeof LOC_STATIONS !== 'undefined' ? LOC_STATIONS : []).filter(L => L.apt === icao);
+  const loc = (rwy && locs.find(L => L.rwy === rwy)) ||
+              (rwy && locs.find(L => String(L.rwy).slice(0, 2) === rwy.slice(0, 2))) || locs[0] || null;
+  return { vor, loc, rwy };
+}
+function appAutoTune(icao, app) {
+  const { vor, loc } = appTuneTargets(icao, app);
+  if (vor) setNavRadio('NAV1', vor.freq, vor.id);
+  if (loc) setNavRadio('NAV2', loc.freq, loc.id);
+  const msg = [vor ? `NAV1 ${vor.id} ${vor.freq}` : '', loc ? `NAV2 ${loc.id} ${loc.freq}(RWY ${loc.rwy} LOC)` : '']
+    .filter(Boolean).join(' · ');
+  if (msg) { try { uiToast(`${msg} — 자동 튜닝`); } catch (e) { _swallow(e); } }
+  return { vor, loc };
 }
 
 // ── 사용 안내 ──
