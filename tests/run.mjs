@@ -45,7 +45,9 @@ import * as geoaddr from './cases/geoaddr.mjs';
 import * as routecolor from './cases/routecolor.mjs';
 import * as longpress from './cases/longpress.mjs';
 
-const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale, atis, trkrec, exitguard, geoaddr, routecolor, longpress];
+import * as apptune from './cases/apptune.mjs';
+
+const SUITES = [smoke, actions, coords, chartcal, hold, nav, gspd, dialog, chartview, procdata, simspd, tascalc, brg, fpwpt, maprot, map3d, dmearc, dme, fporder, wptcrs, directto, crssync, locsta, susp, layout, gslope, geosearch, navaid, oat, hsihdg, hdghybrid, topbox, cdiscale, atis, trkrec, exitguard, geoaddr, routecolor, longpress, apptune];
 const filter = process.argv.slice(2);
 
 function makeT() {
